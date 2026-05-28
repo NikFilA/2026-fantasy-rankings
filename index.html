@@ -115,7 +115,7 @@
 
         .controls {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(150px, 210px) auto;
+            grid-template-columns: minmax(0, 1fr) minmax(220px, 320px) minmax(150px, 210px) auto;
             gap: 14px;
             align-items: center;
             margin-bottom: 16px;
@@ -133,6 +133,7 @@
         }
 
         .filter-btn,
+        .player-search,
         .team-select,
         .reset-btn {
             min-height: 38px;
@@ -148,11 +149,23 @@
             transition: border-color 140ms ease, color 140ms ease, background 140ms ease, transform 140ms ease;
         }
 
+        .player-search,
         .team-select {
             width: 100%;
             padding: 0 12px;
             color: var(--text);
             outline: none;
+        }
+
+        .player-search {
+            cursor: text;
+            font-weight: 700;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
+        .player-search::placeholder {
+            color: var(--subtle);
         }
 
         .filter-btn {
@@ -417,6 +430,7 @@
                 <button class="filter-btn" type="button" data-filter="WR" aria-pressed="false">WR</button>
                 <button class="filter-btn" type="button" data-filter="TE" aria-pressed="false">TE</button>
             </nav>
+            <input class="player-search" id="playerSearch" type="search" placeholder="Search player..." aria-label="Search players" autocomplete="off">
             <select class="team-select" id="teamFilter" aria-label="Team filter">
                 <option value="ALL">All Teams</option>
             </select>
@@ -471,6 +485,7 @@
                 flockRanks: {},
                 activeFilter: "ALL",
                 activeTeam: "ALL",
+                searchQuery: "",
                 draggedItemId: null,
             };
             let supabaseClientPromise = null;
@@ -479,6 +494,7 @@
                 body: document.getElementById("rankingsBody"),
                 empty: document.getElementById("emptyState"),
                 filters: Array.from(document.querySelectorAll(".filter-btn")),
+                playerSearch: document.getElementById("playerSearch"),
                 teamFilter: document.getElementById("teamFilter"),
                 reset: document.getElementById("resetButton"),
                 playerCount: document.getElementById("playerCount"),
@@ -736,7 +752,19 @@
                 .replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "")
                 .replace(/[^a-z0-9]+/g, "");
 
-            const playerMarketKey = (player) => `${nameKey(player.name)}|${player.team}|${player.pos}`;
+            const TEAM_ALIASES = {
+                JAX: "JAC",
+                JAC: "JAC",
+                WAS: "WSH",
+                WSH: "WSH",
+            };
+
+            const marketTeam = (team) => {
+                const normalized = String(team || "").toUpperCase();
+                return TEAM_ALIASES[normalized] || normalized;
+            };
+
+            const playerMarketKey = (player) => `${nameKey(player.name)}|${marketTeam(player.team)}|${player.pos}`;
 
             const formatAdp = (adp, pickLabel) => {
                 if (adp === 999) {
@@ -920,9 +948,12 @@
                 return pill;
             };
 
+            const normalizeSearch = (value) => String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+
             const getVisibleItems = () => {
                 const byId = playersById();
-                const showTierRows = state.activeFilter === "ALL" && state.activeTeam === "ALL";
+                const searchQuery = normalizeSearch(state.searchQuery);
+                const showTierRows = state.activeFilter === "ALL" && state.activeTeam === "ALL" && !searchQuery;
                 let playerIndex = 0;
 
                 return state.items.reduce((visible, item) => {
@@ -942,7 +973,8 @@
                     playerIndex += 1;
                     const positionMatch = state.activeFilter === "ALL" || player.pos === state.activeFilter;
                     const teamMatch = state.activeTeam === "ALL" || player.team === state.activeTeam;
-                    if (positionMatch && teamMatch) {
+                    const searchMatch = !searchQuery || normalizeSearch(player.name).includes(searchQuery);
+                    if (positionMatch && teamMatch && searchMatch) {
                         visible.push({ globalIndex, item, player });
                     }
                     return visible;
@@ -953,6 +985,9 @@
                 const parts = [state.activeFilter];
                 if (state.activeTeam !== "ALL") {
                     parts.push(state.activeTeam);
+                }
+                if (state.searchQuery.trim()) {
+                    parts.push("Search");
                 }
                 return parts.join(" / ");
             };
@@ -966,6 +1001,7 @@
                 });
                 state.activeTeam = teams.includes(currentTeam) ? currentTeam : "ALL";
                 elements.teamFilter.value = state.activeTeam;
+                elements.playerSearch.value = state.searchQuery;
             };
 
             const render = () => {
@@ -1003,7 +1039,7 @@
                         return rankings;
                     }
                     const rank = index + 1;
-                    rankings[`${nameKey(name)}|${String(team).toUpperCase()}|${String(pos).toUpperCase()}`] = rank;
+                    rankings[`${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`] = rank;
                     return rankings;
                 }, {});
             };
@@ -1041,6 +1077,11 @@
 
                 elements.teamFilter.addEventListener("change", () => {
                     state.activeTeam = elements.teamFilter.value;
+                    render();
+                });
+
+                elements.playerSearch.addEventListener("input", () => {
+                    state.searchQuery = elements.playerSearch.value;
                     render();
                 });
 

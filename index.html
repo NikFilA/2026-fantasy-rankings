@@ -760,7 +760,7 @@
                 if (!Number.isFinite(rank)) {
                     return "N/A";
                 }
-                return Number.isInteger(rank) ? String(rank) : rank.toFixed(1);
+                return String(Math.round(rank));
             };
 
             const formatVariance = (marketAdp, myRank) => {
@@ -1002,9 +1002,7 @@
                     if (!name || !team || !pos) {
                         return rankings;
                     }
-                    const rank = Number.isFinite(Number(row.averageRank || row.average_rank))
-                        ? Number(row.averageRank || row.average_rank)
-                        : index + 1;
+                    const rank = index + 1;
                     rankings[`${nameKey(name)}|${String(team).toUpperCase()}|${String(pos).toUpperCase()}`] = rank;
                     return rankings;
                 }, {});

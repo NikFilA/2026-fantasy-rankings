@@ -438,6 +438,8 @@
                             <th scope="col">UD Var</th>
                             <th scope="col">Sleeper ADP</th>
                             <th scope="col">Sleeper Var</th>
+                            <th scope="col">Flock Rank</th>
+                            <th scope="col">Flock Var</th>
                         </tr>
                     </thead>
                     <tbody id="rankingsBody"></tbody>
@@ -454,6 +456,8 @@
             const STORAGE_KEY = "myCustomRankings";
             const POSITIONS = ["QB", "RB", "WR", "TE"];
             const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+            const FLOCK_PROXY_URL = "/api/flock-rankings";
+            const FLOCK_DIRECT_URL = "https://api.flockfantasy.com/rankings?format=BEST_BALL&pickType=general";
             const DEFAULT_SYNC_CONFIG = {
                 provider: "local",
                 supabaseUrl: "",
@@ -464,6 +468,7 @@
             const syncConfig = { ...DEFAULT_SYNC_CONFIG, ...(window.SYNC_CONFIG || {}) };
             const state = {
                 items: [],
+                flockRanks: {},
                 activeFilter: "ALL",
                 activeTeam: "ALL",
                 draggedItemId: null,
@@ -726,6 +731,13 @@
                 render();
             };
 
+            const nameKey = (name) => String(name || "")
+                .toLowerCase()
+                .replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, "")
+                .replace(/[^a-z0-9]+/g, "");
+
+            const playerMarketKey = (player) => `${nameKey(player.name)}|${player.team}|${player.pos}`;
+
             const formatAdp = (adp, pickLabel) => {
                 if (adp === 999) {
                     return "N/A";
@@ -742,6 +754,13 @@
                     return "negative";
                 }
                 return "neutral";
+            };
+
+            const formatMarketRank = (rank) => {
+                if (!Number.isFinite(rank)) {
+                    return "N/A";
+                }
+                return Number.isInteger(rank) ? String(rank) : rank.toFixed(1);
             };
 
             const formatVariance = (marketAdp, myRank) => {
@@ -848,7 +867,7 @@
                 label.textContent = item.label;
 
                 const labelCell = createCell("", label);
-                labelCell.colSpan = 9;
+                labelCell.colSpan = 11;
                 row.append(createCell("drag-cell", handle), labelCell);
                 return row;
             };
@@ -860,6 +879,8 @@
                 const myRank = globalIndex + 1;
                 const underdogVariance = formatVariance(player.udAdp, myRank);
                 const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
+                const flockRank = state.flockRanks[playerMarketKey(player)];
+                const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const handle = document.createElement("span");
                 handle.className = "handle";
                 handle.textContent = "::";
@@ -885,6 +906,8 @@
                     createCell(`variance num ${underdogVariance.className}`, underdogVariance.label),
                     createCell("num", formatAdp(player.sleeperAdp, player.sleeperPick)),
                     createCell(`variance num ${sleeperVariance.className}`, sleeperVariance.label),
+                    createCell("num", formatMarketRank(flockRank)),
+                    createCell(`variance num ${flockVariance.className}`, flockVariance.label),
                 );
 
                 return row;
@@ -970,6 +993,46 @@
                 elements.teamFilter.value = state.activeTeam;
             };
 
+            const normalizeFlockRankings = (payload) => {
+                const rows = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.data) ? payload.data : []);
+                return rows.reduce((rankings, row, index) => {
+                    const name = row.playerName || row.player_name || row.name;
+                    const team = row.team || row.teamAbbr || row.team_abbr || "";
+                    const pos = row.position || row.pos || "";
+                    if (!name || !team || !pos) {
+                        return rankings;
+                    }
+                    const rank = Number.isFinite(Number(row.averageRank || row.average_rank))
+                        ? Number(row.averageRank || row.average_rank)
+                        : index + 1;
+                    rankings[`${nameKey(name)}|${String(team).toUpperCase()}|${String(pos).toUpperCase()}`] = rank;
+                    return rankings;
+                }, {});
+            };
+
+            const fetchJson = async (url) => {
+                const response = await fetch(url, { cache: "no-store" });
+                if (!response.ok) {
+                    throw new Error(`Flock request failed: ${response.status}`);
+                }
+                return response.json();
+            };
+
+            const refreshFlockRanks = async () => {
+                try {
+                    let payload;
+                    try {
+                        payload = await fetchJson(FLOCK_PROXY_URL);
+                    } catch (proxyError) {
+                        payload = await fetchJson(FLOCK_DIRECT_URL);
+                    }
+                    state.flockRanks = normalizeFlockRankings(payload);
+                    render();
+                } catch (error) {
+                    console.warn("Flock rankings could not be loaded.", error);
+                }
+            };
+
             const bindEvents = () => {
                 elements.filters.forEach((button) => {
                     button.addEventListener("click", () => {
@@ -1000,6 +1063,7 @@
                 populateTeamFilter();
                 bindEvents();
                 render();
+                refreshFlockRanks();
             };
 
             init();

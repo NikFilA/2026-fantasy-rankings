@@ -704,7 +704,7 @@
                 flockRanks: {},
                 playerAssets: {},
                 sleeperKeyById: {},
-                activeFilter: "ALL",
+                selectedPositions: new Set(),
                 activeTeam: "ALL",
                 searchQuery: "",
                 availableOnly: false,
@@ -1255,7 +1255,7 @@
             const getVisibleItems = () => {
                 const byId = playersById();
                 const searchQuery = normalizeSearch(state.searchQuery);
-                const showTierRows = state.activeFilter === "ALL" && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly;
+                const showTierRows = state.selectedPositions.size === 0 && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly;
                 let playerIndex = 0;
                 let currentTierLabel = "";
 
@@ -1276,7 +1276,7 @@
                     const globalIndex = playerIndex;
                     playerIndex += 1;
                     const playerKey = playerMarketKey(player);
-                    const positionMatch = state.activeFilter === "ALL" || player.pos === state.activeFilter;
+                    const positionMatch = state.selectedPositions.size === 0 || state.selectedPositions.has(player.pos);
                     const teamMatch = state.activeTeam === "ALL" || player.team === state.activeTeam;
                     const searchMatch = !searchQuery || normalizeSearch(player.name).includes(searchQuery);
                     const availabilityMatch = !state.availableOnly || !state.draft.active || !state.draft.draftedKeys.has(playerKey);
@@ -1288,7 +1288,7 @@
             };
 
             const filterLabel = () => {
-                const parts = [state.activeFilter];
+                const parts = [state.selectedPositions.size ? Array.from(state.selectedPositions).join(" / ") : "ALL"];
                 if (state.activeTeam !== "ALL") {
                     parts.push(state.activeTeam);
                 }
@@ -1332,7 +1332,9 @@
                 elements.playerCount.textContent = String(visiblePlayerCount);
                 elements.filterLabel.textContent = filterLabel();
                 elements.filters.forEach((button) => {
-                    button.setAttribute("aria-pressed", String(button.dataset.filter === state.activeFilter));
+                    const filter = button.dataset.filter;
+                    const pressed = filter === "ALL" ? state.selectedPositions.size === 0 : state.selectedPositions.has(filter);
+                    button.setAttribute("aria-pressed", String(pressed));
                 });
                 elements.teamFilter.value = state.activeTeam;
             };
@@ -1627,7 +1629,14 @@
             const bindEvents = () => {
                 elements.filters.forEach((button) => {
                     button.addEventListener("click", () => {
-                        state.activeFilter = button.dataset.filter;
+                        const filter = button.dataset.filter;
+                        if (filter === "ALL") {
+                            state.selectedPositions.clear();
+                        } else if (state.selectedPositions.has(filter)) {
+                            state.selectedPositions.delete(filter);
+                        } else {
+                            state.selectedPositions.add(filter);
+                        }
                         render();
                     });
                 });

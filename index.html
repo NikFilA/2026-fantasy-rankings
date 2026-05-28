@@ -683,7 +683,7 @@
             const STORAGE_KEY = "myCustomRankings";
             const DRAFT_STORAGE_KEY = "sleeperDraftId";
             const MY_SLOT_STORAGE_KEY = "sleeperMyRosterId";
-            const DRAFT_REFRESH_MS = 1500;
+            const DRAFT_REFRESH_MS = 1000;
             const POSITIONS = ["QB", "RB", "WR", "TE"];
             const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
             const FLOCK_PROXY_URL = "/api/flock-rankings";
@@ -1430,7 +1430,7 @@
                 return idMatch ? idMatch[0] : "";
             };
 
-            const pickRosterId = (pick) => String(pick.roster_id || pick.picked_by || pick.draft_slot || "");
+            const pickDraftSlot = (pick) => String(pick.draft_slot || pick.metadata?.draft_slot || pick.roster_id || "");
 
             const pickPosition = (pick) => {
                 const pos = String(pick.metadata?.position || "").toUpperCase();
@@ -1442,7 +1442,7 @@
                 if (settingsTeams > 0) {
                     return settingsTeams;
                 }
-                const pickSlots = state.draft.picks.map((pick) => Number(pickRosterId(pick))).filter((slot) => Number.isFinite(slot));
+                const pickSlots = state.draft.picks.map((pick) => Number(pickDraftSlot(pick))).filter((slot) => Number.isFinite(slot));
                 return pickSlots.length ? Math.max(...pickSlots) : 12;
             };
 
@@ -1468,7 +1468,7 @@
                 }
                 let total = 0;
                 state.draft.picks.forEach((pick) => {
-                    if (pickRosterId(pick) !== state.draft.myRosterId) {
+                    if (pickDraftSlot(pick) !== state.draft.myRosterId) {
                         return;
                     }
                     const pos = pickPosition(pick);

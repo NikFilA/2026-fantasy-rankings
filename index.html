@@ -193,7 +193,7 @@
 
         .draft-panel {
             display: grid;
-            grid-template-columns: minmax(260px, 1fr) auto auto auto minmax(220px, 0.9fr);
+            grid-template-columns: minmax(240px, 1fr) auto auto minmax(120px, 160px) auto minmax(240px, 0.9fr);
             gap: 12px;
             align-items: center;
             margin-bottom: 16px;
@@ -204,6 +204,7 @@
         }
 
         .draft-input,
+        .draft-select,
         .draft-btn {
             min-height: 38px;
             border: 1px solid var(--line);
@@ -216,10 +217,15 @@
             outline: none;
         }
 
-        .draft-input {
+        .draft-input,
+        .draft-select {
             width: 100%;
             padding: 0 12px;
             letter-spacing: 0;
+        }
+
+        .draft-select {
+            color: var(--text);
         }
 
         .draft-input::placeholder {
@@ -270,8 +276,34 @@
             font-size: 13px;
         }
 
+        .draft-status.error,
         .draft-status .error {
             color: var(--red);
+        }
+
+        .roster-tracker {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .roster-pill {
+            display: inline-grid;
+            place-items: center;
+            min-width: 54px;
+            min-height: 26px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: #13171b;
+            color: var(--text);
+            padding: 0 10px;
         }
 
         .table-shell {
@@ -445,7 +477,8 @@
         }
 
         .draft-badge,
-        .best-badge {
+        .best-badge,
+        .tier-chip {
             display: inline-grid;
             place-items: center;
             min-width: 42px;
@@ -467,6 +500,11 @@
         .best-badge {
             background: rgba(74, 222, 128, 0.14);
             color: var(--green);
+        }
+
+        .tier-chip {
+            background: rgba(251, 146, 60, 0.14);
+            color: var(--orange);
         }
 
         .player-meta {
@@ -592,6 +630,9 @@
             <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or ID" aria-label="Sleeper draft URL or ID" autocomplete="off">
             <button class="draft-btn" type="button" id="draftConnectButton">Connect Draft</button>
             <button class="draft-btn secondary" type="button" id="draftStopButton">Stop</button>
+            <select class="draft-select" id="mySlotSelect" aria-label="My Sleeper draft slot">
+                <option value="">My Slot</option>
+            </select>
             <label class="draft-toggle">
                 <input id="availableOnlyToggle" type="checkbox">
                 Available Only
@@ -599,6 +640,13 @@
             <div class="draft-status" aria-live="polite">
                 <strong id="draftBest">Best available: Off</strong>
                 <span id="draftStatus">Paste a Sleeper draft link when you are drafting.</span>
+            </div>
+            <div class="roster-tracker" id="rosterTracker" aria-live="polite">
+                <span>My roster</span>
+                <span class="roster-pill">QB 0</span>
+                <span class="roster-pill">RB 0</span>
+                <span class="roster-pill">WR 0</span>
+                <span class="roster-pill">TE 0</span>
             </div>
         </section>
 
@@ -634,6 +682,8 @@
 
             const STORAGE_KEY = "myCustomRankings";
             const DRAFT_STORAGE_KEY = "sleeperDraftId";
+            const MY_SLOT_STORAGE_KEY = "sleeperMyRosterId";
+            const DRAFT_REFRESH_MS = 1500;
             const POSITIONS = ["QB", "RB", "WR", "TE"];
             const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
             const FLOCK_PROXY_URL = "/api/flock-rankings";
@@ -664,6 +714,8 @@
                     active: false,
                     loading: false,
                     error: "",
+                    details: null,
+                    myRosterId: localStorage.getItem(MY_SLOT_STORAGE_KEY) || "",
                     picks: [],
                     draftedKeys: new Set(),
                     bestAvailableKey: "",
@@ -685,9 +737,11 @@
                 draftInput: document.getElementById("draftInput"),
                 draftConnect: document.getElementById("draftConnectButton"),
                 draftStop: document.getElementById("draftStopButton"),
+                mySlot: document.getElementById("mySlotSelect"),
                 availableOnly: document.getElementById("availableOnlyToggle"),
                 draftBest: document.getElementById("draftBest"),
                 draftStatus: document.getElementById("draftStatus"),
+                rosterTracker: document.getElementById("rosterTracker"),
             };
             let draftTimer = null;
 
@@ -1097,7 +1151,7 @@
                 return row;
             };
 
-            const createPlayerRow = (item, player, globalIndex, posRanks) => {
+            const createPlayerRow = (item, player, globalIndex, posRanks, tierLabel) => {
                 const row = document.createElement("tr");
                 row.dataset.id = player.id;
                 attachDragEvents(row, item.id);
@@ -1126,6 +1180,12 @@
                 playerText.className = "player-text";
                 playerName.className = "player-name";
                 playerName.textContent = player.name;
+                if (tierLabel) {
+                    const tierBadge = document.createElement("span");
+                    tierBadge.className = "tier-chip";
+                    tierBadge.textContent = tierLabel;
+                    playerName.appendChild(tierBadge);
+                }
                 if (isDrafted) {
                     const draftedBadge = document.createElement("span");
                     draftedBadge.className = "draft-badge";
@@ -1195,11 +1255,13 @@
             const getVisibleItems = () => {
                 const byId = playersById();
                 const searchQuery = normalizeSearch(state.searchQuery);
-                const showTierRows = state.activeFilter === "ALL" && state.activeTeam === "ALL" && !searchQuery;
+                const showTierRows = state.activeFilter === "ALL" && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly;
                 let playerIndex = 0;
+                let currentTierLabel = "";
 
                 return state.items.reduce((visible, item) => {
                     if (item.type === "tier") {
+                        currentTierLabel = item.label;
                         if (showTierRows) {
                             visible.push({ item });
                         }
@@ -1219,7 +1281,7 @@
                     const searchMatch = !searchQuery || normalizeSearch(player.name).includes(searchQuery);
                     const availabilityMatch = !state.availableOnly || !state.draft.active || !state.draft.draftedKeys.has(playerKey);
                     if (positionMatch && teamMatch && searchMatch && availabilityMatch) {
-                        visible.push({ globalIndex, item, player });
+                        visible.push({ globalIndex, item, player, tierLabel: showTierRows ? "" : currentTierLabel });
                     }
                     return visible;
                 }, []);
@@ -1247,21 +1309,21 @@
                 elements.teamFilter.value = state.activeTeam;
                 elements.playerSearch.value = state.searchQuery;
                 elements.availableOnly.checked = state.availableOnly;
-                updateDraftStatus();
             };
 
             const render = () => {
+                updateDraftStatus();
                 const visibleItems = getVisibleItems();
                 const posRanks = getPositionRanks();
                 const fragment = document.createDocumentFragment();
                 const visiblePlayerCount = visibleItems.filter(({ player }) => player).length;
 
                 elements.body.replaceChildren();
-                visibleItems.forEach(({ item, player, globalIndex }) => {
+                visibleItems.forEach(({ item, player, globalIndex, tierLabel }) => {
                     if (item.type === "tier") {
                         fragment.appendChild(createTierRow(item));
                     } else {
-                        fragment.appendChild(createPlayerRow(item, player, globalIndex, posRanks));
+                        fragment.appendChild(createPlayerRow(item, player, globalIndex, posRanks, tierLabel));
                     }
                 });
                 elements.body.appendChild(fragment);
@@ -1368,6 +1430,71 @@
                 return idMatch ? idMatch[0] : "";
             };
 
+            const pickRosterId = (pick) => String(pick.roster_id || pick.picked_by || pick.draft_slot || "");
+
+            const pickPosition = (pick) => {
+                const pos = String(pick.metadata?.position || "").toUpperCase();
+                return POSITIONS.includes(pos) ? pos : "";
+            };
+
+            const draftTeamCount = () => {
+                const settingsTeams = Number(state.draft.details?.settings?.teams || state.draft.details?.teams || 0);
+                if (settingsTeams > 0) {
+                    return settingsTeams;
+                }
+                const pickSlots = state.draft.picks.map((pick) => Number(pickRosterId(pick))).filter((slot) => Number.isFinite(slot));
+                return pickSlots.length ? Math.max(...pickSlots) : 12;
+            };
+
+            const populateMySlotOptions = () => {
+                const current = state.draft.myRosterId;
+                const teamCount = draftTeamCount();
+                elements.mySlot.replaceChildren(new Option("My Slot", ""));
+                for (let slot = 1; slot <= teamCount; slot += 1) {
+                    elements.mySlot.appendChild(new Option(`Slot ${slot}`, String(slot)));
+                }
+                if (current && Number(current) >= 1 && Number(current) <= teamCount) {
+                    elements.mySlot.value = current;
+                } else {
+                    state.draft.myRosterId = "";
+                    elements.mySlot.value = "";
+                }
+            };
+
+            const myRosterCounts = () => {
+                const counts = Object.fromEntries(POSITIONS.map((pos) => [pos, 0]));
+                if (!state.draft.myRosterId) {
+                    return { counts, total: 0 };
+                }
+                let total = 0;
+                state.draft.picks.forEach((pick) => {
+                    if (pickRosterId(pick) !== state.draft.myRosterId) {
+                        return;
+                    }
+                    const pos = pickPosition(pick);
+                    if (pos) {
+                        counts[pos] += 1;
+                        total += 1;
+                    }
+                });
+                return { counts, total };
+            };
+
+            const updateRosterTracker = () => {
+                const { counts, total } = myRosterCounts();
+                const label = state.draft.myRosterId ? `My roster · Slot ${state.draft.myRosterId} · ${total} picks` : "My roster · choose slot";
+                elements.rosterTracker.replaceChildren();
+                const labelNode = document.createElement("span");
+                labelNode.textContent = label;
+                elements.rosterTracker.appendChild(labelNode);
+                POSITIONS.forEach((pos) => {
+                    const pill = document.createElement("span");
+                    pill.className = "roster-pill";
+                    pill.textContent = `${pos} ${counts[pos]}`;
+                    elements.rosterTracker.appendChild(pill);
+                });
+            };
+
             const keyFromDraftPick = (pick) => {
                 const sleeperId = String(pick.player_id || pick.metadata?.player_id || "");
                 if (sleeperId && state.sleeperKeyById[sleeperId]) {
@@ -1401,6 +1528,7 @@
                     elements.draftBest.textContent = "Best available: Off";
                     elements.draftStatus.textContent = "Paste a Sleeper draft link when you are drafting.";
                     elements.draftStatus.className = "";
+                    updateRosterTracker();
                     return;
                 }
                 const best = findBestAvailable();
@@ -1415,10 +1543,17 @@
                 const synced = state.draft.lastSync ? state.draft.lastSync.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "not synced";
                 elements.draftStatus.textContent = `Draft ${state.draft.id} · ${picked} picked · synced ${synced}`;
                 elements.draftStatus.className = "";
+                updateRosterTracker();
+            };
+
+            const refreshDraftDetails = async () => {
+                const details = await fetchJson(`${SLEEPER_DRAFT_BASE_URL}/${state.draft.id}`);
+                state.draft.details = details;
+                populateMySlotOptions();
             };
 
             const refreshDraftPicks = async () => {
-                if (!state.draft.id) {
+                if (!state.draft.id || state.draft.loading) {
                     return;
                 }
                 state.draft.loading = true;
@@ -1433,6 +1568,7 @@
                     });
                     state.draft.picks = picks;
                     state.draft.draftedKeys = draftedKeys;
+                    populateMySlotOptions();
                     state.draft.error = "";
                     state.draft.lastSync = new Date();
                 } catch (error) {
@@ -1454,7 +1590,12 @@
                 state.draft.error = "";
                 state.draft.draftedKeys = new Set();
                 state.draft.bestAvailableKey = "";
+                state.draft.details = null;
+                state.draft.myRosterId = "";
+                state.draft.picks = [];
                 localStorage.removeItem(DRAFT_STORAGE_KEY);
+                localStorage.removeItem(MY_SLOT_STORAGE_KEY);
+                populateMySlotOptions();
                 render();
             };
 
@@ -1474,8 +1615,13 @@
                 state.draft.error = "";
                 elements.draftInput.value = draftId;
                 localStorage.setItem(DRAFT_STORAGE_KEY, draftId);
+                try {
+                    await refreshDraftDetails();
+                } catch (error) {
+                    console.warn("Sleeper draft details could not be loaded.", error);
+                }
                 await refreshDraftPicks();
-                draftTimer = setInterval(refreshDraftPicks, 5000);
+                draftTimer = setInterval(refreshDraftPicks, DRAFT_REFRESH_MS);
             };
 
             const bindEvents = () => {
@@ -1501,6 +1647,16 @@
                     render();
                 });
 
+                elements.mySlot.addEventListener("change", () => {
+                    state.draft.myRosterId = elements.mySlot.value;
+                    if (state.draft.myRosterId) {
+                        localStorage.setItem(MY_SLOT_STORAGE_KEY, state.draft.myRosterId);
+                    } else {
+                        localStorage.removeItem(MY_SLOT_STORAGE_KEY);
+                    }
+                    render();
+                });
+
                 elements.draftConnect.addEventListener("click", () => {
                     startDraftSync(elements.draftInput.value);
                 });
@@ -1512,6 +1668,18 @@
                 });
 
                 elements.draftStop.addEventListener("click", stopDraftSync);
+
+                window.addEventListener("focus", () => {
+                    if (state.draft.active) {
+                        refreshDraftPicks();
+                    }
+                });
+
+                document.addEventListener("visibilitychange", () => {
+                    if (!document.hidden && state.draft.active) {
+                        refreshDraftPicks();
+                    }
+                });
 
                 elements.reset.addEventListener("click", resetPlayers);
             };

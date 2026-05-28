@@ -22,6 +22,7 @@
             --green: #4ade80;
             --red: #f87171;
             --shadow: rgba(0, 0, 0, 0.34);
+            --orange: #fb923c;
         }
 
         * {
@@ -184,9 +185,93 @@
         }
 
         .filter-btn:hover,
-        .reset-btn:hover {
+        .reset-btn:hover,
+        .draft-btn:hover {
             border-color: var(--accent);
             transform: translateY(-1px);
+        }
+
+        .draft-panel {
+            display: grid;
+            grid-template-columns: minmax(260px, 1fr) auto auto auto minmax(220px, 0.9fr);
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(23, 27, 31, 0.82);
+            padding: 12px;
+        }
+
+        .draft-input,
+        .draft-btn {
+            min-height: 38px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #161b20;
+            color: var(--text);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 800;
+            outline: none;
+        }
+
+        .draft-input {
+            width: 100%;
+            padding: 0 12px;
+            letter-spacing: 0;
+        }
+
+        .draft-input::placeholder {
+            color: var(--subtle);
+        }
+
+        .draft-btn {
+            cursor: pointer;
+            letter-spacing: 0.06em;
+            padding: 0 14px;
+            text-transform: uppercase;
+            transition: border-color 140ms ease, color 140ms ease, background 140ms ease, transform 140ms ease;
+        }
+
+        .draft-btn.secondary {
+            color: var(--muted);
+        }
+
+        .draft-toggle {
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .draft-toggle input {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+        }
+
+        .draft-status {
+            display: grid;
+            gap: 3px;
+            min-height: 38px;
+            align-content: center;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .draft-status strong {
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .draft-status .error {
+            color: var(--red);
         }
 
         .table-shell {
@@ -258,6 +343,16 @@
             outline-offset: -1px;
         }
 
+        tbody tr.drafted {
+            opacity: 0.38;
+        }
+
+        tbody tr.best-available {
+            background: rgba(74, 222, 128, 0.12);
+            outline: 1px solid rgba(74, 222, 128, 0.44);
+            outline-offset: -1px;
+        }
+
         .drag-cell {
             width: 50px;
             color: var(--subtle);
@@ -314,9 +409,64 @@
             text-transform: uppercase;
         }
 
+        .player-card {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            min-width: 0;
+        }
+
+        .player-photo,
+        .player-initials {
+            flex: 0 0 auto;
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            background: #101418;
+            object-fit: cover;
+        }
+
+        .player-initials {
+            display: grid;
+            place-items: center;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 900;
+        }
+
+        .player-text {
+            min-width: 0;
+        }
+
         .player-name {
             display: block;
             font-weight: 800;
+        }
+
+        .draft-badge,
+        .best-badge {
+            display: inline-grid;
+            place-items: center;
+            min-width: 42px;
+            height: 20px;
+            margin-left: 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            vertical-align: middle;
+        }
+
+        .draft-badge {
+            background: rgba(248, 113, 113, 0.14);
+            color: var(--red);
+        }
+
+        .best-badge {
+            background: rgba(74, 222, 128, 0.14);
+            color: var(--green);
         }
 
         .player-meta {
@@ -376,7 +526,8 @@
             }
 
             .topbar,
-            .controls {
+            .controls,
+            .draft-panel {
                 grid-template-columns: 1fr;
             }
 
@@ -437,6 +588,20 @@
             <button class="reset-btn" type="button" id="resetButton">Reset to ADP Base</button>
         </section>
 
+        <section class="draft-panel" aria-label="Sleeper draft sync">
+            <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or ID" aria-label="Sleeper draft URL or ID" autocomplete="off">
+            <button class="draft-btn" type="button" id="draftConnectButton">Connect Draft</button>
+            <button class="draft-btn secondary" type="button" id="draftStopButton">Stop</button>
+            <label class="draft-toggle">
+                <input id="availableOnlyToggle" type="checkbox">
+                Available Only
+            </label>
+            <div class="draft-status" aria-live="polite">
+                <strong id="draftBest">Best available: Off</strong>
+                <span id="draftStatus">Paste a Sleeper draft link when you are drafting.</span>
+            </div>
+        </section>
+
         <section class="table-shell" aria-label="Custom rankings table">
             <div class="table-scroll">
                 <table>
@@ -468,10 +633,14 @@
             "use strict";
 
             const STORAGE_KEY = "myCustomRankings";
+            const DRAFT_STORAGE_KEY = "sleeperDraftId";
             const POSITIONS = ["QB", "RB", "WR", "TE"];
             const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
             const FLOCK_PROXY_URL = "/api/flock-rankings";
             const FLOCK_DIRECT_URL = "https://api.flockfantasy.com/rankings?format=BEST_BALL&pickType=general";
+            const SLEEPER_PLAYERS_PROXY_URL = "/api/sleeper-players";
+            const SLEEPER_PLAYERS_DIRECT_URL = "https://api.sleeper.app/v1/players/nfl";
+            const SLEEPER_DRAFT_BASE_URL = "https://api.sleeper.app/v1/draft";
             const DEFAULT_SYNC_CONFIG = {
                 provider: "local",
                 supabaseUrl: "",
@@ -483,10 +652,23 @@
             const state = {
                 items: [],
                 flockRanks: {},
+                playerAssets: {},
+                sleeperKeyById: {},
                 activeFilter: "ALL",
                 activeTeam: "ALL",
                 searchQuery: "",
+                availableOnly: false,
                 draggedItemId: null,
+                draft: {
+                    id: "",
+                    active: false,
+                    loading: false,
+                    error: "",
+                    picks: [],
+                    draftedKeys: new Set(),
+                    bestAvailableKey: "",
+                    lastSync: null,
+                },
             };
             let supabaseClientPromise = null;
 
@@ -500,9 +682,24 @@
                 playerCount: document.getElementById("playerCount"),
                 filterLabel: document.getElementById("filterLabel"),
                 saveState: document.getElementById("saveState"),
+                draftInput: document.getElementById("draftInput"),
+                draftConnect: document.getElementById("draftConnectButton"),
+                draftStop: document.getElementById("draftStopButton"),
+                availableOnly: document.getElementById("availableOnlyToggle"),
+                draftBest: document.getElementById("draftBest"),
+                draftStatus: document.getElementById("draftStatus"),
             };
+            let draftTimer = null;
 
             const basePlayers = () => clonePlayers(window.defaultPlayers || defaultPlayers || []);
+
+            const initialsFor = (name) => String(name || "")
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => part[0])
+                .join("")
+                .toUpperCase();
 
             const clonePlayers = (players) => players.map((player, index) => ({
                 id: String(player.id || index + 1),
@@ -914,14 +1111,36 @@
                 handle.textContent = "::";
                 handle.setAttribute("aria-hidden", "true");
 
+                const playerKey = playerMarketKey(player);
+                const isDrafted = state.draft.draftedKeys.has(playerKey);
+                const isBestAvailable = state.draft.bestAvailableKey === playerKey;
+                row.classList.toggle("drafted", isDrafted);
+                row.classList.toggle("best-available", isBestAvailable);
+
                 const playerCell = document.createElement("div");
+                const playerMedia = playerImage(player);
+                const playerText = document.createElement("div");
                 const playerName = document.createElement("span");
                 const playerMeta = document.createElement("span");
+                playerCell.className = "player-card";
+                playerText.className = "player-text";
                 playerName.className = "player-name";
                 playerName.textContent = player.name;
+                if (isDrafted) {
+                    const draftedBadge = document.createElement("span");
+                    draftedBadge.className = "draft-badge";
+                    draftedBadge.textContent = "Gone";
+                    playerName.appendChild(draftedBadge);
+                } else if (isBestAvailable) {
+                    const bestBadge = document.createElement("span");
+                    bestBadge.className = "best-badge";
+                    bestBadge.textContent = "Best";
+                    playerName.appendChild(bestBadge);
+                }
                 playerMeta.className = "player-meta";
                 playerMeta.textContent = `${player.pos} / ${player.team}`;
-                playerCell.append(playerName, playerMeta);
+                playerText.append(playerName, playerMeta);
+                playerCell.append(playerMedia, playerText);
 
                 row.append(
                     createCell("drag-cell", handle),
@@ -948,6 +1167,29 @@
                 return pill;
             };
 
+            const playerInitials = (player) => {
+                const fallback = document.createElement("span");
+                fallback.className = "player-initials";
+                fallback.textContent = initialsFor(player.name);
+                fallback.setAttribute("aria-hidden", "true");
+                return fallback;
+            };
+
+            const playerImage = (player) => {
+                const asset = state.playerAssets[playerMarketKey(player)];
+                if (asset && asset.imageUrl) {
+                    const image = document.createElement("img");
+                    image.className = "player-photo";
+                    image.src = asset.imageUrl;
+                    image.alt = "";
+                    image.loading = "lazy";
+                    image.decoding = "async";
+                    image.onerror = () => image.replaceWith(playerInitials(player));
+                    return image;
+                }
+                return playerInitials(player);
+            };
+
             const normalizeSearch = (value) => String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
 
             const getVisibleItems = () => {
@@ -971,10 +1213,12 @@
 
                     const globalIndex = playerIndex;
                     playerIndex += 1;
+                    const playerKey = playerMarketKey(player);
                     const positionMatch = state.activeFilter === "ALL" || player.pos === state.activeFilter;
                     const teamMatch = state.activeTeam === "ALL" || player.team === state.activeTeam;
                     const searchMatch = !searchQuery || normalizeSearch(player.name).includes(searchQuery);
-                    if (positionMatch && teamMatch && searchMatch) {
+                    const availabilityMatch = !state.availableOnly || !state.draft.active || !state.draft.draftedKeys.has(playerKey);
+                    if (positionMatch && teamMatch && searchMatch && availabilityMatch) {
                         visible.push({ globalIndex, item, player });
                     }
                     return visible;
@@ -1002,6 +1246,8 @@
                 state.activeTeam = teams.includes(currentTeam) ? currentTeam : "ALL";
                 elements.teamFilter.value = state.activeTeam;
                 elements.playerSearch.value = state.searchQuery;
+                elements.availableOnly.checked = state.availableOnly;
+                updateDraftStatus();
             };
 
             const render = () => {
@@ -1047,7 +1293,7 @@
             const fetchJson = async (url) => {
                 const response = await fetch(url, { cache: "no-store" });
                 if (!response.ok) {
-                    throw new Error(`Flock request failed: ${response.status}`);
+                    throw new Error(`Request failed: ${response.status}`);
                 }
                 return response.json();
             };
@@ -1065,6 +1311,171 @@
                 } catch (error) {
                     console.warn("Flock rankings could not be loaded.", error);
                 }
+            };
+
+            const normalizeSleeperPlayers = (payload) => {
+                const rows = Array.isArray(payload)
+                    ? payload
+                    : Object.values(payload || {}).map((player) => ({
+                        id: player.player_id,
+                        name: player.full_name || `${player.first_name || ""} ${player.last_name || ""}`.trim(),
+                        pos: player.position,
+                        team: player.team,
+                    }));
+                const assets = {};
+                const sleeperKeyById = {};
+                rows.forEach((row) => {
+                    const id = String(row.id || row.player_id || "");
+                    const name = row.name || row.full_name;
+                    const pos = row.pos || row.position;
+                    const team = row.team;
+                    if (!id || !name || !pos || !team || !POSITIONS.includes(String(pos).toUpperCase())) {
+                        return;
+                    }
+                    const key = `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`;
+                    assets[key] = {
+                        id,
+                        imageUrl: `https://sleepercdn.com/content/nfl/players/thumb/${id}.jpg`,
+                    };
+                    sleeperKeyById[id] = key;
+                });
+                state.playerAssets = assets;
+                state.sleeperKeyById = sleeperKeyById;
+            };
+
+            const refreshSleeperPlayers = async () => {
+                try {
+                    let payload;
+                    try {
+                        payload = await fetchJson(SLEEPER_PLAYERS_PROXY_URL);
+                    } catch (proxyError) {
+                        payload = await fetchJson(SLEEPER_PLAYERS_DIRECT_URL);
+                    }
+                    normalizeSleeperPlayers(payload);
+                    render();
+                } catch (error) {
+                    console.warn("Sleeper player images could not be loaded.", error);
+                }
+            };
+
+            const draftIdFromInput = (value) => {
+                const input = String(value || "").trim();
+                const draftPathMatch = input.match(/draft\/(?:nfl\/)?(\d+)/i);
+                if (draftPathMatch) {
+                    return draftPathMatch[1];
+                }
+                const idMatch = input.match(/\d{8,}/);
+                return idMatch ? idMatch[0] : "";
+            };
+
+            const keyFromDraftPick = (pick) => {
+                const sleeperId = String(pick.player_id || pick.metadata?.player_id || "");
+                if (sleeperId && state.sleeperKeyById[sleeperId]) {
+                    return state.sleeperKeyById[sleeperId];
+                }
+                const metadata = pick.metadata || {};
+                const firstName = metadata.first_name || metadata.firstName || "";
+                const lastName = metadata.last_name || metadata.lastName || "";
+                const name = metadata.player_name || metadata.name || `${firstName} ${lastName}`.trim();
+                const team = metadata.team || "";
+                const pos = metadata.position || "";
+                return name && team && pos ? `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}` : "";
+            };
+
+            const findBestAvailable = () => {
+                const byId = playersById();
+                for (const item of state.items) {
+                    if (item.type !== "player") {
+                        continue;
+                    }
+                    const player = byId.get(item.playerId);
+                    if (player && !state.draft.draftedKeys.has(playerMarketKey(player))) {
+                        return player;
+                    }
+                }
+                return null;
+            };
+
+            const updateDraftStatus = () => {
+                if (!state.draft.active) {
+                    elements.draftBest.textContent = "Best available: Off";
+                    elements.draftStatus.textContent = "Paste a Sleeper draft link when you are drafting.";
+                    elements.draftStatus.className = "";
+                    return;
+                }
+                const best = findBestAvailable();
+                state.draft.bestAvailableKey = best ? playerMarketKey(best) : "";
+                elements.draftBest.textContent = best ? `Best available: ${best.name}` : "Best available: None";
+                if (state.draft.error) {
+                    elements.draftStatus.textContent = state.draft.error;
+                    elements.draftStatus.className = "error";
+                    return;
+                }
+                const picked = state.draft.picks.length;
+                const synced = state.draft.lastSync ? state.draft.lastSync.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "not synced";
+                elements.draftStatus.textContent = `Draft ${state.draft.id} · ${picked} picked · synced ${synced}`;
+                elements.draftStatus.className = "";
+            };
+
+            const refreshDraftPicks = async () => {
+                if (!state.draft.id) {
+                    return;
+                }
+                state.draft.loading = true;
+                try {
+                    const picks = await fetchJson(`${SLEEPER_DRAFT_BASE_URL}/${state.draft.id}/picks`);
+                    const draftedKeys = new Set();
+                    picks.forEach((pick) => {
+                        const key = keyFromDraftPick(pick);
+                        if (key) {
+                            draftedKeys.add(key);
+                        }
+                    });
+                    state.draft.picks = picks;
+                    state.draft.draftedKeys = draftedKeys;
+                    state.draft.error = "";
+                    state.draft.lastSync = new Date();
+                } catch (error) {
+                    console.warn("Sleeper draft could not be synced.", error);
+                    state.draft.error = "Could not sync Sleeper draft. Check the draft ID.";
+                } finally {
+                    state.draft.loading = false;
+                    updateDraftStatus();
+                    render();
+                }
+            };
+
+            const stopDraftSync = () => {
+                if (draftTimer) {
+                    clearInterval(draftTimer);
+                    draftTimer = null;
+                }
+                state.draft.active = false;
+                state.draft.error = "";
+                state.draft.draftedKeys = new Set();
+                state.draft.bestAvailableKey = "";
+                localStorage.removeItem(DRAFT_STORAGE_KEY);
+                render();
+            };
+
+            const startDraftSync = async (rawValue) => {
+                const draftId = draftIdFromInput(rawValue);
+                if (!draftId) {
+                    state.draft.active = true;
+                    state.draft.error = "Paste a valid Sleeper draft URL or ID.";
+                    updateDraftStatus();
+                    return;
+                }
+                if (draftTimer) {
+                    clearInterval(draftTimer);
+                }
+                state.draft.id = draftId;
+                state.draft.active = true;
+                state.draft.error = "";
+                elements.draftInput.value = draftId;
+                localStorage.setItem(DRAFT_STORAGE_KEY, draftId);
+                await refreshDraftPicks();
+                draftTimer = setInterval(refreshDraftPicks, 5000);
             };
 
             const bindEvents = () => {
@@ -1085,6 +1496,23 @@
                     render();
                 });
 
+                elements.availableOnly.addEventListener("change", () => {
+                    state.availableOnly = elements.availableOnly.checked;
+                    render();
+                });
+
+                elements.draftConnect.addEventListener("click", () => {
+                    startDraftSync(elements.draftInput.value);
+                });
+
+                elements.draftInput.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter") {
+                        startDraftSync(elements.draftInput.value);
+                    }
+                });
+
+                elements.draftStop.addEventListener("click", stopDraftSync);
+
                 elements.reset.addEventListener("click", resetPlayers);
             };
 
@@ -1103,6 +1531,13 @@
                 bindEvents();
                 render();
                 refreshFlockRanks();
+                refreshSleeperPlayers().then(() => {
+                    const savedDraftId = localStorage.getItem(DRAFT_STORAGE_KEY);
+                    if (savedDraftId) {
+                        elements.draftInput.value = savedDraftId;
+                        startDraftSync(savedDraftId);
+                    }
+                });
             };
 
             init();

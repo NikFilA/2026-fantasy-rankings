@@ -597,6 +597,7 @@
             display: grid;
             place-items: center;
             background: rgba(0, 0, 0, 0.68);
+            position: relative;
             padding: 18px 20px;
         }
 
@@ -630,7 +631,7 @@
 
         .drawer-head {
             display: grid;
-            grid-template-columns: auto auto minmax(0, 1fr) minmax(430px, 0.9fr) auto;
+            grid-template-columns: auto minmax(0, 1fr) minmax(430px, 0.9fr);
             gap: 16px;
             align-items: center;
             margin: 12px 0 16px;
@@ -795,16 +796,28 @@
         }
 
         .profile-nav {
-            width: 38px;
-            height: 38px;
+            position: absolute;
+            top: 50%;
+            width: 42px;
+            height: 58px;
             padding: 0;
             color: var(--text);
-            font-size: 20px;
+            font-size: 24px;
+            transform: translateY(-50%);
+            z-index: 1;
+        }
+
+        .profile-nav.prev {
+            left: 14px;
+        }
+
+        .profile-nav.next {
+            right: 14px;
         }
 
         .stat-grid {
             display: grid;
-            grid-template-columns: repeat(8, minmax(0, 1fr));
+            grid-template-columns: repeat(9, minmax(0, 1fr));
             gap: 8px;
             margin-top: 12px;
         }
@@ -901,6 +914,19 @@
 
             .table-scroll {
                 max-height: none;
+            }
+
+            .stat-grid,
+            .detail-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .profile-nav.prev {
+                left: 8px;
+            }
+
+            .profile-nav.next {
+                right: 8px;
             }
 
             .player-meta {
@@ -1851,6 +1877,7 @@
             const positionStatDefinitions = (pos) => {
                 if (pos === "QB") {
                     return [
+                        ["Games", "Games", ""],
                         ["Comp %", "PassingCompletionPercentage", "%"],
                         ["Pass TD", "PassingTouchdowns", ""],
                         ["INT", "PassingInterceptions", ""],
@@ -1861,6 +1888,7 @@
                 }
                 if (pos === "RB") {
                     return [
+                        ["Games", "Games", ""],
                         ["Targets", "ReceivingTargets", ""],
                         ["Rec", "Receptions", ""],
                         ["Rush Att", "RushingAttempts", ""],
@@ -1872,10 +1900,12 @@
                     ];
                 }
                 return [
+                    ["Games", "Games", ""],
                     ["Targets", "ReceivingTargets", ""],
                     ["Rec", "Receptions", ""],
                     ["Rec Yds", "ReceivingYards", ""],
                     ["Snap %", "SnapShare", "%"],
+                    ["YPRR", "YardsPerRouteRun", ""],
                     ["Rec TD", "ReceivingTouchdowns", ""],
                 ];
             };
@@ -1903,7 +1933,9 @@
                 return grid;
             };
 
-            const profilePlayerIds = () => playerItems().map((item) => item.playerId);
+            const profilePlayerIds = () => sortedVisibleItems(getVisibleItems(), getPositionRanks())
+                .filter(({ player }) => player)
+                .map(({ player }) => player.id);
 
             const adjacentPlayerId = (playerId, offset) => {
                 const ids = profilePlayerIds();
@@ -1916,7 +1948,7 @@
 
             const profileNavButton = (label, playerId, offset) => {
                 const button = document.createElement("button");
-                button.className = "profile-nav";
+                button.className = `profile-nav ${offset < 0 ? "prev" : "next"}`;
                 button.type = "button";
                 button.textContent = label;
                 button.addEventListener("click", () => {
@@ -2040,11 +2072,9 @@
                 subtitle.textContent = `${tierLabel || "No tier"} / ${player.pos} / ${player.team}${isDrafted ? " / Drafted" : ""}`;
                 titleWrap.append(title, subtitle);
                 head.append(
-                    profileNavButton("<", player.id, -1),
                     profileImage(player, flockDetail),
                     titleWrap,
-                    profileStatStrip(player, flockDetail, performance, flockRank, myRank),
-                    profileNavButton(">", player.id, 1)
+                    profileStatStrip(player, flockDetail, performance, flockRank, myRank)
                 );
 
                 const myGrid = document.createElement("div");
@@ -2060,7 +2090,14 @@
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
                 );
 
-                elements.playerDrawerContent.replaceChildren(head, myGrid, positionStatsGrid(player, yearly), performanceChart(performance));
+                elements.playerDrawerContent.replaceChildren(
+                    profileNavButton("<", player.id, -1),
+                    profileNavButton(">", player.id, 1),
+                    head,
+                    myGrid,
+                    positionStatsGrid(player, yearly),
+                    performanceChart(performance)
+                );
                 elements.playerDrawerBackdrop.hidden = false;
             };
             const getVisibleItems = () => {
@@ -2511,8 +2548,18 @@
                     }
                 });
                 document.addEventListener("keydown", (event) => {
-                    if (event.key === "Escape" && !elements.playerDrawerBackdrop.hidden) {
+                    if (elements.playerDrawerBackdrop.hidden) {
+                        return;
+                    }
+                    if (event.key === "Escape") {
                         closePlayerDetails();
+                    }
+                    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                        event.preventDefault();
+                        const nextId = adjacentPlayerId(state.selectedPlayerId, event.key === "ArrowLeft" ? -1 : 1);
+                        if (nextId) {
+                            openPlayerDetails(nextId);
+                        }
                     }
                 });
 

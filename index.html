@@ -630,21 +630,21 @@
 
         .drawer-head {
             display: grid;
-            grid-template-columns: auto minmax(0, 1fr) auto;
-            gap: 18px;
+            grid-template-columns: auto minmax(0, 1fr) minmax(420px, 0.9fr);
+            gap: 22px;
             align-items: center;
             margin: 18px 0 22px;
         }
 
         .drawer-head .player-photo,
         .drawer-head .player-initials {
-            width: 88px;
-            height: 88px;
+            width: 150px;
+            height: 150px;
         }
 
         .drawer-head h2 {
             margin: 0;
-            font-size: 24px;
+            font-size: 34px;
             line-height: 1.05;
         }
 
@@ -658,10 +658,7 @@
         }
 
         .profile-summary {
-            display: grid;
-            grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-            gap: 20px;
-            align-items: start;
+            display: block;
         }
 
         .detail-grid {
@@ -709,19 +706,19 @@
 
         .performance-chart {
             display: flex;
-            gap: 8px;
+            gap: 10px;
             align-items: end;
-            min-height: 240px;
+            min-height: 320px;
             border: 1px solid var(--line);
             border-radius: 8px;
             background: rgba(23, 27, 31, 0.72);
-            padding: 16px 14px 12px;
+            padding: 22px 18px 14px;
         }
 
         .week-bar {
             display: grid;
-            grid-template-rows: 22px minmax(20px, 1fr) 18px;
-            gap: 6px;
+            grid-template-rows: minmax(220px, 1fr) 18px;
+            gap: 8px;
             justify-items: center;
             min-width: 28px;
             flex: 1 1 0;
@@ -730,15 +727,25 @@
             font-weight: 800;
         }
 
-        .week-bar span:first-child {
-            color: var(--text);
-        }
-
         .bar-track {
             display: flex;
             align-items: end;
             width: 100%;
-            min-height: 160px;
+            min-height: 220px;
+        }
+
+        .bar-stack {
+            display: grid;
+            gap: 5px;
+            align-items: end;
+            width: 100%;
+        }
+
+        .bar-value {
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 900;
+            text-align: center;
         }
 
         .bar-fill {
@@ -756,28 +763,9 @@
             background: var(--red);
         }
 
-        .game-log {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .game-log th,
-        .game-log td {
-            height: 34px;
-            padding: 0 8px;
-            border-bottom: 1px solid var(--line-soft);
-            font-size: 13px;
-            text-align: right;
-        }
-
-        .game-log th:first-child,
-        .game-log td:first-child {
-            text-align: left;
-        }
-
         .modal-stat-strip {
             display: grid;
-            grid-template-columns: repeat(4, minmax(90px, 1fr));
+            grid-template-columns: repeat(5, minmax(90px, 1fr));
             gap: 10px;
         }
 
@@ -1729,9 +1717,6 @@
                 .sort((a, b) => a.week - b.week);
 
             const playerProfileImageUrl = (flockDetail, player) => {
-                if (flockDetail?.picture) {
-                    return `https://flockfantasy.com/player-images/${flockDetail.picture}`;
-                }
                 const asset = state.playerAssets[playerMarketKey(player)];
                 return asset?.imageUrl || "";
             };
@@ -1760,11 +1745,8 @@
                 const deltaLabel = Number.isFinite(delta) ? `${delta > 0 ? "+" : ""}${formatDecimal(delta)}` : "N/A";
                 strip.append(
                     detailCard("My Rank", String(myRank)),
-                    detailCard("Flock Rank", formatMarketRank(flockRank)),
                     detailCard("PPG", formatDecimal(ppg)),
                     detailCard("Age", `${decimalAge(perf?.dob || flockDetail?.dob, flockDetail?.age)} yo`),
-                    detailCard("UD ADP", formatDecimal(perf?.ownership?.underdogAdp ?? player.udAdp)),
-                    detailCard("7D", deltaLabel, Number.isFinite(delta) ? varianceClass(delta) : "neutral"),
                     detailCard("Pos", player.pos),
                     detailCard("Team", player.team)
                 );
@@ -1788,17 +1770,22 @@
                     rows.forEach((row) => {
                         const bar = document.createElement("div");
                         bar.className = "week-bar";
-                        const label = document.createElement("span");
                         const track = document.createElement("div");
+                        const stack = document.createElement("div");
+                        const label = document.createElement("span");
                         const fill = document.createElement("div");
                         const week = document.createElement("span");
-                        label.textContent = formatDecimal(row.points);
                         track.className = "bar-track";
+                        stack.className = "bar-stack";
+                        stack.style.height = `${Math.max(4, (row.points / maxPoints) * 100)}%`;
+                        label.className = "bar-value";
+                        label.textContent = formatDecimal(row.points);
                         fill.className = `bar-fill${row.points < 10 ? " low" : row.points < 20 ? " mid" : ""}`;
-                        fill.style.height = `${Math.max(4, (row.points / maxPoints) * 100)}%`;
+                        fill.style.height = "100%";
                         week.textContent = String(row.week);
-                        track.appendChild(fill);
-                        bar.append(label, track, week);
+                        stack.append(label, fill);
+                        track.appendChild(stack);
+                        bar.append(track, week);
                         chart.appendChild(bar);
                     });
                 }
@@ -1806,39 +1793,6 @@
                 return section;
             };
 
-            const gameLogTable = (performance) => {
-                const section = document.createElement("section");
-                section.className = "drawer-section";
-                const heading = document.createElement("h3");
-                heading.textContent = "Game Log";
-                const table = document.createElement("table");
-                table.className = "game-log";
-                const head = document.createElement("thead");
-                head.innerHTML = "<tr><th>Week</th><th>PPR</th></tr>";
-                const body = document.createElement("tbody");
-                const rows = weeklyPoints(performance);
-                if (!rows.length) {
-                    const row = document.createElement("tr");
-                    const cell = document.createElement("td");
-                    cell.colSpan = 2;
-                    cell.textContent = performance?.loading ? "Loading game log..." : performance?.error || "Game log unavailable.";
-                    row.appendChild(cell);
-                    body.appendChild(row);
-                } else {
-                    rows.forEach((item) => {
-                        const row = document.createElement("tr");
-                        const week = document.createElement("td");
-                        const points = document.createElement("td");
-                        week.textContent = `Week ${item.week}`;
-                        points.textContent = formatDecimal(item.points);
-                        row.append(week, points);
-                        body.appendChild(row);
-                    });
-                }
-                table.append(head, body);
-                section.append(heading, table);
-                return section;
-            };
             const closePlayerDetails = () => {
                 state.selectedPlayerId = "";
                 elements.playerDrawerBackdrop.hidden = true;
@@ -1889,11 +1843,7 @@
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
                 );
 
-                const profileBody = document.createElement("div");
-                profileBody.className = "profile-summary";
-                profileBody.append(performanceChart(performance), gameLogTable(performance));
-
-                elements.playerDrawerContent.replaceChildren(head, myGrid, profileBody);
+                elements.playerDrawerContent.replaceChildren(head, myGrid, performanceChart(performance));
                 elements.playerDrawerBackdrop.hidden = false;
             };
             const getVisibleItems = () => {

@@ -393,6 +393,89 @@
             opacity: 0.68;
         }
 
+        .comparison-board {
+            display: grid;
+            gap: 10px;
+            overflow-x: auto;
+        }
+
+        .comparison-table {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .comparison-row {
+            display: grid;
+            gap: 8px;
+            align-items: stretch;
+        }
+
+        .comparison-label,
+        .comparison-cell,
+        .comparison-player {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(23, 27, 31, 0.82);
+            padding: 9px 10px;
+        }
+
+        .comparison-label {
+            display: flex;
+            align-items: center;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .comparison-player {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+        }
+
+        .comparison-player .player-photo,
+        .comparison-player .player-initials {
+            width: 52px;
+            height: 52px;
+        }
+
+        .comparison-player strong {
+            display: block;
+            overflow: hidden;
+            color: var(--text);
+            font-size: 19px;
+            line-height: 1.05;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .comparison-player span {
+            display: block;
+            margin-top: 5px;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .comparison-cell {
+            min-height: 44px;
+            color: var(--text);
+            font-size: 20px;
+            font-weight: 950;
+        }
+
+        .comparison-cell.winner {
+            border-color: rgba(74, 222, 128, 0.7);
+            background: rgba(74, 222, 128, 0.13);
+            color: var(--green);
+        }
+
         .draft-panel {
             display: grid;
             grid-template-columns: minmax(240px, 1fr) auto auto minmax(120px, 160px) auto minmax(240px, 0.9fr);
@@ -2450,15 +2533,16 @@
                 state.selectedPlayerId = "";
                 elements.playerDrawerBackdrop.hidden = true;
                 document.body.classList.remove("drawer-open");
+                elements.playerDrawerContent.className = "";
                 elements.playerDrawerContent.replaceChildren();
             };
 
-            const comparisonPlayerCard = (playerId) => {
+            const comparisonEntry = (playerId) => {
                 const context = playerContext(playerId);
                 if (!context) {
                     return null;
                 }
-                const { player, globalIndex, tierLabel } = context;
+                const { player, globalIndex } = context;
                 const myRank = globalIndex + 1;
                 const posRanks = getPositionRanks();
                 const playerKey = playerMarketKey(player);
@@ -2466,42 +2550,66 @@
                 const flockDetail = state.flockDetails[playerKey];
                 const performance = performanceForPlayer(player, flockDetail);
                 const yearly = yearlyForPlayer(player, flockDetail);
-                const underdogVariance = formatVariance(player.udAdp, myRank);
-                const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
-                const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
-
-                const card = document.createElement("section");
-                const head = document.createElement("div");
-                const titleWrap = document.createElement("div");
-                const title = document.createElement("h2");
-                const subtitle = document.createElement("div");
-                const grid = document.createElement("div");
-                card.className = "drawer-section";
-                head.className = "drawer-head";
-                title.textContent = player.name;
-                subtitle.className = "drawer-subtitle";
-                subtitle.textContent = `${tierLabel || "No tier"} / ${player.pos} / ${player.team}`;
-                titleWrap.append(title, subtitle);
-                head.append(
-                    profileImage(player, flockDetail),
-                    titleWrap,
-                    profileStatStrip(player, flockDetail, performance, flockRank, myRank)
-                );
-                grid.className = "detail-grid";
-                grid.append(
-                    detailCard("My Rank", String(myRank)),
-                    detailCard("My Pos Rank", posRanks[player.id] || "N/A"),
-                    detailCard("Underdog ADP", formatAdp(player.udAdp, player.udPick)),
-                    detailCard("UD Var", underdogVariance.label, underdogVariance.className),
-                    detailCard("Sleeper ADP", formatAdp(player.sleeperAdp, player.sleeperPick)),
-                    detailCard("Sleeper Var", sleeperVariance.label, sleeperVariance.className),
-                    detailCard("Flock Rank", formatMarketRank(flockRank)),
-                    detailCard("Flock Var", flockVariance.label, flockVariance.className)
-                );
-                card.append(head, grid, positionStatsGrid(player, yearly), performanceChart(performance));
                 refreshPlayerPerformance(player, flockDetail);
                 refreshYearlyStats(player, flockDetail);
-                return card;
+                return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly };
+            };
+
+            const posRankNumber = (rank) => {
+                const match = String(rank || "").match(/\d+/);
+                return match ? Number(match[0]) : null;
+            };
+
+            const comparisonMetricDefinitions = (entries) => {
+                const positionStats = [];
+                const seen = new Set();
+                entries.forEach(({ player }) => {
+                    positionStatDefinitions(player.pos).forEach(([label, serialId, suffix]) => {
+                        if (!seen.has(label)) {
+                            seen.add(label);
+                            positionStats.push({
+                                label,
+                                highWins: true,
+                                value: (entry) => serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId),
+                                display: (entry) => formatStatValue(serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId), suffix),
+                            });
+                        }
+                    });
+                });
+                return [
+                    { label: "My Rank", highWins: false, value: (entry) => entry.myRank, display: (entry) => String(entry.myRank) },
+                    { label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
+                    { label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
+                    { label: "Sleeper ADP", highWins: false, value: (entry) => entry.player.sleeperAdp === 999 ? null : entry.player.sleeperAdp, display: (entry) => formatAdp(entry.player.sleeperAdp, entry.player.sleeperPick) },
+                    { label: "Flock Rank", highWins: false, value: (entry) => Number.isFinite(entry.flockRank) ? entry.flockRank : null, display: (entry) => formatMarketRank(entry.flockRank) },
+                    { label: "PPG", highWins: true, value: (entry) => numericOrNull(entry.performance?.data?.pointsPerGame ?? entry.flockDetail?.previousYearPprAverage), display: (entry) => formatDecimal(entry.performance?.data?.pointsPerGame ?? entry.flockDetail?.previousYearPprAverage) },
+                    { label: "Age", highWins: null, value: (entry) => playerAgeValue(entry.player, entry.flockDetail, entry.performance), display: (entry) => decimalAge(entry.performance?.data?.dob || entry.flockDetail?.dob, entry.flockDetail?.age) },
+                    ...positionStats,
+                ];
+            };
+
+            const comparisonPlayerHeader = (entry) => {
+                const playerCard = document.createElement("div");
+                const text = document.createElement("div");
+                const name = document.createElement("strong");
+                const meta = document.createElement("span");
+                playerCard.className = "comparison-player";
+                name.textContent = entry.player.name;
+                meta.textContent = `${entry.posRank} / ${entry.player.team}`;
+                text.append(name, meta);
+                playerCard.append(profileImage(entry.player, entry.flockDetail), text);
+                return playerCard;
+            };
+
+            const comparisonCell = (metric, entry, winnerValue) => {
+                const cell = document.createElement("div");
+                const value = metric.value(entry);
+                cell.className = "comparison-cell";
+                cell.textContent = metric.display(entry);
+                if (metric.highWins !== null && Number.isFinite(value) && value === winnerValue) {
+                    cell.classList.add("winner");
+                }
+                return cell;
             };
 
             const openComparisonDetails = () => {
@@ -2509,20 +2617,46 @@
                     return;
                 }
                 state.selectedPlayerId = "";
+                const entries = state.compareIds.map(comparisonEntry).filter(Boolean);
                 const title = document.createElement("h2");
                 const subtitle = document.createElement("div");
                 const header = document.createElement("div");
+                const table = document.createElement("div");
+                const template = `minmax(116px, 0.72fr) repeat(${entries.length}, minmax(190px, 1fr))`;
                 title.id = "playerDrawerTitle";
                 title.textContent = "Player Comparison";
                 subtitle.className = "drawer-subtitle";
-                subtitle.textContent = `${state.compareIds.length} selected players`;
+                subtitle.textContent = `${entries.length} selected players`;
                 header.className = "drawer-section";
                 header.append(title, subtitle);
-                elements.playerDrawerContent.replaceChildren(header);
-                state.compareIds
-                    .map(comparisonPlayerCard)
-                    .filter(Boolean)
-                    .forEach((card) => elements.playerDrawerContent.appendChild(card));
+                table.className = "comparison-table";
+
+                const playerRow = document.createElement("div");
+                const emptyLabel = document.createElement("div");
+                playerRow.className = "comparison-row";
+                playerRow.style.gridTemplateColumns = template;
+                emptyLabel.className = "comparison-label";
+                emptyLabel.textContent = "Player";
+                playerRow.append(emptyLabel, ...entries.map(comparisonPlayerHeader));
+                table.appendChild(playerRow);
+
+                comparisonMetricDefinitions(entries).forEach((metric) => {
+                    const values = entries.map(metric.value).filter((value) => Number.isFinite(value));
+                    const winnerValue = metric.highWins === null || values.length === 0
+                        ? null
+                        : (metric.highWins ? Math.max(...values) : Math.min(...values));
+                    const row = document.createElement("div");
+                    const label = document.createElement("div");
+                    row.className = "comparison-row";
+                    row.style.gridTemplateColumns = template;
+                    label.className = "comparison-label";
+                    label.textContent = metric.label;
+                    row.append(label, ...entries.map((entry) => comparisonCell(metric, entry, winnerValue)));
+                    table.appendChild(row);
+                });
+
+                elements.playerDrawerContent.className = "comparison-board";
+                elements.playerDrawerContent.replaceChildren(header, table);
                 elements.playerDrawerBackdrop.hidden = false;
                 document.body.classList.add("drawer-open");
                 elements.playerDrawerBackdrop.scrollTop = 0;
@@ -2533,6 +2667,7 @@
                 if (!context) {
                     return;
                 }
+                elements.playerDrawerContent.className = "";
                 state.selectedPlayerId = String(playerId);
                 const { player, globalIndex, tierLabel } = context;
                 const myRank = globalIndex + 1;

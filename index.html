@@ -683,6 +683,63 @@
             line-height: 1;
         }
 
+        .drawer-section {
+            margin-top: 18px;
+        }
+
+        .drawer-section h3 {
+            margin: 0 0 10px;
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .expert-list {
+            display: grid;
+            gap: 7px;
+        }
+
+        .expert-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: 8px;
+            align-items: center;
+            min-height: 34px;
+            border: 1px solid var(--line-soft);
+            border-radius: 8px;
+            background: rgba(23, 27, 31, 0.7);
+            padding: 0 10px;
+        }
+
+        .expert-row span:first-child {
+            min-width: 0;
+            overflow: hidden;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 800;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .expert-chip {
+            display: inline-grid;
+            place-items: center;
+            min-width: 46px;
+            min-height: 22px;
+            border-radius: 999px;
+            background: rgba(56, 189, 248, 0.13);
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 900;
+        }
+
+        .expert-chip.tier {
+            background: rgba(251, 146, 60, 0.14);
+            color: var(--orange);
+        }
+
         @media (max-width: 860px) {
             .app {
                 width: min(100% - 20px, 1380px);
@@ -835,6 +892,7 @@
             const state = {
                 items: [],
                 flockRanks: {},
+                flockDetails: {},
                 playerAssets: {},
                 sleeperKeyById: {},
                 selectedPositions: new Set(),
@@ -1308,14 +1366,14 @@
                 const myRank = globalIndex + 1;
                 const underdogVariance = formatVariance(player.udAdp, myRank);
                 const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
-                const flockRank = state.flockRanks[playerMarketKey(player)];
+                const playerKey = playerMarketKey(player);
+                const flockRank = state.flockRanks[playerKey];
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const handle = document.createElement("span");
                 handle.className = "handle";
                 handle.textContent = "::";
                 handle.setAttribute("aria-hidden", "true");
 
-                const playerKey = playerMarketKey(player);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
                 const isBestAvailable = state.draft.bestAvailableKey === playerKey;
                 row.classList.toggle("drafted", isDrafted);
@@ -1515,6 +1573,81 @@
                 return card;
             };
 
+            const formatDecimal = (value) => {
+                const number = Number(value);
+                if (!Number.isFinite(number)) {
+                    return "N/A";
+                }
+                return Number.isInteger(number) ? String(number) : number.toFixed(1);
+            };
+
+            const formatHeight = (height) => {
+                const inches = Number(height);
+                if (!Number.isFinite(inches) || inches <= 0) {
+                    return "N/A";
+                }
+                return `${Math.floor(inches / 12)}-${inches % 12}`;
+            };
+
+            const flockDetailCards = (detail) => {
+                const grid = document.createElement("div");
+                grid.className = "detail-grid";
+                if (!detail) {
+                    grid.append(detailCard("Flock Data", "Loading"));
+                    return grid;
+                }
+                const rankDelta = Number(detail.rankDelta);
+                const rankDeltaLabel = Number.isFinite(rankDelta) ? `${rankDelta > 0 ? "+" : ""}${rankDelta}` : "N/A";
+                const rankDeltaClass = Number.isFinite(rankDelta) ? varianceClass(-rankDelta) : "neutral";
+                grid.append(
+                    detailCard("Flock Overall", formatMarketRank(detail.listRank)),
+                    detailCard("Flock Avg", formatDecimal(detail.overallAverageRank ?? detail.averageRank)),
+                    detailCard("Flock Pos Rank", formatDecimal(detail.averagePositionalRank)),
+                    detailCard("Flock Tier", formatDecimal(detail.averageTier)),
+                    detailCard("2025 PPG", formatDecimal(detail.previousYearPprAverage)),
+                    detailCard("7D Move", rankDeltaLabel, rankDeltaClass),
+                    detailCard("Age", detail.age ? String(detail.age) : "N/A"),
+                    detailCard("College", detail.college || "N/A"),
+                    detailCard("Draft Year", detail.draftYear ? String(detail.draftYear) : "N/A"),
+                    detailCard("Size", `${formatHeight(detail.height)} / ${detail.weight || "N/A"}`)
+                );
+                return grid;
+            };
+
+            const expertRanksSection = (detail) => {
+                const section = document.createElement("section");
+                section.className = "drawer-section";
+                const heading = document.createElement("h3");
+                heading.textContent = "Flock Expert Ranks";
+                const list = document.createElement("div");
+                list.className = "expert-list";
+                const ranks = detail?.overallRanks || {};
+                const tiers = detail?.overallTiers || {};
+                const names = Object.keys(ranks).sort((a, b) => Number(ranks[a]) - Number(ranks[b]));
+                if (names.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.className = "detail-card";
+                    empty.textContent = "Flock expert ranks are not available yet.";
+                    list.appendChild(empty);
+                } else {
+                    names.forEach((name) => {
+                        const row = document.createElement("div");
+                        row.className = "expert-row";
+                        const expert = document.createElement("span");
+                        const rank = document.createElement("span");
+                        const tier = document.createElement("span");
+                        expert.textContent = name;
+                        rank.className = "expert-chip";
+                        rank.textContent = `#${ranks[name]}`;
+                        tier.className = "expert-chip tier";
+                        tier.textContent = tiers[name] ? `T${tiers[name]}` : "T-";
+                        row.append(expert, rank, tier);
+                        list.appendChild(row);
+                    });
+                }
+                section.append(heading, list);
+                return section;
+            };
             const closePlayerDetails = () => {
                 state.selectedPlayerId = "";
                 elements.playerDrawerBackdrop.hidden = true;
@@ -1530,11 +1663,13 @@
                 const { player, globalIndex, tierLabel } = context;
                 const myRank = globalIndex + 1;
                 const posRanks = getPositionRanks();
-                const flockRank = state.flockRanks[playerMarketKey(player)];
+                const playerKey = playerMarketKey(player);
+                const flockRank = state.flockRanks[playerKey];
+                const flockDetail = state.flockDetails[playerKey];
                 const underdogVariance = formatVariance(player.udAdp, myRank);
                 const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
-                const isDrafted = state.draft.draftedKeys.has(playerMarketKey(player));
+                const isDrafted = state.draft.draftedKeys.has(playerKey);
 
                 const head = document.createElement("div");
                 head.className = "drawer-head";
@@ -1548,9 +1683,9 @@
                 titleWrap.append(title, subtitle);
                 head.append(playerImage(player), titleWrap);
 
-                const grid = document.createElement("div");
-                grid.className = "detail-grid";
-                grid.append(
+                const myGrid = document.createElement("div");
+                myGrid.className = "detail-grid";
+                myGrid.append(
                     detailCard("My Rank", String(myRank)),
                     detailCard("My Pos Rank", posRanks[player.id] || "N/A"),
                     detailCard("Underdog ADP", formatAdp(player.udAdp, player.udPick)),
@@ -1561,7 +1696,13 @@
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
                 );
 
-                elements.playerDrawerContent.replaceChildren(head, grid);
+                const flockSection = document.createElement("section");
+                flockSection.className = "drawer-section";
+                const flockHeading = document.createElement("h3");
+                flockHeading.textContent = "Flock Profile";
+                flockSection.append(flockHeading, flockDetailCards(flockDetail));
+
+                elements.playerDrawerContent.replaceChildren(head, myGrid, flockSection, expertRanksSection(flockDetail));
                 elements.playerDrawerBackdrop.hidden = false;
             };
             const getVisibleItems = () => {
@@ -1655,17 +1796,19 @@
 
             const normalizeFlockRankings = (payload) => {
                 const rows = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.data) ? payload.data : []);
-                return rows.reduce((rankings, row, index) => {
+                return rows.reduce((result, row, index) => {
                     const name = row.playerName || row.player_name || row.name;
                     const team = row.team || row.teamAbbr || row.team_abbr || "";
                     const pos = row.position || row.pos || "";
                     if (!name || !team || !pos) {
-                        return rankings;
+                        return result;
                     }
+                    const key = `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`;
                     const rank = index + 1;
-                    rankings[`${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`] = rank;
-                    return rankings;
-                }, {});
+                    result.ranks[key] = rank;
+                    result.details[key] = { ...row, listRank: rank };
+                    return result;
+                }, { ranks: {}, details: {} });
             };
 
             const fetchJson = async (url) => {
@@ -1684,8 +1827,13 @@
                     } catch (proxyError) {
                         payload = await fetchJson(FLOCK_DIRECT_URL);
                     }
-                    state.flockRanks = normalizeFlockRankings(payload);
+                    const flockData = normalizeFlockRankings(payload);
+                    state.flockRanks = flockData.ranks;
+                    state.flockDetails = flockData.details;
                     render();
+                    if (state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
+                        openPlayerDetails(state.selectedPlayerId);
+                    }
                 } catch (error) {
                     console.warn("Flock rankings could not be loaded.", error);
                 }

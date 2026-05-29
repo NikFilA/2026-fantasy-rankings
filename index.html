@@ -1521,6 +1521,13 @@
                     return;
                 }
 
+                const scrollArea = elements.tableScroll;
+                const restoreScroll = {
+                    tableLeft: scrollArea.scrollLeft,
+                    tableTop: scrollArea.scrollTop,
+                    windowX: window.scrollX,
+                    windowY: window.scrollY,
+                };
                 const fromIndex = state.items.findIndex((item) => item.id === state.draggedItemId);
                 const toIndex = state.items.findIndex((item) => item.id === targetItemId);
                 if (fromIndex < 0 || toIndex < 0) {
@@ -1531,6 +1538,11 @@
                 state.items.splice(toIndex, 0, movedItem);
                 savePlayers();
                 render();
+                requestAnimationFrame(() => {
+                    scrollArea.scrollLeft = restoreScroll.tableLeft;
+                    scrollArea.scrollTop = restoreScroll.tableTop;
+                    window.scrollTo(restoreScroll.windowX, restoreScroll.windowY);
+                });
             };
 
             const createTierRow = (item) => {
@@ -2521,6 +2533,7 @@
                 let startScrollLeft = 0;
                 let startScrollTop = 0;
                 let hasDragged = false;
+                let captureStarted = false;
 
                 const canStartScroll = (event) => {
                     if (event.button !== 0 || state.draggedItemId) {
@@ -2539,7 +2552,7 @@
                     startScrollLeft = scrollArea.scrollLeft;
                     startScrollTop = scrollArea.scrollTop;
                     hasDragged = false;
-                    scrollArea.setPointerCapture(pointerId);
+                    captureStarted = false;
                 });
 
                 scrollArea.addEventListener("pointermove", (event) => {
@@ -2551,6 +2564,10 @@
                     if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
                         hasDragged = true;
                         scrollArea.classList.add("drag-scrolling");
+                        if (!captureStarted) {
+                            scrollArea.setPointerCapture(pointerId);
+                            captureStarted = true;
+                        }
                     }
                     if (hasDragged) {
                         event.preventDefault();
@@ -2564,6 +2581,7 @@
                         return;
                     }
                     pointerId = null;
+                    captureStarted = false;
                     scrollArea.classList.remove("drag-scrolling");
                 };
 
@@ -2571,6 +2589,7 @@
                 scrollArea.addEventListener("pointercancel", stopDragScroll);
                 scrollArea.addEventListener("lostpointercapture", () => {
                     pointerId = null;
+                    captureStarted = false;
                     scrollArea.classList.remove("drag-scrolling");
                 });
                 scrollArea.addEventListener("click", (event) => {

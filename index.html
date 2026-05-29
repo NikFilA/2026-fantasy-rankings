@@ -2046,12 +2046,11 @@
             };
 
             const openPlayerDetails = (playerId) => {
-                try {
-                    const context = playerContext(playerId);
-                    if (!context) {
-                        return;
-                    }
-                    state.selectedPlayerId = String(playerId);
+                const context = playerContext(playerId);
+                if (!context) {
+                    return;
+                }
+                state.selectedPlayerId = String(playerId);
                 const { player, globalIndex, tierLabel } = context;
                 const myRank = globalIndex + 1;
                 const posRanks = getPositionRanks();
@@ -2062,10 +2061,6 @@
                 const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
-                const performance = performanceForPlayer(player, flockDetail);
-                const yearly = yearlyForPlayer(player, flockDetail);
-                refreshPlayerPerformance(player, flockDetail);
-                refreshYearlyStats(player, flockDetail);
 
                 const head = document.createElement("div");
                 head.className = "drawer-head";
@@ -2080,7 +2075,7 @@
                 head.append(
                     profileImage(player, flockDetail),
                     titleWrap,
-                    profileStatStrip(player, flockDetail, performance, flockRank, myRank)
+                    profileStatStrip(player, flockDetail, performanceForPlayer(player, flockDetail), flockRank, myRank)
                 );
 
                 const myGrid = document.createElement("div");
@@ -2096,17 +2091,22 @@
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
                 );
 
-                    elements.playerDrawerContent.replaceChildren(
-                        profileNavButton("<", player.id, -1),
-                        profileNavButton(">", player.id, 1),
-                        head,
-                        myGrid,
-                        positionStatsGrid(player, yearly),
-                        performanceChart(performance)
-                    );
-                    elements.playerDrawerBackdrop.hidden = false;
+                elements.playerDrawerContent.replaceChildren(
+                    profileNavButton("<", player.id, -1),
+                    profileNavButton(">", player.id, 1),
+                    head,
+                    myGrid
+                );
+                elements.playerDrawerBackdrop.hidden = false;
+
+                try {
+                    const performance = performanceForPlayer(player, flockDetail);
+                    const yearly = yearlyForPlayer(player, flockDetail);
+                    elements.playerDrawerContent.append(positionStatsGrid(player, yearly), performanceChart(performance));
+                    refreshPlayerPerformance(player, flockDetail);
+                    refreshYearlyStats(player, flockDetail);
                 } catch (error) {
-                    console.warn("Player details could not be opened.", error);
+                    console.warn("Player detail stats could not be rendered.", error);
                 }
             };
             const getVisibleItems = () => {
@@ -2512,7 +2512,7 @@
                     render();
                 });
 
-                elements.body.addEventListener("click", (event) => {
+                const openRowFromEvent = (event) => {
                     if (closestElement(event.target, ".handle")) {
                         return;
                     }
@@ -2520,7 +2520,10 @@
                     if (row) {
                         openPlayerDetails(row.dataset.id);
                     }
-                });
+                };
+
+                elements.body.addEventListener("click", openRowFromEvent);
+                elements.body.addEventListener("pointerup", openRowFromEvent);
 
                 elements.body.addEventListener("keydown", (event) => {
                     if (event.key !== "Enter") {

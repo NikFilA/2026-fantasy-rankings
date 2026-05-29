@@ -91,7 +91,7 @@
         }
 
         .metric {
-            min-height: 74px;
+            min-height: 62px;
             border: 1px solid var(--line);
             border-radius: 8px;
             background: rgba(23, 27, 31, 0.82);
@@ -111,7 +111,7 @@
         .metric strong {
             display: block;
             margin-top: 8px;
-            font-size: 34px;
+            font-size: 30px;
             line-height: 1;
         }
 
@@ -124,7 +124,7 @@
             border: 1px solid var(--line);
             border-radius: 8px;
             background: rgba(23, 27, 31, 0.82);
-            padding: 12px;
+            padding: 10px 12px;
         }
 
         .filters {
@@ -597,7 +597,7 @@
             display: grid;
             place-items: center;
             background: rgba(0, 0, 0, 0.68);
-            padding: 24px;
+            padding: 18px 20px;
         }
 
         .drawer-backdrop[hidden] {
@@ -606,7 +606,7 @@
 
         .player-drawer {
             width: min(1320px, 100%);
-            max-height: min(88vh, 940px);
+            max-height: min(94vh, 940px);
             overflow: auto;
             border: 1px solid var(--line);
             border-radius: 8px;
@@ -630,16 +630,16 @@
 
         .drawer-head {
             display: grid;
-            grid-template-columns: auto minmax(0, 1fr) minmax(420px, 0.9fr);
-            gap: 22px;
+            grid-template-columns: auto auto minmax(0, 1fr) minmax(430px, 0.9fr) auto;
+            gap: 16px;
             align-items: center;
-            margin: 18px 0 22px;
+            margin: 12px 0 16px;
         }
 
         .drawer-head .player-photo,
         .drawer-head .player-initials {
-            width: 150px;
-            height: 150px;
+            width: 112px;
+            height: 112px;
         }
 
         .drawer-head h2 {
@@ -664,7 +664,7 @@
         .detail-grid {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
+            gap: 8px;
         }
 
         .detail-card {
@@ -692,7 +692,7 @@
         }
 
         .drawer-section {
-            margin-top: 18px;
+            margin-top: 12px;
         }
 
         .drawer-section h3 {
@@ -708,16 +708,16 @@
             display: flex;
             gap: 10px;
             align-items: end;
-            min-height: 320px;
+            min-height: 250px;
             border: 1px solid var(--line);
             border-radius: 8px;
             background: rgba(23, 27, 31, 0.72);
-            padding: 22px 18px 14px;
+            padding: 16px 16px 12px;
         }
 
         .week-bar {
             display: grid;
-            grid-template-rows: minmax(220px, 1fr) 18px;
+            grid-template-rows: minmax(176px, 1fr) 18px;
             gap: 8px;
             justify-items: center;
             min-width: 28px;
@@ -731,7 +731,7 @@
             display: flex;
             align-items: end;
             width: 100%;
-            min-height: 220px;
+            min-height: 176px;
         }
 
         .bar-stack {
@@ -765,8 +765,70 @@
 
         .modal-stat-strip {
             display: grid;
-            grid-template-columns: repeat(5, minmax(90px, 1fr));
+            grid-template-columns: repeat(5, minmax(80px, 1fr));
             gap: 10px;
+        }
+
+        .year-tabs {
+            display: inline-flex;
+            gap: 6px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        .year-tab,
+        .profile-nav {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #161b20;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 900;
+            min-height: 30px;
+            padding: 0 10px;
+        }
+
+        .year-tab.active {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .profile-nav {
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            color: var(--text);
+            font-size: 20px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .stat-card {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(23, 27, 31, 0.82);
+            padding: 9px 10px;
+        }
+
+        .stat-card span {
+            display: block;
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .stat-card strong {
+            display: block;
+            margin-top: 5px;
+            font-size: 18px;
         }
 
         .expert-list {
@@ -958,6 +1020,7 @@
             const SLEEPER_PLAYERS_DIRECT_URL = "https://api.sleeper.app/v1/players/nfl";
             const SLEEPER_DRAFT_BASE_URL = "https://api.sleeper.app/v1/draft";
             const FLOCK_PERFORMANCE_PROXY_URL = "/api/flock-player-performance";
+            const FLOCK_YEARLY_PROXY_URL = "/api/flock-player-yearly";
             const FLOCK_PERFORMANCE_DIRECT_URL = "https://api.flockfantasy.com/players/card-stats";
             const PLAYER_PROFILE_SEASON = 2025;
             const DEFAULT_SYNC_CONFIG = {
@@ -973,6 +1036,8 @@
                 flockRanks: {},
                 flockDetails: {},
                 playerPerformance: {},
+                playerYearlyStats: {},
+                profileYear: PLAYER_PROFILE_SEASON,
                 playerAssets: {},
                 sleeperKeyById: {},
                 selectedPositions: new Set(),
@@ -1672,7 +1737,9 @@
                 return Number.isFinite(Number(fallbackAge)) ? formatDecimal(fallbackAge) : "N/A";
             };
 
-            const formatPerformanceKey = (playerId) => `${playerId}|${PLAYER_PROFILE_SEASON}`;
+            const formatPerformanceKey = (playerId, year = state.profileYear) => `${playerId}|${year}`;
+
+            const formatYearlyKey = (playerId) => String(playerId);
 
             const performancePlayerId = (player, flockDetail) => {
                 const asset = state.playerAssets[playerMarketKey(player)];
@@ -1682,6 +1749,11 @@
             const performanceForPlayer = (player, flockDetail) => {
                 const playerId = performancePlayerId(player, flockDetail);
                 return playerId ? state.playerPerformance[formatPerformanceKey(playerId)] : null;
+            };
+
+            const yearlyForPlayer = (player, flockDetail) => {
+                const playerId = performancePlayerId(player, flockDetail);
+                return playerId ? state.playerYearlyStats[formatYearlyKey(playerId)] : null;
             };
 
             const refreshPlayerPerformance = async (player, flockDetail) => {
@@ -1697,14 +1769,41 @@
                 try {
                     let payload;
                     try {
-                        payload = await fetchJson(`${FLOCK_PERFORMANCE_PROXY_URL}?playerId=${encodeURIComponent(playerId)}&year=${PLAYER_PROFILE_SEASON}`);
+                        payload = await fetchJson(`${FLOCK_PERFORMANCE_PROXY_URL}?playerId=${encodeURIComponent(playerId)}&year=${state.profileYear}`);
                     } catch (proxyError) {
-                        payload = await fetchJson(`${FLOCK_PERFORMANCE_DIRECT_URL}/${encodeURIComponent(playerId)}/performance?year=${PLAYER_PROFILE_SEASON}`);
+                        payload = await fetchJson(`${FLOCK_PERFORMANCE_DIRECT_URL}/${encodeURIComponent(playerId)}/performance?year=${state.profileYear}`);
                     }
                     state.playerPerformance[key] = { loading: false, data: payload, error: "" };
                 } catch (error) {
                     console.warn("Flock player performance could not be loaded.", error);
                     state.playerPerformance[key] = { loading: false, data: null, error: "Performance data unavailable" };
+                }
+                if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
+                    openPlayerDetails(player.id);
+                }
+            };
+
+            const refreshYearlyStats = async (player, flockDetail) => {
+                const playerId = performancePlayerId(player, flockDetail);
+                if (!playerId) {
+                    return;
+                }
+                const key = formatYearlyKey(playerId);
+                if (state.playerYearlyStats[key]?.loading || state.playerYearlyStats[key]?.data) {
+                    return;
+                }
+                state.playerYearlyStats[key] = { loading: true, data: null, error: "" };
+                try {
+                    let payload;
+                    try {
+                        payload = await fetchJson(`${FLOCK_YEARLY_PROXY_URL}?playerId=${encodeURIComponent(playerId)}`);
+                    } catch (proxyError) {
+                        payload = await fetchJson(`${FLOCK_PERFORMANCE_DIRECT_URL}/${encodeURIComponent(playerId)}/yearly`);
+                    }
+                    state.playerYearlyStats[key] = { loading: false, data: payload, error: "" };
+                } catch (error) {
+                    console.warn("Flock yearly stats could not be loaded.", error);
+                    state.playerYearlyStats[key] = { loading: false, data: null, error: "Yearly stats unavailable" };
                 }
                 if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
                     openPlayerDetails(player.id);
@@ -1736,6 +1835,115 @@
                 return playerInitials(player);
             };
 
+            const selectedYearStats = (yearly) => {
+                const seasons = yearly?.data?.allYearlyStats || [];
+                return seasons.find((season) => Number(season.year) === Number(state.profileYear)) || null;
+            };
+
+            const seasonStatValue = (yearly, serialId) => {
+                const season = selectedYearStats(yearly);
+                const stat = season?.stats?.find((item) => item.serial_id === serialId && !String(item.description || "").includes("Per Game"));
+                return Number.isFinite(Number(stat?.value)) ? Number(stat.value) : null;
+            };
+
+            const formatStatValue = (value, suffix = "") => value === null ? "N/A" : `${formatDecimal(value)}${suffix}`;
+
+            const positionStatDefinitions = (pos) => {
+                if (pos === "QB") {
+                    return [
+                        ["Comp %", "PassingCompletionPercentage", "%"],
+                        ["Pass TD", "PassingTouchdowns", ""],
+                        ["INT", "PassingInterceptions", ""],
+                        ["Pass Yds", "PassingYards", ""],
+                        ["Rush Yds", "RushingYards", ""],
+                        ["Rush TD", "RushingTouchdowns", ""],
+                    ];
+                }
+                if (pos === "RB") {
+                    return [
+                        ["Targets", "ReceivingTargets", ""],
+                        ["Rec", "Receptions", ""],
+                        ["Rush Att", "RushingAttempts", ""],
+                        ["Rush Yds", "RushingYards", ""],
+                        ["Rec Yds", "ReceivingYards", ""],
+                        ["Rush TD", "RushingTouchdowns", ""],
+                        ["Snap %", "SnapShare", "%"],
+                        ["Rec TD", "ReceivingTouchdowns", ""],
+                    ];
+                }
+                return [
+                    ["Targets", "ReceivingTargets", ""],
+                    ["Rec", "Receptions", ""],
+                    ["Rec Yds", "ReceivingYards", ""],
+                    ["Snap %", "SnapShare", "%"],
+                    ["Rec TD", "ReceivingTouchdowns", ""],
+                ];
+            };
+
+            const positionStatsGrid = (player, yearly) => {
+                const grid = document.createElement("div");
+                grid.className = "stat-grid";
+                if (yearly?.loading) {
+                    const card = document.createElement("div");
+                    card.className = "stat-card";
+                    card.textContent = "Loading stats...";
+                    grid.appendChild(card);
+                    return grid;
+                }
+                positionStatDefinitions(player.pos).forEach(([label, serialId, suffix]) => {
+                    const card = document.createElement("div");
+                    card.className = "stat-card";
+                    const labelNode = document.createElement("span");
+                    const valueNode = document.createElement("strong");
+                    labelNode.textContent = label;
+                    valueNode.textContent = formatStatValue(seasonStatValue(yearly, serialId), suffix);
+                    card.append(labelNode, valueNode);
+                    grid.appendChild(card);
+                });
+                return grid;
+            };
+
+            const profilePlayerIds = () => playerItems().map((item) => item.playerId);
+
+            const adjacentPlayerId = (playerId, offset) => {
+                const ids = profilePlayerIds();
+                const index = ids.indexOf(String(playerId));
+                if (index < 0 || ids.length === 0) {
+                    return "";
+                }
+                return ids[(index + offset + ids.length) % ids.length];
+            };
+
+            const profileNavButton = (label, playerId, offset) => {
+                const button = document.createElement("button");
+                button.className = "profile-nav";
+                button.type = "button";
+                button.textContent = label;
+                button.addEventListener("click", () => {
+                    const nextId = adjacentPlayerId(playerId, offset);
+                    if (nextId) {
+                        openPlayerDetails(nextId);
+                    }
+                });
+                return button;
+            };
+
+            const yearTabs = (playerId) => {
+                const tabs = document.createElement("span");
+                tabs.className = "year-tabs";
+                [2025, 2024, 2023].forEach((year) => {
+                    const button = document.createElement("button");
+                    button.className = `year-tab${Number(state.profileYear) === year ? " active" : ""}`;
+                    button.type = "button";
+                    button.textContent = String(year);
+                    button.addEventListener("click", () => {
+                        state.profileYear = year;
+                        openPlayerDetails(playerId);
+                    });
+                    tabs.appendChild(button);
+                });
+                return tabs;
+            };
             const profileStatStrip = (player, flockDetail, performance, flockRank, myRank) => {
                 const strip = document.createElement("div");
                 strip.className = "modal-stat-strip";
@@ -1746,7 +1954,7 @@
                 strip.append(
                     detailCard("My Rank", String(myRank)),
                     detailCard("PPG", formatDecimal(ppg)),
-                    detailCard("Age", `${decimalAge(perf?.dob || flockDetail?.dob, flockDetail?.age)} yo`),
+                    detailCard("Age", decimalAge(perf?.dob || flockDetail?.dob, flockDetail?.age)),
                     detailCard("Pos", player.pos),
                     detailCard("Team", player.team)
                 );
@@ -1757,7 +1965,8 @@
                 const section = document.createElement("section");
                 section.className = "drawer-section";
                 const heading = document.createElement("h3");
-                heading.textContent = `Player Performance / Season ${PLAYER_PROFILE_SEASON}`;
+                heading.textContent = "Player Performance / Season ";
+                heading.appendChild(yearTabs(state.selectedPlayerId));
                 const chart = document.createElement("div");
                 chart.className = "performance-chart";
                 const rows = weeklyPoints(performance);
@@ -1816,7 +2025,9 @@
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
                 const performance = performanceForPlayer(player, flockDetail);
+                const yearly = yearlyForPlayer(player, flockDetail);
                 refreshPlayerPerformance(player, flockDetail);
+                refreshYearlyStats(player, flockDetail);
 
                 const head = document.createElement("div");
                 head.className = "drawer-head";
@@ -1828,7 +2039,13 @@
                 subtitle.className = "drawer-subtitle";
                 subtitle.textContent = `${tierLabel || "No tier"} / ${player.pos} / ${player.team}${isDrafted ? " / Drafted" : ""}`;
                 titleWrap.append(title, subtitle);
-                head.append(profileImage(player, flockDetail), titleWrap, profileStatStrip(player, flockDetail, performance, flockRank, myRank));
+                head.append(
+                    profileNavButton("<", player.id, -1),
+                    profileImage(player, flockDetail),
+                    titleWrap,
+                    profileStatStrip(player, flockDetail, performance, flockRank, myRank),
+                    profileNavButton(">", player.id, 1)
+                );
 
                 const myGrid = document.createElement("div");
                 myGrid.className = "detail-grid";
@@ -1843,7 +2060,7 @@
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
                 );
 
-                elements.playerDrawerContent.replaceChildren(head, myGrid, performanceChart(performance));
+                elements.playerDrawerContent.replaceChildren(head, myGrid, positionStatsGrid(player, yearly), performanceChart(performance));
                 elements.playerDrawerBackdrop.hidden = false;
             };
             const getVisibleItems = () => {

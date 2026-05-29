@@ -1459,11 +1459,12 @@
                 return element ? element.closest(selector) : null;
             };
 
-            const attachDragEvents = (row, itemId) => {
-                row.draggable = !state.sort.key;
+            const attachDragEvents = (row, handle, itemId) => {
+                row.draggable = false;
                 row.dataset.itemId = itemId;
+                handle.draggable = !state.sort.key;
 
-                row.addEventListener("dragstart", (event) => {
+                handle.addEventListener("dragstart", (event) => {
                     if (state.sort.key) {
                         event.preventDefault();
                         return;
@@ -1474,7 +1475,7 @@
                     event.dataTransfer.setData("text/plain", itemId);
                 });
 
-                row.addEventListener("dragend", () => {
+                handle.addEventListener("dragend", () => {
                     state.draggedItemId = null;
                     row.classList.remove("dragging");
                     document.querySelectorAll(".drop-target").forEach((item) => item.classList.remove("drop-target"));
@@ -1517,12 +1518,12 @@
             const createTierRow = (item) => {
                 const row = document.createElement("tr");
                 row.className = "tier-row";
-                attachDragEvents(row, item.id);
 
                 const handle = document.createElement("span");
                 handle.className = "handle";
                 handle.textContent = "::";
                 handle.setAttribute("aria-hidden", "true");
+                attachDragEvents(row, handle, item.id);
 
                 const label = document.createElement("div");
                 label.className = "tier-label";
@@ -1538,7 +1539,6 @@
                 const row = document.createElement("tr");
                 row.dataset.id = player.id;
                 row.tabIndex = 0;
-                attachDragEvents(row, item.id);
                 const myRank = globalIndex + 1;
                 const underdogVariance = formatVariance(player.udAdp, myRank);
                 const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
@@ -1549,6 +1549,7 @@
                 handle.className = "handle";
                 handle.textContent = "::";
                 handle.setAttribute("aria-hidden", "true");
+                attachDragEvents(row, handle, item.id);
 
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
                 const isBestAvailable = state.draft.bestAvailableKey === playerKey;
@@ -1602,10 +1603,9 @@
                 );
 
                 row.addEventListener("click", (event) => {
-                    if (closestElement(event.target, ".handle")) {
-                        return;
+                    if (!closestElement(event.target, ".handle")) {
+                        openPlayerDetails(player.id);
                     }
-                    openPlayerDetails(player.id);
                 });
                 row.addEventListener("keydown", (event) => {
                     if (event.key === "Enter") {
@@ -2510,29 +2510,6 @@
                 elements.teamFilter.addEventListener("change", () => {
                     state.activeTeam = elements.teamFilter.value;
                     render();
-                });
-
-                const openRowFromEvent = (event) => {
-                    if (closestElement(event.target, ".handle")) {
-                        return;
-                    }
-                    const row = closestElement(event.target, "tr[data-id]");
-                    if (row) {
-                        openPlayerDetails(row.dataset.id);
-                    }
-                };
-
-                elements.body.addEventListener("click", openRowFromEvent);
-                elements.body.addEventListener("pointerup", openRowFromEvent);
-
-                elements.body.addEventListener("keydown", (event) => {
-                    if (event.key !== "Enter") {
-                        return;
-                    }
-                    const row = closestElement(event.target, "tr[data-id]");
-                    if (row) {
-                        openPlayerDetails(row.dataset.id);
-                    }
                 });
 
                 elements.sortButtons.forEach((button) => {

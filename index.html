@@ -318,6 +318,18 @@
         .table-scroll {
             overflow: auto;
             max-height: calc(100vh - 245px);
+            cursor: grab;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+        }
+
+        .table-scroll.drag-scrolling {
+            cursor: grabbing;
+            user-select: none;
+        }
+
+        .table-scroll.drag-scrolling * {
+            cursor: grabbing !important;
         }
 
         table {
@@ -597,7 +609,7 @@
             display: grid;
             place-items: center;
             background: rgba(0, 0, 0, 0.68);
-            position: relative;
+            overflow: auto;
             padding: 18px 20px;
         }
 
@@ -606,6 +618,7 @@
         }
 
         .player-drawer {
+            position: relative;
             width: min(1320px, 100%);
             max-height: min(94vh, 940px);
             overflow: auto;
@@ -614,6 +627,10 @@
             background: #111416;
             box-shadow: 0 30px 90px rgba(0, 0, 0, 0.52);
             padding: 24px;
+        }
+
+        body.drawer-open {
+            overflow: hidden;
         }
 
         .drawer-close {
@@ -1107,6 +1124,7 @@
                 draftStatus: document.getElementById("draftStatus"),
                 rosterTracker: document.getElementById("rosterTracker"),
                 sortButtons: Array.from(document.querySelectorAll(".sort-btn")),
+                tableScroll: document.querySelector(".table-scroll"),
                 playerDrawerBackdrop: document.getElementById("playerDrawerBackdrop"),
                 playerDrawerClose: document.getElementById("playerDrawerClose"),
                 playerDrawerContent: document.getElementById("playerDrawerContent"),
@@ -2042,6 +2060,7 @@
             const closePlayerDetails = () => {
                 state.selectedPlayerId = "";
                 elements.playerDrawerBackdrop.hidden = true;
+                document.body.classList.remove("drawer-open");
                 elements.playerDrawerContent.replaceChildren();
             };
 
@@ -2098,6 +2117,8 @@
                     myGrid
                 );
                 elements.playerDrawerBackdrop.hidden = false;
+                document.body.classList.add("drawer-open");
+                elements.playerDrawerBackdrop.scrollTop = 0;
 
                 try {
                     const performance = performanceForPlayer(player, flockDetail);
@@ -2492,7 +2513,78 @@
                 draftTimer = setInterval(refreshDraftPicks, DRAFT_REFRESH_MS);
             };
 
+            const bindTableDragScroll = () => {
+                const scrollArea = elements.tableScroll;
+                let pointerId = null;
+                let startX = 0;
+                let startY = 0;
+                let startScrollLeft = 0;
+                let startScrollTop = 0;
+                let hasDragged = false;
+
+                const canStartScroll = (event) => {
+                    if (event.button !== 0 || state.draggedItemId) {
+                        return false;
+                    }
+                    return !closestElement(event.target, ".handle, button, input, select, a");
+                };
+
+                scrollArea.addEventListener("pointerdown", (event) => {
+                    if (!canStartScroll(event)) {
+                        return;
+                    }
+                    pointerId = event.pointerId;
+                    startX = event.clientX;
+                    startY = event.clientY;
+                    startScrollLeft = scrollArea.scrollLeft;
+                    startScrollTop = scrollArea.scrollTop;
+                    hasDragged = false;
+                    scrollArea.setPointerCapture(pointerId);
+                });
+
+                scrollArea.addEventListener("pointermove", (event) => {
+                    if (pointerId !== event.pointerId) {
+                        return;
+                    }
+                    const deltaX = event.clientX - startX;
+                    const deltaY = event.clientY - startY;
+                    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+                        hasDragged = true;
+                        scrollArea.classList.add("drag-scrolling");
+                    }
+                    if (hasDragged) {
+                        event.preventDefault();
+                        scrollArea.scrollLeft = startScrollLeft - deltaX;
+                        scrollArea.scrollTop = startScrollTop - deltaY;
+                    }
+                });
+
+                const stopDragScroll = (event) => {
+                    if (pointerId !== event.pointerId) {
+                        return;
+                    }
+                    pointerId = null;
+                    scrollArea.classList.remove("drag-scrolling");
+                };
+
+                scrollArea.addEventListener("pointerup", stopDragScroll);
+                scrollArea.addEventListener("pointercancel", stopDragScroll);
+                scrollArea.addEventListener("lostpointercapture", () => {
+                    pointerId = null;
+                    scrollArea.classList.remove("drag-scrolling");
+                });
+                scrollArea.addEventListener("click", (event) => {
+                    if (hasDragged) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        hasDragged = false;
+                    }
+                }, true);
+            };
+
             const bindEvents = () => {
+                bindTableDragScroll();
+
                 elements.filters.forEach((button) => {
                     button.addEventListener("click", () => {
                         const filter = button.dataset.filter;

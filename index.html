@@ -201,21 +201,23 @@
         }
 
         .data-lab {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
             margin-bottom: 16px;
             border: 1px solid var(--line);
             border-radius: 8px;
             background: rgba(23, 27, 31, 0.82);
-            padding: 12px;
+            padding: 10px 12px;
         }
 
         .lab-row {
-            display: grid;
-            grid-template-columns: minmax(170px, 1fr) minmax(130px, 170px) repeat(2, minmax(110px, 140px)) auto auto;
+            display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             align-items: center;
+            flex: 1 1 auto;
         }
 
         .lab-field {
@@ -240,6 +242,60 @@
             text-transform: uppercase;
         }
 
+        .lab-select {
+            min-width: 220px;
+        }
+
+        .metric-chips {
+            display: flex;
+            flex: 1 1 420px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .metric-chip {
+            display: grid;
+            grid-template-columns: auto 76px 76px auto;
+            gap: 6px;
+            align-items: center;
+            min-height: 38px;
+            border: 1px solid var(--line-soft);
+            border-radius: 8px;
+            background: #12171b;
+            padding: 6px 7px;
+        }
+
+        .metric-chip strong {
+            color: var(--text);
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .metric-chip input {
+            width: 76px;
+            min-height: 28px;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: #161b20;
+            color: var(--text);
+            font: inherit;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 0 7px;
+        }
+
+        .chip-remove {
+            width: 28px;
+            min-height: 28px;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            font-weight: 900;
+        }
+
         .lab-btn[aria-pressed="true"] {
             border-color: var(--accent);
             color: var(--text);
@@ -252,21 +308,28 @@
         }
 
         .compare-panel {
-            display: grid;
-            gap: 8px;
+            display: flex;
+            flex: 1 1 260px;
+            gap: 9px;
+            align-items: center;
+            justify-content: flex-end;
         }
 
         .compare-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-            gap: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: flex-end;
         }
 
         .compare-card {
             border: 1px solid var(--line-soft);
             border-radius: 8px;
             background: rgba(17, 20, 22, 0.68);
-            padding: 10px;
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 900;
+            padding: 8px 10px;
         }
 
         .compare-card strong {
@@ -307,6 +370,27 @@
             display: block;
             margin-top: 4px;
             font-size: 15px;
+        }
+
+        .compare-open {
+            min-height: 38px;
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            background: rgba(56, 189, 248, 0.13);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            padding: 0 12px;
+            text-transform: uppercase;
+        }
+
+        .compare-open:disabled {
+            border-color: var(--line);
+            color: var(--subtle);
+            cursor: not-allowed;
+            opacity: 0.68;
         }
 
         .draft-panel {
@@ -1029,11 +1113,20 @@
         }
 
         .compare-btn {
+            display: inline-grid;
+            place-items: center;
             width: 34px;
             min-height: 30px;
-            padding: 0;
+            padding: 0 0 0 1px;
             color: var(--text);
             line-height: 1;
+        }
+
+        .compare-btn input {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--accent);
+            cursor: pointer;
         }
 
         .compare-btn.active {
@@ -1135,10 +1228,8 @@
         <section class="data-lab" aria-label="Data lab">
             <div class="lab-row">
                 <label class="lab-field">
-                    <span>Sort metric</span>
-                    <select class="lab-select" id="labMetric">
-                        <option value="">Board order</option>
-                        <option value="myRank">My rank</option>
+                    <span>Add table metric</span>
+                    <select class="lab-select" id="metricSelect">
                         <option value="age">Age</option>
                         <option value="ppg">PPG</option>
                         <option value="games">Games</option>
@@ -1152,27 +1243,15 @@
                         <option value="rushTd">Rushing TD</option>
                     </select>
                 </label>
-                <label class="lab-field">
-                    <span>Direction</span>
-                    <select class="lab-select" id="labDirection">
-                        <option value="desc">High to low</option>
-                        <option value="asc">Low to high</option>
-                    </select>
-                </label>
-                <label class="lab-field">
-                    <span>Min age</span>
-                    <input class="lab-input" id="labMinAge" type="number" min="18" max="50" step="0.1" placeholder="Any">
-                </label>
-                <label class="lab-field">
-                    <span>Max age</span>
-                    <input class="lab-input" id="labMaxAge" type="number" min="18" max="50" step="0.1" placeholder="Any">
-                </label>
-                <button class="lab-btn" type="button" id="labReset">Reset lab</button>
-                <span class="lab-status" id="labStatus">Choose a metric to sort the board.</span>
+                <button class="lab-btn" type="button" id="metricAdd">Add column</button>
+                <div class="metric-chips" id="metricChips" aria-live="polite"></div>
+                <button class="lab-btn" type="button" id="metricReset">Clear metrics</button>
+                <span class="lab-status" id="labStatus">Add metrics to create sortable stat columns.</span>
             </div>
             <div class="compare-panel" id="comparePanel" aria-live="polite">
                 <span>Compare</span>
                 <div class="compare-grid" id="compareGrid"></div>
+                <button class="compare-open" type="button" id="compareOpen" disabled>Open Comparison</button>
             </div>
         </section>
 
@@ -1204,14 +1283,14 @@
             <div class="table-scroll">
                 <table>
                     <thead>
-                        <tr>
+                        <tr id="rankingsHeadRow">
                             <th class="drag-cell" scope="col">Move</th>
                             <th scope="col">My Rank</th>
                             <th scope="col">Player</th>
                             <th scope="col">Pos</th>
                             <th scope="col">Team</th>
                             <th scope="col">My Pos Rank</th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="udAdp">Underdog ADP</button></th>
+                            <th scope="col" data-metric-anchor><button class="sort-btn" type="button" data-sort="udAdp">Underdog ADP</button></th>
                             <th scope="col"><button class="sort-btn" type="button" data-sort="udVar">UD Var</button></th>
                             <th scope="col"><button class="sort-btn" type="button" data-sort="sleeperAdp">Sleeper ADP</button></th>
                             <th scope="col"><button class="sort-btn" type="button" data-sort="sleeperVar">Sleeper Var</button></th>
@@ -1277,10 +1356,8 @@
                 selectedPlayerId: "",
                 draggedItemId: null,
                 lab: {
-                    metric: "",
-                    direction: "desc",
-                    minAge: "",
-                    maxAge: "",
+                    metrics: [],
+                    filters: {},
                     loading: false,
                 },
                 compareIds: [],
@@ -1318,14 +1395,15 @@
                 draftStatus: document.getElementById("draftStatus"),
                 rosterTracker: document.getElementById("rosterTracker"),
                 sortButtons: Array.from(document.querySelectorAll(".sort-btn")),
-                labMetric: document.getElementById("labMetric"),
-                labDirection: document.getElementById("labDirection"),
-                labMinAge: document.getElementById("labMinAge"),
-                labMaxAge: document.getElementById("labMaxAge"),
-                labReset: document.getElementById("labReset"),
+                rankingsHeadRow: document.getElementById("rankingsHeadRow"),
+                metricSelect: document.getElementById("metricSelect"),
+                metricAdd: document.getElementById("metricAdd"),
+                metricChips: document.getElementById("metricChips"),
+                metricReset: document.getElementById("metricReset"),
                 labStatus: document.getElementById("labStatus"),
                 comparePanel: document.getElementById("comparePanel"),
                 compareGrid: document.getElementById("compareGrid"),
+                compareOpen: document.getElementById("compareOpen"),
                 tableScroll: document.querySelector(".table-scroll"),
                 playerDrawerBackdrop: document.getElementById("playerDrawerBackdrop"),
                 playerDrawerClose: document.getElementById("playerDrawerClose"),
@@ -1762,7 +1840,7 @@
                 label.textContent = item.label;
 
                 const labelCell = createCell("", label);
-                labelCell.colSpan = 11;
+                labelCell.colSpan = 11 + state.lab.metrics.length;
                 row.append(createCell("drag-cell", handle), labelCell);
                 return row;
             };
@@ -1817,33 +1895,37 @@
                 playerMeta.className = "player-meta";
                 playerMeta.textContent = `${player.pos} / ${player.team}`;
                 playerText.append(playerName, playerMeta);
-                const compareButton = document.createElement("button");
+                const compareButton = document.createElement("label");
                 const compareActive = state.compareIds.includes(player.id);
                 compareButton.className = `compare-btn${compareActive ? " active" : ""}`;
-                compareButton.type = "button";
-                compareButton.textContent = compareActive ? "-" : "+";
                 compareButton.title = compareActive ? "Remove from comparison" : "Add to comparison";
-                compareButton.setAttribute("aria-label", compareButton.title);
+                const compareCheckbox = document.createElement("input");
+                compareCheckbox.type = "checkbox";
+                compareCheckbox.checked = compareActive;
+                compareCheckbox.setAttribute("aria-label", compareButton.title);
                 compareButton.addEventListener("click", (event) => {
                     event.stopPropagation();
-                    toggleComparePlayer(player.id);
                 });
+                compareCheckbox.addEventListener("change", () => toggleComparePlayer(player.id));
+                compareButton.appendChild(compareCheckbox);
                 playerCell.append(playerMedia, playerText, compareButton);
 
-                row.append(
+                const rowCells = [
                     createCell("drag-cell", handle),
                     createCell("rank num", String(myRank)),
                     createCell("player", playerCell),
                     createCell("", makePill(player.pos)),
                     createCell("", player.team),
                     createCell("pos-rank", posRanks[player.id]),
+                    ...state.lab.metrics.map((metricKey) => createCell("num", metricDisplayValue(player, globalIndex, metricKey))),
                     createCell("num", formatAdp(player.udAdp, player.udPick)),
                     createCell(`variance num ${underdogVariance.className}`, underdogVariance.label),
                     createCell("num", formatAdp(player.sleeperAdp, player.sleeperPick)),
                     createCell(`variance num ${sleeperVariance.className}`, sleeperVariance.label),
                     createCell("num", formatMarketRank(flockRank)),
                     createCell(`variance num ${flockVariance.className}`, flockVariance.label),
-                );
+                ];
+                row.append(...rowCells);
 
                 row.addEventListener("click", (event) => {
                     if (!closestElement(event.target, ".handle")) {
@@ -1979,17 +2061,18 @@
                     flockRank: Number.isFinite(flockRank) ? flockRank : Number.POSITIVE_INFINITY,
                     flockVar: Number.isFinite(flockRank) ? flockRank - myRank : Number.POSITIVE_INFINITY,
                 };
-                const value = state.lab.metric ? metricValueForPlayer(player, entry.globalIndex, state.lab.metric) : values[state.sort.key];
+                const value = state.sort.key?.startsWith("metric:")
+                    ? metricValueForPlayer(player, entry.globalIndex, state.sort.key.replace("metric:", ""))
+                    : values[state.sort.key];
                 const missing = value === null || value === Number.POSITIVE_INFINITY || value === undefined || Number.isNaN(value);
                 return { value, missing };
             };
 
             const sortedVisibleItems = (visibleItems, posRanks) => {
-                const hasLabSort = Boolean(state.lab.metric);
-                if (!state.sort.key && !hasLabSort) {
+                if (!state.sort.key) {
                     return visibleItems;
                 }
-                const direction = (hasLabSort ? state.lab.direction : state.sort.direction) === "desc" ? -1 : 1;
+                const direction = state.sort.direction === "desc" ? -1 : 1;
                 return visibleItems
                     .filter(({ player }) => player)
                     .slice()
@@ -2020,7 +2103,7 @@
 
             const cycleSort = (key) => {
                 if (state.sort.key !== key) {
-                    state.sort = { key, direction: "asc" };
+                    state.sort = { key, direction: key.startsWith("metric:") ? "desc" : "asc" };
                 } else if (state.sort.direction === "asc") {
                     state.sort = { key, direction: "desc" };
                 } else {
@@ -2109,7 +2192,7 @@
                     return;
                 }
                 const key = formatPerformanceKey(playerId);
-                if (state.playerPerformance[key]?.loading || state.playerPerformance[key]?.data) {
+                if (state.playerPerformance[key]?.loading || state.playerPerformance[key]?.data || state.playerPerformance[key]?.error) {
                     return;
                 }
                 state.playerPerformance[key] = { loading: true, data: null, error: "" };
@@ -2127,6 +2210,8 @@
                 }
                 if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
                     openPlayerDetails(player.id);
+                } else if (!state.selectedPlayerId && state.compareIds.includes(player.id) && !elements.playerDrawerBackdrop.hidden) {
+                    openComparisonDetails();
                 }
             };
 
@@ -2136,7 +2221,7 @@
                     return;
                 }
                 const key = formatYearlyKey(playerId);
-                if (state.playerYearlyStats[key]?.loading || state.playerYearlyStats[key]?.data) {
+                if (state.playerYearlyStats[key]?.loading || state.playerYearlyStats[key]?.data || state.playerYearlyStats[key]?.error) {
                     return;
                 }
                 state.playerYearlyStats[key] = { loading: true, data: null, error: "" };
@@ -2154,6 +2239,8 @@
                 }
                 if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
                     openPlayerDetails(player.id);
+                } else if (!state.selectedPlayerId && state.compareIds.includes(player.id) && !elements.playerDrawerBackdrop.hidden) {
+                    openComparisonDetails();
                 }
             };
 
@@ -2366,6 +2453,81 @@
                 elements.playerDrawerContent.replaceChildren();
             };
 
+            const comparisonPlayerCard = (playerId) => {
+                const context = playerContext(playerId);
+                if (!context) {
+                    return null;
+                }
+                const { player, globalIndex, tierLabel } = context;
+                const myRank = globalIndex + 1;
+                const posRanks = getPositionRanks();
+                const playerKey = playerMarketKey(player);
+                const flockRank = state.flockRanks[playerKey];
+                const flockDetail = state.flockDetails[playerKey];
+                const performance = performanceForPlayer(player, flockDetail);
+                const yearly = yearlyForPlayer(player, flockDetail);
+                const underdogVariance = formatVariance(player.udAdp, myRank);
+                const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
+                const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
+
+                const card = document.createElement("section");
+                const head = document.createElement("div");
+                const titleWrap = document.createElement("div");
+                const title = document.createElement("h2");
+                const subtitle = document.createElement("div");
+                const grid = document.createElement("div");
+                card.className = "drawer-section";
+                head.className = "drawer-head";
+                title.textContent = player.name;
+                subtitle.className = "drawer-subtitle";
+                subtitle.textContent = `${tierLabel || "No tier"} / ${player.pos} / ${player.team}`;
+                titleWrap.append(title, subtitle);
+                head.append(
+                    profileImage(player, flockDetail),
+                    titleWrap,
+                    profileStatStrip(player, flockDetail, performance, flockRank, myRank)
+                );
+                grid.className = "detail-grid";
+                grid.append(
+                    detailCard("My Rank", String(myRank)),
+                    detailCard("My Pos Rank", posRanks[player.id] || "N/A"),
+                    detailCard("Underdog ADP", formatAdp(player.udAdp, player.udPick)),
+                    detailCard("UD Var", underdogVariance.label, underdogVariance.className),
+                    detailCard("Sleeper ADP", formatAdp(player.sleeperAdp, player.sleeperPick)),
+                    detailCard("Sleeper Var", sleeperVariance.label, sleeperVariance.className),
+                    detailCard("Flock Rank", formatMarketRank(flockRank)),
+                    detailCard("Flock Var", flockVariance.label, flockVariance.className)
+                );
+                card.append(head, grid, positionStatsGrid(player, yearly), performanceChart(performance));
+                refreshPlayerPerformance(player, flockDetail);
+                refreshYearlyStats(player, flockDetail);
+                return card;
+            };
+
+            const openComparisonDetails = () => {
+                if (state.compareIds.length < 2) {
+                    return;
+                }
+                state.selectedPlayerId = "";
+                const title = document.createElement("h2");
+                const subtitle = document.createElement("div");
+                const header = document.createElement("div");
+                title.id = "playerDrawerTitle";
+                title.textContent = "Player Comparison";
+                subtitle.className = "drawer-subtitle";
+                subtitle.textContent = `${state.compareIds.length} selected players`;
+                header.className = "drawer-section";
+                header.append(title, subtitle);
+                elements.playerDrawerContent.replaceChildren(header);
+                state.compareIds
+                    .map(comparisonPlayerCard)
+                    .filter(Boolean)
+                    .forEach((card) => elements.playerDrawerContent.appendChild(card));
+                elements.playerDrawerBackdrop.hidden = false;
+                document.body.classList.add("drawer-open");
+                elements.playerDrawerBackdrop.scrollTop = 0;
+            };
+
             const openPlayerDetails = (playerId) => {
                 const context = playerContext(playerId);
                 if (!context) {
@@ -2435,7 +2597,7 @@
             const getVisibleItems = () => {
                 const byId = playersById();
                 const searchQuery = normalizeSearch(state.searchQuery);
-                const hasLabFilter = state.lab.metric || state.lab.minAge || state.lab.maxAge;
+                const hasLabFilter = hasLabCriteria();
                 const showTierRows = state.selectedPositions.size === 0 && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly && !state.sort.key && !hasLabFilter;
                 let playerIndex = 0;
                 let currentTierLabel = "";
@@ -2461,12 +2623,7 @@
                     const teamMatch = state.activeTeam === "ALL" || player.team === state.activeTeam;
                     const searchMatch = !searchQuery || normalizeSearch(player.name).includes(searchQuery);
                     const availabilityMatch = !state.availableOnly || !state.draft.active || !state.draft.draftedKeys.has(playerKey);
-                    const age = metricValueForPlayer(player, globalIndex, "age");
-                    const minAge = Number(state.lab.minAge);
-                    const maxAge = Number(state.lab.maxAge);
-                    const minAgeMatch = !state.lab.minAge || (Number.isFinite(age) && age >= minAge);
-                    const maxAgeMatch = !state.lab.maxAge || (Number.isFinite(age) && age <= maxAge);
-                    if (positionMatch && teamMatch && searchMatch && availabilityMatch && minAgeMatch && maxAgeMatch) {
+                    if (positionMatch && teamMatch && searchMatch && availabilityMatch && metricFilterMatch(player, globalIndex)) {
                         visible.push({ globalIndex, item, player, tierLabel: showTierRows ? "" : currentTierLabel });
                     }
                     return visible;
@@ -2497,7 +2654,7 @@
                 elements.availableOnly.checked = state.availableOnly;
             };
 
-            const hasLabCriteria = () => Boolean(state.lab.metric || state.lab.minAge || state.lab.maxAge);
+            const hasLabCriteria = () => state.lab.metrics.length > 0;
 
             const metricLabel = (metricKey) => LAB_METRICS[metricKey]?.label || "Metric";
 
@@ -2508,6 +2665,106 @@
                     return "N/A";
                 }
                 return `${formatDecimal(value)}${metric?.suffix || ""}`;
+            };
+
+            const metricFilterMatch = (player, globalIndex) => state.lab.metrics.every((metricKey) => {
+                const filter = state.lab.filters[metricKey] || {};
+                const min = filter.min === "" || filter.min === undefined ? null : Number(filter.min);
+                const max = filter.max === "" || filter.max === undefined ? null : Number(filter.max);
+                if (min === null && max === null) {
+                    return true;
+                }
+                const value = metricValueForPlayer(player, globalIndex, metricKey);
+                if (!Number.isFinite(value)) {
+                    return false;
+                }
+                return (min === null || value >= min) && (max === null || value <= max);
+            });
+
+            const addMetricColumn = (metricKey = elements.metricSelect.value) => {
+                if (!metricKey || state.lab.metrics.includes(metricKey)) {
+                    return;
+                }
+                state.lab.metrics.push(metricKey);
+                state.lab.filters[metricKey] = { min: "", max: "" };
+                render();
+                loadDataLabStats();
+            };
+
+            const removeMetricColumn = (metricKey) => {
+                state.lab.metrics = state.lab.metrics.filter((item) => item !== metricKey);
+                delete state.lab.filters[metricKey];
+                if (state.sort.key === `metric:${metricKey}`) {
+                    state.sort = { key: "", direction: "" };
+                }
+                render();
+            };
+
+            const renderMetricHeaders = () => {
+                elements.rankingsHeadRow.querySelectorAll(".metric-col").forEach((column) => column.remove());
+                const anchor = elements.rankingsHeadRow.querySelector("[data-metric-anchor]");
+                state.lab.metrics.forEach((metricKey) => {
+                    const metric = LAB_METRICS[metricKey];
+                    const header = document.createElement("th");
+                    const button = document.createElement("button");
+                    header.className = "metric-col";
+                    button.className = "sort-btn";
+                    button.type = "button";
+                    button.dataset.sort = `metric:${metricKey}`;
+                    button.textContent = metric?.label || metricKey;
+                    button.addEventListener("click", () => cycleSort(button.dataset.sort));
+                    header.appendChild(button);
+                    anchor.before(header);
+                });
+                elements.sortButtons = Array.from(document.querySelectorAll(".sort-btn"));
+                updateSortButtons();
+            };
+
+            const renderMetricChips = () => {
+                elements.metricChips.replaceChildren();
+                if (state.lab.metrics.length === 0) {
+                    const empty = document.createElement("span");
+                    empty.className = "lab-status";
+                    empty.textContent = "No metric columns selected.";
+                    elements.metricChips.appendChild(empty);
+                    return;
+                }
+                state.lab.metrics.forEach((metricKey) => {
+                    const metric = LAB_METRICS[metricKey];
+                    const filter = state.lab.filters[metricKey] || { min: "", max: "" };
+                    const chip = document.createElement("div");
+                    const label = document.createElement("strong");
+                    const min = document.createElement("input");
+                    const max = document.createElement("input");
+                    const remove = document.createElement("button");
+                    chip.className = "metric-chip";
+                    label.textContent = metric?.label || metricKey;
+                    min.type = "number";
+                    min.step = "0.1";
+                    min.placeholder = "Min";
+                    min.value = filter.min || "";
+                    max.type = "number";
+                    max.step = "0.1";
+                    max.placeholder = "Max";
+                    max.value = filter.max || "";
+                    remove.className = "chip-remove";
+                    remove.type = "button";
+                    remove.textContent = "x";
+                    remove.title = `Remove ${label.textContent}`;
+                    min.addEventListener("input", () => {
+                        state.lab.filters[metricKey].min = min.value;
+                        render();
+                        loadDataLabStats();
+                    });
+                    max.addEventListener("input", () => {
+                        state.lab.filters[metricKey].max = max.value;
+                        render();
+                        loadDataLabStats();
+                    });
+                    remove.addEventListener("click", () => removeMetricColumn(metricKey));
+                    chip.append(label, min, max, remove);
+                    elements.metricChips.appendChild(chip);
+                });
             };
 
             const toggleComparePlayer = (playerId) => {
@@ -2524,69 +2781,34 @@
             const renderComparePanel = () => {
                 const byId = playersById();
                 elements.compareGrid.replaceChildren();
+                elements.compareOpen.disabled = state.compareIds.length < 2;
                 if (state.compareIds.length === 0) {
                     const card = document.createElement("div");
                     card.className = "compare-card";
-                    card.textContent = "Use + beside players to build a head-to-head comparison.";
+                    card.textContent = "Check players in the table, then open comparison.";
                     elements.compareGrid.appendChild(card);
                     return;
                 }
 
-                const posRanks = getPositionRanks();
                 state.compareIds.forEach((playerId) => {
                     const player = byId.get(playerId);
-                    const context = player ? playerContext(playerId) : null;
-                    if (!player || !context) {
+                    if (!player) {
                         return;
                     }
-                    const flockDetail = state.flockDetails[playerMarketKey(player)];
-                    const performance = performanceForPlayer(player, flockDetail);
-                    const yearly = yearlyForPlayer(player, flockDetail);
                     const card = document.createElement("div");
                     card.className = "compare-card";
-                    const title = document.createElement("strong");
-                    const meta = document.createElement("span");
-                    const stats = document.createElement("div");
-                    title.textContent = player.name;
-                    meta.textContent = `${posRanks[player.id] || player.pos} / ${player.team}`;
-                    stats.className = "compare-stats";
-                    [
-                        ["Age", metricDisplayValue(player, context.globalIndex, "age")],
-                        ["PPG", metricDisplayValue(player, context.globalIndex, "ppg")],
-                        ["Games", formatStatValue(seasonGamesValue(yearly))],
-                        ["YPRR", formatStatValue(seasonStatValue(yearly, ["YardsPerRouteRun"]))],
-                    ].forEach(([label, value]) => {
-                        const stat = document.createElement("div");
-                        const statLabel = document.createElement("span");
-                        const statValue = document.createElement("b");
-                        stat.className = "compare-stat";
-                        statLabel.textContent = label;
-                        statValue.textContent = value;
-                        stat.append(statLabel, statValue);
-                        stats.appendChild(stat);
-                    });
-                    card.append(title, meta, stats);
+                    card.textContent = player.name;
                     elements.compareGrid.appendChild(card);
-                    if (!performance?.data) {
-                        refreshPlayerPerformance(player, flockDetail);
-                    }
-                    if (!yearly?.data) {
-                        refreshYearlyStats(player, flockDetail);
-                    }
                 });
             };
 
             const updateLabStatus = (visiblePlayerCount) => {
-                elements.labMetric.value = state.lab.metric;
-                elements.labDirection.value = state.lab.direction;
-                elements.labMinAge.value = state.lab.minAge;
-                elements.labMaxAge.value = state.lab.maxAge;
                 if (state.lab.loading) {
                     elements.labStatus.textContent = "Loading advanced stats...";
                 } else if (hasLabCriteria()) {
-                    elements.labStatus.textContent = `${visiblePlayerCount} players in data view.`;
+                    elements.labStatus.textContent = `${visiblePlayerCount} rows match selected metrics.`;
                 } else {
-                    elements.labStatus.textContent = "Choose a metric to sort the board.";
+                    elements.labStatus.textContent = "Add metrics to create sortable stat columns.";
                 }
             };
 
@@ -2617,7 +2839,8 @@
                     button.setAttribute("aria-pressed", String(pressed));
                 });
                 elements.teamFilter.value = state.activeTeam;
-                updateSortButtons();
+                renderMetricHeaders();
+                renderMetricChips();
                 updateLabStatus(visiblePlayerCount);
                 renderComparePanel();
             };
@@ -2920,9 +3143,9 @@
                 if (state.lab.loading || !hasLabCriteria()) {
                     return;
                 }
-                const metric = LAB_METRICS[state.lab.metric];
-                const needsPerformance = state.lab.metric === "ppg" || state.lab.metric === "age" || state.lab.minAge || state.lab.maxAge;
-                const needsYearly = metric?.source === "yearly" || state.compareIds.length > 0;
+                const metrics = state.lab.metrics.map((metricKey) => LAB_METRICS[metricKey]).filter(Boolean);
+                const needsPerformance = metrics.some((metric) => metric.source === "performance" || metric.source === "profile");
+                const needsYearly = metrics.some((metric) => metric.source === "yearly");
                 if (!needsPerformance && !needsYearly) {
                     return;
                 }
@@ -3057,42 +3280,28 @@
 
                 elements.sortButtons.forEach((button) => {
                     button.addEventListener("click", () => {
-                        state.lab.metric = "";
                         cycleSort(button.dataset.sort);
                     });
                 });
 
-                elements.labMetric.addEventListener("change", () => {
-                    state.lab.metric = elements.labMetric.value;
-                    if (state.lab.metric && LAB_METRICS[state.lab.metric]) {
+                elements.metricAdd.addEventListener("click", () => addMetricColumn());
+
+                elements.metricSelect.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter") {
+                        addMetricColumn();
+                    }
+                });
+
+                elements.metricReset.addEventListener("click", () => {
+                    state.lab.metrics = [];
+                    state.lab.filters = {};
+                    if (state.sort.key?.startsWith("metric:")) {
                         state.sort = { key: "", direction: "" };
-                        state.lab.direction = LAB_METRICS[state.lab.metric].direction;
                     }
                     render();
-                    loadDataLabStats();
                 });
 
-                elements.labDirection.addEventListener("change", () => {
-                    state.lab.direction = elements.labDirection.value;
-                    render();
-                });
-
-                [elements.labMinAge, elements.labMaxAge].forEach((input) => {
-                    input.addEventListener("input", () => {
-                        state.lab.minAge = elements.labMinAge.value;
-                        state.lab.maxAge = elements.labMaxAge.value;
-                        render();
-                        loadDataLabStats();
-                    });
-                });
-
-                elements.labReset.addEventListener("click", () => {
-                    state.lab.metric = "";
-                    state.lab.direction = "desc";
-                    state.lab.minAge = "";
-                    state.lab.maxAge = "";
-                    render();
-                });
+                elements.compareOpen.addEventListener("click", openComparisonDetails);
 
                 elements.playerSearch.addEventListener("input", () => {
                     state.searchQuery = elements.playerSearch.value;

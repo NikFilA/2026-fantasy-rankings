@@ -23,6 +23,7 @@
             --red: #f87171;
             --shadow: rgba(0, 0, 0, 0.34);
             --orange: #fb923c;
+            --yellow: #facc15;
         }
 
         * {
@@ -110,7 +111,7 @@
         .metric strong {
             display: block;
             margin-top: 8px;
-            font-size: 24px;
+            font-size: 34px;
             line-height: 1;
         }
 
@@ -594,8 +595,9 @@
             inset: 0;
             z-index: 20;
             display: grid;
-            justify-items: end;
-            background: rgba(0, 0, 0, 0.46);
+            place-items: center;
+            background: rgba(0, 0, 0, 0.68);
+            padding: 24px;
         }
 
         .drawer-backdrop[hidden] {
@@ -603,13 +605,14 @@
         }
 
         .player-drawer {
-            width: min(420px, 100%);
-            height: 100%;
+            width: min(1320px, 100%);
+            max-height: min(88vh, 940px);
             overflow: auto;
-            border-left: 1px solid var(--line);
+            border: 1px solid var(--line);
+            border-radius: 8px;
             background: #111416;
-            box-shadow: -24px 0 60px rgba(0, 0, 0, 0.38);
-            padding: 22px;
+            box-shadow: 0 30px 90px rgba(0, 0, 0, 0.52);
+            padding: 24px;
         }
 
         .drawer-close {
@@ -626,16 +629,17 @@
         }
 
         .drawer-head {
-            display: flex;
-            gap: 14px;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            gap: 18px;
             align-items: center;
             margin: 18px 0 22px;
         }
 
         .drawer-head .player-photo,
         .drawer-head .player-initials {
-            width: 58px;
-            height: 58px;
+            width: 88px;
+            height: 88px;
         }
 
         .drawer-head h2 {
@@ -653,9 +657,16 @@
             text-transform: uppercase;
         }
 
+        .profile-summary {
+            display: grid;
+            grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+            gap: 20px;
+            align-items: start;
+        }
+
         .detail-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 10px;
         }
 
@@ -694,6 +705,80 @@
             font-weight: 900;
             letter-spacing: 0.06em;
             text-transform: uppercase;
+        }
+
+        .performance-chart {
+            display: flex;
+            gap: 8px;
+            align-items: end;
+            min-height: 240px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(23, 27, 31, 0.72);
+            padding: 16px 14px 12px;
+        }
+
+        .week-bar {
+            display: grid;
+            grid-template-rows: 22px minmax(20px, 1fr) 18px;
+            gap: 6px;
+            justify-items: center;
+            min-width: 28px;
+            flex: 1 1 0;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .week-bar span:first-child {
+            color: var(--text);
+        }
+
+        .bar-track {
+            display: flex;
+            align-items: end;
+            width: 100%;
+            min-height: 160px;
+        }
+
+        .bar-fill {
+            width: 100%;
+            min-height: 4px;
+            border-radius: 6px 6px 0 0;
+            background: var(--green);
+        }
+
+        .bar-fill.mid {
+            background: var(--yellow);
+        }
+
+        .bar-fill.low {
+            background: var(--red);
+        }
+
+        .game-log {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .game-log th,
+        .game-log td {
+            height: 34px;
+            padding: 0 8px;
+            border-bottom: 1px solid var(--line-soft);
+            font-size: 13px;
+            text-align: right;
+        }
+
+        .game-log th:first-child,
+        .game-log td:first-child {
+            text-align: left;
+        }
+
+        .modal-stat-strip {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(90px, 1fr));
+            gap: 10px;
         }
 
         .expert-list {
@@ -748,7 +833,10 @@
 
             .topbar,
             .controls,
-            .draft-panel {
+            .draft-panel,
+            .profile-summary,
+            .drawer-head,
+            .modal-stat-strip {
                 grid-template-columns: 1fr;
             }
 
@@ -881,6 +969,9 @@
             const SLEEPER_PLAYERS_PROXY_URL = "/api/sleeper-players";
             const SLEEPER_PLAYERS_DIRECT_URL = "https://api.sleeper.app/v1/players/nfl";
             const SLEEPER_DRAFT_BASE_URL = "https://api.sleeper.app/v1/draft";
+            const FLOCK_PERFORMANCE_PROXY_URL = "/api/flock-player-performance";
+            const FLOCK_PERFORMANCE_DIRECT_URL = "https://api.flockfantasy.com/players/card-stats";
+            const PLAYER_PROFILE_SEASON = 2025;
             const DEFAULT_SYNC_CONFIG = {
                 provider: "local",
                 supabaseUrl: "",
@@ -893,6 +984,7 @@
                 items: [],
                 flockRanks: {},
                 flockDetails: {},
+                playerPerformance: {},
                 playerAssets: {},
                 sleeperKeyById: {},
                 selectedPositions: new Set(),
@@ -1581,71 +1673,170 @@
                 return Number.isInteger(number) ? String(number) : number.toFixed(1);
             };
 
-            const formatHeight = (height) => {
-                const inches = Number(height);
-                if (!Number.isFinite(inches) || inches <= 0) {
-                    return "N/A";
+            const decimalAge = (dob, fallbackAge) => {
+                if (dob) {
+                    const born = new Date(dob);
+                    if (!Number.isNaN(born.getTime())) {
+                        const years = (Date.now() - born.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+                        return formatDecimal(years);
+                    }
                 }
-                return `${Math.floor(inches / 12)}-${inches % 12}`;
+                return Number.isFinite(Number(fallbackAge)) ? formatDecimal(fallbackAge) : "N/A";
             };
 
-            const flockDetailCards = (detail) => {
-                const grid = document.createElement("div");
-                grid.className = "detail-grid";
-                if (!detail) {
-                    grid.append(detailCard("Flock Data", "Loading"));
-                    return grid;
+            const formatPerformanceKey = (playerId) => `${playerId}|${PLAYER_PROFILE_SEASON}`;
+
+            const performancePlayerId = (player, flockDetail) => {
+                const asset = state.playerAssets[playerMarketKey(player)];
+                return String(flockDetail?.playerId || asset?.id || player.id || "");
+            };
+
+            const performanceForPlayer = (player, flockDetail) => {
+                const playerId = performancePlayerId(player, flockDetail);
+                return playerId ? state.playerPerformance[formatPerformanceKey(playerId)] : null;
+            };
+
+            const refreshPlayerPerformance = async (player, flockDetail) => {
+                const playerId = performancePlayerId(player, flockDetail);
+                if (!playerId) {
+                    return;
                 }
-                const rankDelta = Number(detail.rankDelta);
-                const rankDeltaLabel = Number.isFinite(rankDelta) ? `${rankDelta > 0 ? "+" : ""}${rankDelta}` : "N/A";
-                const rankDeltaClass = Number.isFinite(rankDelta) ? varianceClass(-rankDelta) : "neutral";
-                grid.append(
-                    detailCard("Flock Overall", formatMarketRank(detail.listRank)),
-                    detailCard("Flock Avg", formatDecimal(detail.overallAverageRank ?? detail.averageRank)),
-                    detailCard("Flock Pos Rank", formatDecimal(detail.averagePositionalRank)),
-                    detailCard("Flock Tier", formatDecimal(detail.averageTier)),
-                    detailCard("2025 PPG", formatDecimal(detail.previousYearPprAverage)),
-                    detailCard("7D Move", rankDeltaLabel, rankDeltaClass),
-                    detailCard("Age", detail.age ? String(detail.age) : "N/A"),
-                    detailCard("College", detail.college || "N/A"),
-                    detailCard("Draft Year", detail.draftYear ? String(detail.draftYear) : "N/A"),
-                    detailCard("Size", `${formatHeight(detail.height)} / ${detail.weight || "N/A"}`)
+                const key = formatPerformanceKey(playerId);
+                if (state.playerPerformance[key]?.loading || state.playerPerformance[key]?.data) {
+                    return;
+                }
+                state.playerPerformance[key] = { loading: true, data: null, error: "" };
+                try {
+                    let payload;
+                    try {
+                        payload = await fetchJson(`${FLOCK_PERFORMANCE_PROXY_URL}?playerId=${encodeURIComponent(playerId)}&year=${PLAYER_PROFILE_SEASON}`);
+                    } catch (proxyError) {
+                        payload = await fetchJson(`${FLOCK_PERFORMANCE_DIRECT_URL}/${encodeURIComponent(playerId)}/performance?year=${PLAYER_PROFILE_SEASON}`);
+                    }
+                    state.playerPerformance[key] = { loading: false, data: payload, error: "" };
+                } catch (error) {
+                    console.warn("Flock player performance could not be loaded.", error);
+                    state.playerPerformance[key] = { loading: false, data: null, error: "Performance data unavailable" };
+                }
+                if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
+                    openPlayerDetails(player.id);
+                }
+            };
+
+            const weeklyPoints = (performance) => Object.entries(performance?.data?.weeklyPointsPerGame || {})
+                .map(([week, points]) => ({ week: Number(week), points: Number(points) }))
+                .filter((item) => Number.isFinite(item.week) && Number.isFinite(item.points))
+                .sort((a, b) => a.week - b.week);
+
+            const playerProfileImageUrl = (flockDetail, player) => {
+                if (flockDetail?.picture) {
+                    return `https://flockfantasy.com/player-images/${flockDetail.picture}`;
+                }
+                const asset = state.playerAssets[playerMarketKey(player)];
+                return asset?.imageUrl || "";
+            };
+
+            const profileImage = (player, flockDetail) => {
+                const imageUrl = playerProfileImageUrl(flockDetail, player);
+                if (imageUrl) {
+                    const image = document.createElement("img");
+                    image.className = "player-photo";
+                    image.src = imageUrl;
+                    image.alt = "";
+                    image.loading = "lazy";
+                    image.decoding = "async";
+                    image.onerror = () => image.replaceWith(playerInitials(player));
+                    return image;
+                }
+                return playerInitials(player);
+            };
+
+            const profileStatStrip = (player, flockDetail, performance, flockRank, myRank) => {
+                const strip = document.createElement("div");
+                strip.className = "modal-stat-strip";
+                const perf = performance?.data;
+                const ppg = perf?.pointsPerGame ?? flockDetail?.previousYearPprAverage;
+                const delta = Number(perf?.ownership?.underdogAdpDelta7d ?? flockDetail?.rankDelta);
+                const deltaLabel = Number.isFinite(delta) ? `${delta > 0 ? "+" : ""}${formatDecimal(delta)}` : "N/A";
+                strip.append(
+                    detailCard("My Rank", String(myRank)),
+                    detailCard("Flock Rank", formatMarketRank(flockRank)),
+                    detailCard("PPG", formatDecimal(ppg)),
+                    detailCard("Age", `${decimalAge(perf?.dob || flockDetail?.dob, flockDetail?.age)} yo`),
+                    detailCard("UD ADP", formatDecimal(perf?.ownership?.underdogAdp ?? player.udAdp)),
+                    detailCard("7D", deltaLabel, Number.isFinite(delta) ? varianceClass(delta) : "neutral"),
+                    detailCard("Pos", player.pos),
+                    detailCard("Team", player.team)
                 );
-                return grid;
+                return strip;
             };
 
-            const expertRanksSection = (detail) => {
+            const performanceChart = (performance) => {
                 const section = document.createElement("section");
                 section.className = "drawer-section";
                 const heading = document.createElement("h3");
-                heading.textContent = "Flock Expert Ranks";
-                const list = document.createElement("div");
-                list.className = "expert-list";
-                const ranks = detail?.overallRanks || {};
-                const tiers = detail?.overallTiers || {};
-                const names = Object.keys(ranks).sort((a, b) => Number(ranks[a]) - Number(ranks[b]));
-                if (names.length === 0) {
-                    const empty = document.createElement("div");
-                    empty.className = "detail-card";
-                    empty.textContent = "Flock expert ranks are not available yet.";
-                    list.appendChild(empty);
+                heading.textContent = `Player Performance / Season ${PLAYER_PROFILE_SEASON}`;
+                const chart = document.createElement("div");
+                chart.className = "performance-chart";
+                const rows = weeklyPoints(performance);
+                if (performance?.loading) {
+                    chart.textContent = "Loading game log...";
+                } else if (!rows.length) {
+                    chart.textContent = performance?.error || "Game log unavailable.";
                 } else {
-                    names.forEach((name) => {
-                        const row = document.createElement("div");
-                        row.className = "expert-row";
-                        const expert = document.createElement("span");
-                        const rank = document.createElement("span");
-                        const tier = document.createElement("span");
-                        expert.textContent = name;
-                        rank.className = "expert-chip";
-                        rank.textContent = `#${ranks[name]}`;
-                        tier.className = "expert-chip tier";
-                        tier.textContent = tiers[name] ? `T${tiers[name]}` : "T-";
-                        row.append(expert, rank, tier);
-                        list.appendChild(row);
+                    const maxPoints = Math.max(1, ...rows.map((row) => row.points));
+                    rows.forEach((row) => {
+                        const bar = document.createElement("div");
+                        bar.className = "week-bar";
+                        const label = document.createElement("span");
+                        const track = document.createElement("div");
+                        const fill = document.createElement("div");
+                        const week = document.createElement("span");
+                        label.textContent = formatDecimal(row.points);
+                        track.className = "bar-track";
+                        fill.className = `bar-fill${row.points < 10 ? " low" : row.points < 20 ? " mid" : ""}`;
+                        fill.style.height = `${Math.max(4, (row.points / maxPoints) * 100)}%`;
+                        week.textContent = String(row.week);
+                        track.appendChild(fill);
+                        bar.append(label, track, week);
+                        chart.appendChild(bar);
                     });
                 }
-                section.append(heading, list);
+                section.append(heading, chart);
+                return section;
+            };
+
+            const gameLogTable = (performance) => {
+                const section = document.createElement("section");
+                section.className = "drawer-section";
+                const heading = document.createElement("h3");
+                heading.textContent = "Game Log";
+                const table = document.createElement("table");
+                table.className = "game-log";
+                const head = document.createElement("thead");
+                head.innerHTML = "<tr><th>Week</th><th>PPR</th></tr>";
+                const body = document.createElement("tbody");
+                const rows = weeklyPoints(performance);
+                if (!rows.length) {
+                    const row = document.createElement("tr");
+                    const cell = document.createElement("td");
+                    cell.colSpan = 2;
+                    cell.textContent = performance?.loading ? "Loading game log..." : performance?.error || "Game log unavailable.";
+                    row.appendChild(cell);
+                    body.appendChild(row);
+                } else {
+                    rows.forEach((item) => {
+                        const row = document.createElement("tr");
+                        const week = document.createElement("td");
+                        const points = document.createElement("td");
+                        week.textContent = `Week ${item.week}`;
+                        points.textContent = formatDecimal(item.points);
+                        row.append(week, points);
+                        body.appendChild(row);
+                    });
+                }
+                table.append(head, body);
+                section.append(heading, table);
                 return section;
             };
             const closePlayerDetails = () => {
@@ -1670,6 +1861,8 @@
                 const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
+                const performance = performanceForPlayer(player, flockDetail);
+                refreshPlayerPerformance(player, flockDetail);
 
                 const head = document.createElement("div");
                 head.className = "drawer-head";
@@ -1681,7 +1874,7 @@
                 subtitle.className = "drawer-subtitle";
                 subtitle.textContent = `${tierLabel || "No tier"} / ${player.pos} / ${player.team}${isDrafted ? " / Drafted" : ""}`;
                 titleWrap.append(title, subtitle);
-                head.append(playerImage(player), titleWrap);
+                head.append(profileImage(player, flockDetail), titleWrap, profileStatStrip(player, flockDetail, performance, flockRank, myRank));
 
                 const myGrid = document.createElement("div");
                 myGrid.className = "detail-grid";
@@ -1696,13 +1889,11 @@
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
                 );
 
-                const flockSection = document.createElement("section");
-                flockSection.className = "drawer-section";
-                const flockHeading = document.createElement("h3");
-                flockHeading.textContent = "Flock Profile";
-                flockSection.append(flockHeading, flockDetailCards(flockDetail));
+                const profileBody = document.createElement("div");
+                profileBody.className = "profile-summary";
+                profileBody.append(performanceChart(performance), gameLogTable(performance));
 
-                elements.playerDrawerContent.replaceChildren(head, myGrid, flockSection, expertRanksSection(flockDetail));
+                elements.playerDrawerContent.replaceChildren(head, myGrid, profileBody);
                 elements.playerDrawerBackdrop.hidden = false;
             };
             const getVisibleItems = () => {

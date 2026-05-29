@@ -2105,13 +2105,18 @@
                 return seasons.find((season) => Number(season.year) === Number(state.profileYear)) || null;
             };
 
-            const findSeasonStat = (season, serialIds) => {
+            const findSeasonStat = (season, serialIds, options = {}) => {
                 const ids = Array.isArray(serialIds) ? serialIds : [serialIds];
-                return season?.stats?.find((item) => ids.includes(item.serial_id) && !String(item.description || "").includes("Per Game"));
+                const stats = season?.stats || [];
+                const context = options.perGame ? "regular_per_game" : "regular";
+                return stats.find((item) => ids.includes(item.serial_id) && item.stat_context === context)
+                    || stats.find((item) => ids.includes(item.original_serial_id) && item.stat_context === context)
+                    || stats.find((item) => ids.includes(item.serial_id) && Boolean(item.stat_context?.includes("per_game")) === Boolean(options.perGame))
+                    || stats.find((item) => ids.includes(item.original_serial_id) && Boolean(item.stat_context?.includes("per_game")) === Boolean(options.perGame));
             };
 
-            const seasonStatValue = (yearly, serialIds) => {
-                const stat = findSeasonStat(selectedYearStats(yearly), serialIds);
+            const seasonStatValue = (yearly, serialIds, options = {}) => {
+                const stat = findSeasonStat(selectedYearStats(yearly), serialIds, options);
                 return numericOrNull(stat?.value);
             };
 
@@ -2150,10 +2155,21 @@
                 return index >= 0 ? index + 1 : null;
             };
 
-            const finishValueForPlayer = (player) => positionRankForValue(player, (candidate) => {
-                const detail = state.flockDetails[playerMarketKey(candidate)];
-                return seasonTotalPoints(performanceForPlayer(candidate, detail));
-            }, true);
+            const finishValueForPlayer = (player) => {
+                const detail = state.flockDetails[playerMarketKey(player)];
+                const yearly = yearlyForPlayer(player, detail);
+                const officialFinish = seasonStatValue(yearly, `FantasyPointsRank${player.pos}`);
+                if (officialFinish !== null) {
+                    return officialFinish;
+                }
+                if (!yearly?.data) {
+                    return null;
+                }
+                return positionRankForValue(player, (candidate) => {
+                    const candidateDetail = state.flockDetails[playerMarketKey(candidate)];
+                    return seasonTotalPoints(performanceForPlayer(candidate, candidateDetail));
+                }, true);
+            };
 
             const metricValueForPlayer = (player, globalIndex, metricKey) => {
                 const flockDetail = state.flockDetails[playerMarketKey(player)];
@@ -2178,12 +2194,16 @@
                 if (metricKey === "games") {
                     return seasonGamesValue(yearly);
                 }
-                const value = seasonStatValue(yearly, metric.serialIds);
                 if (metric.perGame) {
+                    const direct = seasonStatValue(yearly, metric.serialIds, { perGame: true });
+                    if (direct !== null) {
+                        return direct;
+                    }
+                    const total = seasonStatValue(yearly, metric.serialIds);
                     const games = seasonGamesValue(yearly);
-                    return value !== null && games ? value / games : null;
+                    return total !== null && games ? total / games : null;
                 }
-                return value;
+                return seasonStatValue(yearly, metric.serialIds);
             };
 
             const sortValue = (entry, posRanks) => {
@@ -2351,7 +2371,7 @@
                 }
                 if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
                     openPlayerDetails(player.id);
-                } else if (!state.selectedPlayerId && state.compareIds.includes(player.id) && !elements.playerDrawerBackdrop.hidden) {
+                } else if (!state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
                     openComparisonDetails();
                 }
             };
@@ -2608,12 +2628,12 @@
                 const playerKey = playerMarketKey(player);
                 const flockRank = state.flockRanks[playerKey];
                 const flockDetail = state.flockDetails[playerKey];
-                const performance = performanceForPlayer(player, flockDetail);
-                const yearly = yearlyForPlayer(player, flockDetail);
                 if (shouldRefresh) {
                     refreshPlayerPerformance(player, flockDetail);
                     refreshYearlyStats(player, flockDetail);
                 }
+                const performance = performanceForPlayer(player, flockDetail);
+                const yearly = yearlyForPlayer(player, flockDetail);
                 return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly };
             };
 
@@ -2633,8 +2653,10 @@
                                 label,
                                 highWins: true,
                                 rankable: true,
+                                requiresYearly: true,
+                                loading: (entry) => entry.yearly?.loading,
                                 value: (entry) => serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId),
-                                display: (entry) => formatStatValue(serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId), suffix),
+                                display: (entry) => entry.yearly?.loading ? "Loading" : formatStatValue(serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId), suffix),
                             });
                         }
                         const perGameLabel = `${label}/G`;
@@ -2644,12 +2666,25 @@
                                 label: perGameLabel,
                                 highWins: true,
                                 rankable: true,
+                                requiresYearly: true,
+                                loading: (entry) => entry.yearly?.loading,
                                 value: (entry) => {
+                                    const direct = seasonStatValue(entry.yearly, serialId, { perGame: true });
+                                    if (direct !== null) {
+                                        return direct;
+                                    }
                                     const total = seasonStatValue(entry.yearly, serialId);
                                     const games = seasonGamesValue(entry.yearly);
                                     return total !== null && games ? total / games : null;
                                 },
                                 display: (entry) => {
+                                    if (entry.yearly?.loading) {
+                                        return "Loading";
+                                    }
+                                    const direct = seasonStatValue(entry.yearly, serialId, { perGame: true });
+                                    if (direct !== null) {
+                                        return `${formatDecimal(direct)}${suffix}`;
+                                    }
                                     const total = seasonStatValue(entry.yearly, serialId);
                                     const games = seasonGamesValue(entry.yearly);
                                     return total !== null && games ? `${formatDecimal(total / games)}${suffix}` : "N/A";
@@ -2661,7 +2696,10 @@
                 return [
                     { label: "My Rank", highWins: false, value: (entry) => entry.myRank, display: (entry) => String(entry.myRank) },
                     { label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
-                    { label: "Finish", highWins: false, rankable: false, value: (entry) => finishValueForPlayer(entry.player), display: (entry) => {
+                    { label: "Finish", highWins: false, rankable: false, requiresYearly: true, loading: (entry) => entry.yearly?.loading, value: (entry) => finishValueForPlayer(entry.player), display: (entry) => {
+                        if (entry.yearly?.loading) {
+                            return "Loading";
+                        }
                         const finish = finishValueForPlayer(entry.player);
                         return finish ? `${entry.player.pos}${finish}` : "N/A";
                     } },
@@ -2678,10 +2716,32 @@
                 if (!metric.rankable || metric.highWins === null) {
                     return null;
                 }
+                if (metric.requiresYearly && positionRankDataPending(entry.player.pos)) {
+                    return null;
+                }
                 return positionRankForValue(entry.player, (candidate) => {
                     const candidateEntry = comparisonEntry(candidate.id, false);
                     return candidateEntry ? metric.value(candidateEntry) : null;
                 }, metric.highWins);
+            };
+
+            const positionRankDataPending = (pos) => orderedPlayers()
+                .filter((player) => player.pos === pos)
+                .some((player) => {
+                    const detail = state.flockDetails[playerMarketKey(player)];
+                    const playerId = performancePlayerId(player, detail);
+                    if (!playerId) {
+                        return false;
+                    }
+                    const yearly = state.playerYearlyStats[formatYearlyKey(playerId)];
+                    return !yearly || yearly.loading;
+                });
+
+            const ensureComparisonRankData = (entries) => {
+                const positions = new Set(entries.map((entry) => entry.player.pos));
+                orderedPlayers()
+                    .filter((player) => positions.has(player.pos))
+                    .forEach((player) => refreshYearlyStats(player, state.flockDetails[playerMarketKey(player)]));
             };
 
             const comparisonPlayerHeader = (entry) => {
@@ -2715,6 +2775,7 @@
                 }
                 state.selectedPlayerId = "";
                 const entries = state.compareIds.map(comparisonEntry).filter(Boolean);
+                ensureComparisonRankData(entries);
                 const title = document.createElement("h2");
                 const subtitle = document.createElement("div");
                 const header = document.createElement("div");

@@ -1073,7 +1073,7 @@
 
         .modal-stat-strip {
             display: grid;
-            grid-template-columns: repeat(5, minmax(80px, 1fr));
+            grid-template-columns: repeat(6, minmax(80px, 1fr));
             gap: 10px;
         }
 
@@ -1293,51 +1293,6 @@
             </div>
         </section>
 
-        <section class="controls" aria-label="Draft board controls">
-            <nav class="filters" aria-label="Position filters">
-                <button class="filter-btn" type="button" data-filter="ALL" aria-pressed="true">ALL</button>
-                <button class="filter-btn" type="button" data-filter="QB" aria-pressed="false">QB</button>
-                <button class="filter-btn" type="button" data-filter="RB" aria-pressed="false">RB</button>
-                <button class="filter-btn" type="button" data-filter="WR" aria-pressed="false">WR</button>
-                <button class="filter-btn" type="button" data-filter="TE" aria-pressed="false">TE</button>
-            </nav>
-            <input class="player-search" id="playerSearch" type="search" placeholder="Search player..." aria-label="Search players" autocomplete="off">
-            <select class="team-select" id="teamFilter" aria-label="Team filter">
-                <option value="ALL">All Teams</option>
-            </select>
-            <button class="reset-btn" type="button" id="resetButton">Reset to ADP Base</button>
-        </section>
-
-        <section class="data-lab" aria-label="Data lab">
-            <div class="lab-row">
-                <label class="lab-field">
-                    <span>Add table metric</span>
-                    <select class="lab-select" id="metricSelect">
-                        <option value="age">Age</option>
-                        <option value="ppg">PPG</option>
-                        <option value="games">Games</option>
-                        <option value="targets">Targets</option>
-                        <option value="rec">Receptions</option>
-                        <option value="recYds">Receiving yards</option>
-                        <option value="snap">Snap %</option>
-                        <option value="yprr">YPRR</option>
-                        <option value="recTd">Receiving TD</option>
-                        <option value="rushYds">Rushing yards</option>
-                        <option value="rushTd">Rushing TD</option>
-                    </select>
-                </label>
-                <button class="lab-btn" type="button" id="metricAdd">Add column</button>
-                <div class="metric-chips" id="metricChips" aria-live="polite"></div>
-                <button class="lab-btn" type="button" id="metricReset">Clear metrics</button>
-                <span class="lab-status" id="labStatus">Add metrics to create sortable stat columns.</span>
-            </div>
-            <div class="compare-panel" id="comparePanel" aria-live="polite">
-                <span>Compare</span>
-                <div class="compare-grid" id="compareGrid"></div>
-                <button class="compare-open" type="button" id="compareOpen" disabled>Open Comparison</button>
-            </div>
-        </section>
-
         <section class="draft-panel" aria-label="Sleeper draft sync">
             <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or ID" aria-label="Sleeper draft URL or ID" autocomplete="off">
             <button class="draft-btn" type="button" id="draftConnectButton">Connect Draft</button>
@@ -1360,6 +1315,60 @@
                 <span class="roster-pill">WR 0</span>
                 <span class="roster-pill">TE 0</span>
             </div>
+        </section>
+
+        <section class="data-lab" aria-label="Data lab">
+            <div class="lab-row">
+                <label class="lab-field">
+                    <span>Add table metric</span>
+                    <select class="lab-select" id="metricSelect">
+                        <option value="age">Age</option>
+                        <option value="finish">Pos finish</option>
+                        <option value="ppg">PPG</option>
+                        <option value="games">Games</option>
+                        <option value="targets">Targets</option>
+                        <option value="targetsPg">Targets/G</option>
+                        <option value="rec">Receptions</option>
+                        <option value="recPg">Rec/G</option>
+                        <option value="recYds">Receiving yards</option>
+                        <option value="recYdsPg">Rec yards/G</option>
+                        <option value="snap">Snap %</option>
+                        <option value="yprr">YPRR</option>
+                        <option value="recTd">Receiving TD</option>
+                        <option value="recTdPg">Rec TD/G</option>
+                        <option value="rushAttPg">Rush att/G</option>
+                        <option value="rushYds">Rushing yards</option>
+                        <option value="rushYdsPg">Rush yards/G</option>
+                        <option value="rushTd">Rushing TD</option>
+                        <option value="rushTdPg">Rush TD/G</option>
+                    </select>
+                </label>
+                <button class="lab-btn" type="button" id="metricAdd">Add column</button>
+                <div class="metric-chips" id="metricChips" aria-live="polite"></div>
+                <button class="lab-btn" type="button" id="metricReset">Clear metrics</button>
+                <span class="lab-status" id="labStatus">Add metrics to create sortable stat columns.</span>
+            </div>
+            <div class="compare-panel" id="comparePanel" aria-live="polite">
+                <span>Compare</span>
+                <div class="compare-grid" id="compareGrid"></div>
+                <button class="compare-open" type="button" id="compareOpen" disabled>Open Comparison</button>
+                <button class="lab-btn" type="button" id="compareClear" disabled>Clear</button>
+            </div>
+        </section>
+
+        <section class="controls" aria-label="Draft board controls">
+            <nav class="filters" aria-label="Position filters">
+                <button class="filter-btn" type="button" data-filter="ALL" aria-pressed="true">ALL</button>
+                <button class="filter-btn" type="button" data-filter="QB" aria-pressed="false">QB</button>
+                <button class="filter-btn" type="button" data-filter="RB" aria-pressed="false">RB</button>
+                <button class="filter-btn" type="button" data-filter="WR" aria-pressed="false">WR</button>
+                <button class="filter-btn" type="button" data-filter="TE" aria-pressed="false">TE</button>
+            </nav>
+            <input class="player-search" id="playerSearch" type="search" placeholder="Search player..." aria-label="Search players" autocomplete="off">
+            <select class="team-select" id="teamFilter" aria-label="Team filter">
+                <option value="ALL">All Teams</option>
+            </select>
+            <button class="reset-btn" type="button" id="resetButton">Reset to ADP Base</button>
         </section>
 
         <section class="table-shell" aria-label="Custom rankings table">
@@ -1487,6 +1496,7 @@
                 comparePanel: document.getElementById("comparePanel"),
                 compareGrid: document.getElementById("compareGrid"),
                 compareOpen: document.getElementById("compareOpen"),
+                compareClear: document.getElementById("compareClear"),
                 tableScroll: document.querySelector(".table-scroll"),
                 playerDrawerBackdrop: document.getElementById("playerDrawerBackdrop"),
                 playerDrawerClose: document.getElementById("playerDrawerClose"),
@@ -1985,7 +1995,16 @@
                 const compareCheckbox = document.createElement("input");
                 compareCheckbox.type = "checkbox";
                 compareCheckbox.checked = compareActive;
+                compareCheckbox.dataset.compareId = player.id;
                 compareCheckbox.setAttribute("aria-label", compareButton.title);
+                compareCheckbox.addEventListener("pointerdown", () => {
+                    state.compareScroll = {
+                        tableLeft: elements.tableScroll.scrollLeft,
+                        tableTop: elements.tableScroll.scrollTop,
+                        windowX: window.scrollX,
+                        windowY: window.scrollY,
+                    };
+                });
                 compareButton.addEventListener("click", (event) => {
                     event.stopPropagation();
                 });
@@ -2057,18 +2076,26 @@
             const normalizeSearch = (value) => String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
 
             const LAB_METRICS = {
-                myRank: { label: "My Rank", direction: "asc", source: "base" },
-                age: { label: "Age", direction: "asc", source: "profile" },
-                ppg: { label: "PPG", direction: "desc", source: "performance" },
-                games: { label: "Games", direction: "desc", source: "yearly" },
-                targets: { label: "Targets", direction: "desc", source: "yearly", serialIds: ["ReceivingTargets", "Targets"] },
-                rec: { label: "Rec", direction: "desc", source: "yearly", serialIds: ["Receptions", "ReceivingReceptions"] },
-                recYds: { label: "Rec Yds", direction: "desc", source: "yearly", serialIds: ["ReceivingYards"] },
-                snap: { label: "Snap %", direction: "desc", source: "yearly", serialIds: ["SnapShare"], suffix: "%" },
-                yprr: { label: "YPRR", direction: "desc", source: "yearly", serialIds: ["YardsPerRouteRun"] },
-                recTd: { label: "Rec TD", direction: "desc", source: "yearly", serialIds: ["ReceivingTouchdowns"] },
-                rushYds: { label: "Rush Yds", direction: "desc", source: "yearly", serialIds: ["RushingYards"] },
-                rushTd: { label: "Rush TD", direction: "desc", source: "yearly", serialIds: ["RushingTouchdowns"] },
+                myRank: { label: "My Rank", direction: "asc", source: "base", highWins: false },
+                age: { label: "Age", direction: "asc", source: "profile", highWins: null },
+                finish: { label: "Finish", direction: "asc", source: "performance", highWins: false },
+                ppg: { label: "PPG", direction: "desc", source: "performance", highWins: true },
+                games: { label: "Games", direction: "desc", source: "yearly", highWins: true },
+                targets: { label: "Targets", direction: "desc", source: "yearly", serialIds: ["ReceivingTargets", "Targets"], highWins: true },
+                targetsPg: { label: "Targets/G", direction: "desc", source: "yearly", serialIds: ["ReceivingTargets", "Targets"], perGame: true, highWins: true },
+                rec: { label: "Rec", direction: "desc", source: "yearly", serialIds: ["Receptions", "ReceivingReceptions"], highWins: true },
+                recPg: { label: "Rec/G", direction: "desc", source: "yearly", serialIds: ["Receptions", "ReceivingReceptions"], perGame: true, highWins: true },
+                recYds: { label: "Rec Yds", direction: "desc", source: "yearly", serialIds: ["ReceivingYards"], highWins: true },
+                recYdsPg: { label: "Rec Yds/G", direction: "desc", source: "yearly", serialIds: ["ReceivingYards"], perGame: true, highWins: true },
+                snap: { label: "Snap %", direction: "desc", source: "yearly", serialIds: ["SnapShare"], suffix: "%", highWins: true },
+                yprr: { label: "YPRR", direction: "desc", source: "yearly", serialIds: ["YardsPerRouteRun"], highWins: true },
+                recTd: { label: "Rec TD", direction: "desc", source: "yearly", serialIds: ["ReceivingTouchdowns"], highWins: true },
+                recTdPg: { label: "Rec TD/G", direction: "desc", source: "yearly", serialIds: ["ReceivingTouchdowns"], perGame: true, highWins: true },
+                rushAttPg: { label: "Rush Att/G", direction: "desc", source: "yearly", serialIds: ["RushingAttempts"], perGame: true, highWins: true },
+                rushYds: { label: "Rush Yds", direction: "desc", source: "yearly", serialIds: ["RushingYards"], highWins: true },
+                rushYdsPg: { label: "Rush Yds/G", direction: "desc", source: "yearly", serialIds: ["RushingYards"], perGame: true, highWins: true },
+                rushTd: { label: "Rush TD", direction: "desc", source: "yearly", serialIds: ["RushingTouchdowns"], highWins: true },
+                rushTdPg: { label: "Rush TD/G", direction: "desc", source: "yearly", serialIds: ["RushingTouchdowns"], perGame: true, highWins: true },
             };
 
             const numericOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
@@ -2100,10 +2127,33 @@
                 return seasonStatValue(yearly, ["Games", "GamesPlayed", "GP"]);
             };
 
+            const seasonTotalPoints = (performance) => {
+                const values = Object.values(performance?.data?.weeklyPointsPerGame || {}).map(Number).filter(Number.isFinite);
+                if (values.length) {
+                    return values.reduce((total, points) => total + points, 0);
+                }
+                return numericOrNull(performance?.data?.totalPoints ?? performance?.data?.points);
+            };
+
             const playerAgeValue = (player, flockDetail, performance) => {
                 const age = decimalAge(performance?.data?.dob || flockDetail?.dob, flockDetail?.age);
                 return age === "N/A" ? null : Number(age);
             };
+
+            const positionRankForValue = (player, valueForPlayer, highWins = true) => {
+                const rows = orderedPlayers()
+                    .filter((candidate) => candidate.pos === player.pos)
+                    .map((candidate) => ({ player: candidate, value: valueForPlayer(candidate) }))
+                    .filter((row) => Number.isFinite(row.value))
+                    .sort((a, b) => highWins ? b.value - a.value : a.value - b.value);
+                const index = rows.findIndex((row) => row.player.id === player.id);
+                return index >= 0 ? index + 1 : null;
+            };
+
+            const finishValueForPlayer = (player) => positionRankForValue(player, (candidate) => {
+                const detail = state.flockDetails[playerMarketKey(candidate)];
+                return seasonTotalPoints(performanceForPlayer(candidate, detail));
+            }, true);
 
             const metricValueForPlayer = (player, globalIndex, metricKey) => {
                 const flockDetail = state.flockDetails[playerMarketKey(player)];
@@ -2119,13 +2169,21 @@
                 if (metricKey === "age") {
                     return playerAgeValue(player, flockDetail, performance);
                 }
+                if (metricKey === "finish") {
+                    return finishValueForPlayer(player);
+                }
                 if (metricKey === "ppg") {
                     return numericOrNull(performance?.data?.pointsPerGame ?? flockDetail?.previousYearPprAverage);
                 }
                 if (metricKey === "games") {
                     return seasonGamesValue(yearly);
                 }
-                return seasonStatValue(yearly, metric.serialIds);
+                const value = seasonStatValue(yearly, metric.serialIds);
+                if (metric.perGame) {
+                    const games = seasonGamesValue(yearly);
+                    return value !== null && games ? value / games : null;
+                }
+                return value;
             };
 
             const sortValue = (entry, posRanks) => {
@@ -2474,10 +2532,12 @@
                 strip.className = "modal-stat-strip";
                 const perf = performance?.data;
                 const ppg = perf?.pointsPerGame ?? flockDetail?.previousYearPprAverage;
+                const finish = finishValueForPlayer(player);
                 const delta = Number(perf?.ownership?.underdogAdpDelta7d ?? flockDetail?.rankDelta);
                 const deltaLabel = Number.isFinite(delta) ? `${delta > 0 ? "+" : ""}${formatDecimal(delta)}` : "N/A";
                 strip.append(
                     detailCard("My Rank", String(myRank)),
+                    detailCard("Finish", finish ? `${player.pos}${finish}` : "N/A"),
                     detailCard("PPG", formatDecimal(ppg)),
                     detailCard("Age", decimalAge(perf?.dob || flockDetail?.dob, flockDetail?.age)),
                     detailCard("Pos", player.pos),
@@ -2537,7 +2597,7 @@
                 elements.playerDrawerContent.replaceChildren();
             };
 
-            const comparisonEntry = (playerId) => {
+            const comparisonEntry = (playerId, shouldRefresh = true) => {
                 const context = playerContext(playerId);
                 if (!context) {
                     return null;
@@ -2550,8 +2610,10 @@
                 const flockDetail = state.flockDetails[playerKey];
                 const performance = performanceForPlayer(player, flockDetail);
                 const yearly = yearlyForPlayer(player, flockDetail);
-                refreshPlayerPerformance(player, flockDetail);
-                refreshYearlyStats(player, flockDetail);
+                if (shouldRefresh) {
+                    refreshPlayerPerformance(player, flockDetail);
+                    refreshYearlyStats(player, flockDetail);
+                }
                 return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly };
             };
 
@@ -2570,8 +2632,28 @@
                             positionStats.push({
                                 label,
                                 highWins: true,
+                                rankable: true,
                                 value: (entry) => serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId),
                                 display: (entry) => formatStatValue(serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId), suffix),
+                            });
+                        }
+                        const perGameLabel = `${label}/G`;
+                        if (label !== "Games" && suffix !== "%" && !seen.has(perGameLabel)) {
+                            seen.add(perGameLabel);
+                            positionStats.push({
+                                label: perGameLabel,
+                                highWins: true,
+                                rankable: true,
+                                value: (entry) => {
+                                    const total = seasonStatValue(entry.yearly, serialId);
+                                    const games = seasonGamesValue(entry.yearly);
+                                    return total !== null && games ? total / games : null;
+                                },
+                                display: (entry) => {
+                                    const total = seasonStatValue(entry.yearly, serialId);
+                                    const games = seasonGamesValue(entry.yearly);
+                                    return total !== null && games ? `${formatDecimal(total / games)}${suffix}` : "N/A";
+                                },
                             });
                         }
                     });
@@ -2579,13 +2661,27 @@
                 return [
                     { label: "My Rank", highWins: false, value: (entry) => entry.myRank, display: (entry) => String(entry.myRank) },
                     { label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
+                    { label: "Finish", highWins: false, rankable: false, value: (entry) => finishValueForPlayer(entry.player), display: (entry) => {
+                        const finish = finishValueForPlayer(entry.player);
+                        return finish ? `${entry.player.pos}${finish}` : "N/A";
+                    } },
                     { label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
                     { label: "Sleeper ADP", highWins: false, value: (entry) => entry.player.sleeperAdp === 999 ? null : entry.player.sleeperAdp, display: (entry) => formatAdp(entry.player.sleeperAdp, entry.player.sleeperPick) },
                     { label: "Flock Rank", highWins: false, value: (entry) => Number.isFinite(entry.flockRank) ? entry.flockRank : null, display: (entry) => formatMarketRank(entry.flockRank) },
-                    { label: "PPG", highWins: true, value: (entry) => numericOrNull(entry.performance?.data?.pointsPerGame ?? entry.flockDetail?.previousYearPprAverage), display: (entry) => formatDecimal(entry.performance?.data?.pointsPerGame ?? entry.flockDetail?.previousYearPprAverage) },
+                    { label: "PPG", highWins: true, rankable: true, value: (entry) => numericOrNull(entry.performance?.data?.pointsPerGame ?? entry.flockDetail?.previousYearPprAverage), display: (entry) => formatDecimal(entry.performance?.data?.pointsPerGame ?? entry.flockDetail?.previousYearPprAverage) },
                     { label: "Age", highWins: null, value: (entry) => playerAgeValue(entry.player, entry.flockDetail, entry.performance), display: (entry) => decimalAge(entry.performance?.data?.dob || entry.flockDetail?.dob, entry.flockDetail?.age) },
                     ...positionStats,
                 ];
+            };
+
+            const comparisonPositionRank = (entry, metric) => {
+                if (!metric.rankable || metric.highWins === null) {
+                    return null;
+                }
+                return positionRankForValue(entry.player, (candidate) => {
+                    const candidateEntry = comparisonEntry(candidate.id, false);
+                    return candidateEntry ? metric.value(candidateEntry) : null;
+                }, metric.highWins);
             };
 
             const comparisonPlayerHeader = (entry) => {
@@ -2605,7 +2701,8 @@
                 const cell = document.createElement("div");
                 const value = metric.value(entry);
                 cell.className = "comparison-cell";
-                cell.textContent = metric.display(entry);
+                const rank = comparisonPositionRank(entry, metric);
+                cell.textContent = `${metric.display(entry)}${rank ? ` (${rank})` : ""}`;
                 if (metric.highWins !== null && Number.isFinite(value) && value === winnerValue) {
                     cell.classList.add("winner");
                 }
@@ -2622,7 +2719,7 @@
                 const subtitle = document.createElement("div");
                 const header = document.createElement("div");
                 const table = document.createElement("div");
-                const template = `minmax(116px, 0.72fr) repeat(${entries.length}, minmax(190px, 1fr))`;
+                const template = `92px repeat(${entries.length}, minmax(190px, 1fr))`;
                 title.id = "playerDrawerTitle";
                 title.textContent = "Player Comparison";
                 subtitle.className = "drawer-subtitle";
@@ -2799,6 +2896,9 @@
                 if (value === null) {
                     return "N/A";
                 }
+                if (metricKey === "finish") {
+                    return `${player.pos}${value}`;
+                }
                 return `${formatDecimal(value)}${metric?.suffix || ""}`;
             };
 
@@ -2909,14 +3009,38 @@
                 } else {
                     state.compareIds = state.compareIds.concat(id).slice(-4);
                 }
-                render();
+                updateCompareButtons();
+                renderComparePanel();
+                if (state.compareScroll) {
+                    const restoreScroll = state.compareScroll;
+                    requestAnimationFrame(() => {
+                        elements.tableScroll.scrollLeft = restoreScroll.tableLeft;
+                        elements.tableScroll.scrollTop = restoreScroll.tableTop;
+                        window.scrollTo(restoreScroll.windowX, restoreScroll.windowY);
+                        state.compareScroll = null;
+                    });
+                }
                 loadDataLabStats();
+            };
+
+            const updateCompareButtons = () => {
+                document.querySelectorAll(".compare-btn").forEach((label) => {
+                    const input = label.querySelector("input");
+                    const checked = state.compareIds.includes(input?.dataset.compareId || "");
+                    label.classList.toggle("active", checked);
+                    if (input) {
+                        input.checked = checked;
+                        input.setAttribute("aria-label", checked ? "Remove from comparison" : "Add to comparison");
+                    }
+                    label.title = checked ? "Remove from comparison" : "Add to comparison";
+                });
             };
 
             const renderComparePanel = () => {
                 const byId = playersById();
                 elements.compareGrid.replaceChildren();
                 elements.compareOpen.disabled = state.compareIds.length < 2;
+                elements.compareClear.disabled = state.compareIds.length === 0;
                 if (state.compareIds.length === 0) {
                     const card = document.createElement("div");
                     card.className = "compare-card";
@@ -3437,6 +3561,12 @@
                 });
 
                 elements.compareOpen.addEventListener("click", openComparisonDetails);
+
+                elements.compareClear.addEventListener("click", () => {
+                    state.compareIds = [];
+                    updateCompareButtons();
+                    renderComparePanel();
+                });
 
                 elements.playerSearch.addEventListener("input", () => {
                     state.searchQuery = elements.playerSearch.value;

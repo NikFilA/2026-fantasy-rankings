@@ -344,6 +344,38 @@
             white-space: nowrap;
         }
 
+        .sort-btn {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+            min-height: 30px;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            font-size: inherit;
+            font-weight: inherit;
+            letter-spacing: inherit;
+            padding: 0;
+            text-transform: inherit;
+        }
+
+        .sort-btn::after {
+            content: "sort";
+            color: var(--subtle);
+            font-size: 11px;
+        }
+
+        .sort-btn[data-direction="asc"]::after {
+            content: "^";
+            color: var(--accent);
+        }
+
+        .sort-btn[data-direction="desc"]::after {
+            content: "v";
+            color: var(--accent);
+        }
+
         td {
             height: 52px;
             border-bottom: 1px solid var(--line-soft);
@@ -557,6 +589,100 @@
             text-align: center;
         }
 
+        .drawer-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            display: grid;
+            justify-items: end;
+            background: rgba(0, 0, 0, 0.46);
+        }
+
+        .drawer-backdrop[hidden] {
+            display: none;
+        }
+
+        .player-drawer {
+            width: min(420px, 100%);
+            height: 100%;
+            overflow: auto;
+            border-left: 1px solid var(--line);
+            background: #111416;
+            box-shadow: -24px 0 60px rgba(0, 0, 0, 0.38);
+            padding: 22px;
+        }
+
+        .drawer-close {
+            float: right;
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #161b20;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+        }
+
+        .drawer-head {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            margin: 18px 0 22px;
+        }
+
+        .drawer-head .player-photo,
+        .drawer-head .player-initials {
+            width: 58px;
+            height: 58px;
+        }
+
+        .drawer-head h2 {
+            margin: 0;
+            font-size: 24px;
+            line-height: 1.05;
+        }
+
+        .drawer-subtitle {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .detail-card {
+            min-height: 74px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(23, 27, 31, 0.82);
+            padding: 12px;
+        }
+
+        .detail-card span {
+            display: block;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .detail-card strong {
+            display: block;
+            margin-top: 8px;
+            font-size: 22px;
+            line-height: 1;
+        }
+
         @media (max-width: 860px) {
             .app {
                 width: min(100% - 20px, 1380px);
@@ -656,17 +782,17 @@
                     <thead>
                         <tr>
                             <th class="drag-cell" scope="col">Move</th>
-                            <th scope="col">My Rank</th>
-                            <th scope="col">Player</th>
-                            <th scope="col">Pos</th>
-                            <th scope="col">Team</th>
-                            <th scope="col">My Pos Rank</th>
-                            <th scope="col">Underdog ADP</th>
-                            <th scope="col">UD Var</th>
-                            <th scope="col">Sleeper ADP</th>
-                            <th scope="col">Sleeper Var</th>
-                            <th scope="col">Flock Rank</th>
-                            <th scope="col">Flock Var</th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="myRank">My Rank</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="name">Player</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="pos">Pos</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="team">Team</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="posRank">My Pos Rank</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="udAdp">Underdog ADP</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="udVar">UD Var</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="sleeperAdp">Sleeper ADP</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="sleeperVar">Sleeper Var</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="flockRank">Flock Rank</button></th>
+                            <th scope="col"><button class="sort-btn" type="button" data-sort="flockVar">Flock Var</button></th>
                         </tr>
                     </thead>
                     <tbody id="rankingsBody"></tbody>
@@ -675,6 +801,13 @@
             </div>
         </section>
     </main>
+
+    <div class="drawer-backdrop" id="playerDrawerBackdrop" hidden>
+        <aside class="player-drawer" role="dialog" aria-modal="true" aria-labelledby="playerDrawerTitle">
+            <button class="drawer-close" type="button" id="playerDrawerClose" aria-label="Close player details">x</button>
+            <div id="playerDrawerContent"></div>
+        </aside>
+    </div>
 
     <script>
         (() => {
@@ -708,6 +841,8 @@
                 activeTeam: "ALL",
                 searchQuery: "",
                 availableOnly: false,
+                sort: { key: "", direction: "" },
+                selectedPlayerId: "",
                 draggedItemId: null,
                 draft: {
                     id: "",
@@ -742,6 +877,10 @@
                 draftBest: document.getElementById("draftBest"),
                 draftStatus: document.getElementById("draftStatus"),
                 rosterTracker: document.getElementById("rosterTracker"),
+                sortButtons: Array.from(document.querySelectorAll(".sort-btn")),
+                playerDrawerBackdrop: document.getElementById("playerDrawerBackdrop"),
+                playerDrawerClose: document.getElementById("playerDrawerClose"),
+                playerDrawerContent: document.getElementById("playerDrawerContent"),
             };
             let draftTimer = null;
 
@@ -991,10 +1130,16 @@
             };
 
             const resetPlayers = () => {
+                const confirmed = window.confirm("Reset your board to ADP base? This will replace your saved custom order and tiers.");
+                if (!confirmed) {
+                    return;
+                }
                 localStorage.removeItem(STORAGE_KEY);
                 state.items = buildDefaultItems(basePlayers());
+                state.sort = { key: "", direction: "" };
                 elements.saveState.textContent = "Base";
                 populateTeamFilter();
+                savePlayers();
                 render();
             };
 
@@ -1081,10 +1226,14 @@
             };
 
             const attachDragEvents = (row, itemId) => {
-                row.draggable = true;
+                row.draggable = !state.sort.key;
                 row.dataset.itemId = itemId;
 
                 row.addEventListener("dragstart", (event) => {
+                    if (state.sort.key) {
+                        event.preventDefault();
+                        return;
+                    }
                     state.draggedItemId = itemId;
                     row.classList.add("dragging");
                     event.dataTransfer.effectAllowed = "move";
@@ -1154,6 +1303,7 @@
             const createPlayerRow = (item, player, globalIndex, posRanks, tierLabel) => {
                 const row = document.createElement("tr");
                 row.dataset.id = player.id;
+                row.tabIndex = 0;
                 attachDragEvents(row, item.id);
                 const myRank = globalIndex + 1;
                 const underdogVariance = formatVariance(player.udAdp, myRank);
@@ -1217,6 +1367,18 @@
                     createCell(`variance num ${flockVariance.className}`, flockVariance.label),
                 );
 
+                row.addEventListener("click", (event) => {
+                    if (event.target.closest(".handle")) {
+                        return;
+                    }
+                    openPlayerDetails(player.id);
+                });
+                row.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter") {
+                        openPlayerDetails(player.id);
+                    }
+                });
+
                 return row;
             };
 
@@ -1252,10 +1414,164 @@
 
             const normalizeSearch = (value) => String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
 
+            const sortValue = (entry, posRanks) => {
+                if (!entry.player) {
+                    return { value: "", missing: true };
+                }
+                const player = entry.player;
+                const myRank = entry.globalIndex + 1;
+                const flockRank = state.flockRanks[playerMarketKey(player)];
+                const values = {
+                    myRank,
+                    name: player.name.toLowerCase(),
+                    pos: player.pos,
+                    team: player.team,
+                    posRank: Number(String(posRanks[player.id] || "").replace(/[^0-9]/g, "")),
+                    udAdp: player.udAdp,
+                    udVar: player.udAdp === 999 ? Number.POSITIVE_INFINITY : player.udAdp - myRank,
+                    sleeperAdp: player.sleeperAdp,
+                    sleeperVar: player.sleeperAdp === 999 ? Number.POSITIVE_INFINITY : player.sleeperAdp - myRank,
+                    flockRank: Number.isFinite(flockRank) ? flockRank : Number.POSITIVE_INFINITY,
+                    flockVar: Number.isFinite(flockRank) ? flockRank - myRank : Number.POSITIVE_INFINITY,
+                };
+                const value = values[state.sort.key];
+                const missing = value === Number.POSITIVE_INFINITY || value === undefined || Number.isNaN(value);
+                return { value, missing };
+            };
+
+            const sortedVisibleItems = (visibleItems, posRanks) => {
+                if (!state.sort.key) {
+                    return visibleItems;
+                }
+                const direction = state.sort.direction === "desc" ? -1 : 1;
+                return visibleItems
+                    .filter(({ player }) => player)
+                    .slice()
+                    .sort((a, b) => {
+                        const left = sortValue(a, posRanks);
+                        const right = sortValue(b, posRanks);
+                        if (left.missing !== right.missing) {
+                            return left.missing ? 1 : -1;
+                        }
+                        if (typeof left.value === "string" || typeof right.value === "string") {
+                            const compared = String(left.value).localeCompare(String(right.value));
+                            return compared === 0 ? a.globalIndex - b.globalIndex : compared * direction;
+                        }
+                        if (left.value === right.value) {
+                            return a.globalIndex - b.globalIndex;
+                        }
+                        return left.value > right.value ? direction : -direction;
+                    });
+            };
+
+            const updateSortButtons = () => {
+                elements.sortButtons.forEach((button) => {
+                    const direction = button.dataset.sort === state.sort.key ? state.sort.direction : "";
+                    button.dataset.direction = direction;
+                    button.setAttribute("aria-sort", direction || "none");
+                });
+            };
+
+            const cycleSort = (key) => {
+                if (state.sort.key !== key) {
+                    state.sort = { key, direction: "asc" };
+                } else if (state.sort.direction === "asc") {
+                    state.sort = { key, direction: "desc" };
+                } else {
+                    state.sort = { key: "", direction: "" };
+                }
+                render();
+            };
+
+            const playerContext = (playerId) => {
+                const byId = playersById();
+                let playerIndex = 0;
+                let currentTierLabel = "";
+                for (const item of state.items) {
+                    if (item.type === "tier") {
+                        currentTierLabel = item.label;
+                        continue;
+                    }
+                    const player = byId.get(item.playerId);
+                    if (!player) {
+                        continue;
+                    }
+                    const globalIndex = playerIndex;
+                    playerIndex += 1;
+                    if (player.id === String(playerId)) {
+                        return { item, player, globalIndex, tierLabel: currentTierLabel };
+                    }
+                }
+                return null;
+            };
+
+            const detailCard = (label, value, className = "") => {
+                const card = document.createElement("div");
+                card.className = "detail-card";
+                const labelNode = document.createElement("span");
+                const valueNode = document.createElement("strong");
+                labelNode.textContent = label;
+                valueNode.textContent = value;
+                if (className) {
+                    valueNode.className = className;
+                }
+                card.append(labelNode, valueNode);
+                return card;
+            };
+
+            const closePlayerDetails = () => {
+                state.selectedPlayerId = "";
+                elements.playerDrawerBackdrop.hidden = true;
+                elements.playerDrawerContent.replaceChildren();
+            };
+
+            const openPlayerDetails = (playerId) => {
+                const context = playerContext(playerId);
+                if (!context) {
+                    return;
+                }
+                state.selectedPlayerId = String(playerId);
+                const { player, globalIndex, tierLabel } = context;
+                const myRank = globalIndex + 1;
+                const posRanks = getPositionRanks();
+                const flockRank = state.flockRanks[playerMarketKey(player)];
+                const underdogVariance = formatVariance(player.udAdp, myRank);
+                const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
+                const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
+                const isDrafted = state.draft.draftedKeys.has(playerMarketKey(player));
+
+                const head = document.createElement("div");
+                head.className = "drawer-head";
+                const titleWrap = document.createElement("div");
+                const title = document.createElement("h2");
+                title.id = "playerDrawerTitle";
+                title.textContent = player.name;
+                const subtitle = document.createElement("div");
+                subtitle.className = "drawer-subtitle";
+                subtitle.textContent = `${tierLabel || "No tier"} / ${player.pos} / ${player.team}${isDrafted ? " / Drafted" : ""}`;
+                titleWrap.append(title, subtitle);
+                head.append(playerImage(player), titleWrap);
+
+                const grid = document.createElement("div");
+                grid.className = "detail-grid";
+                grid.append(
+                    detailCard("My Rank", String(myRank)),
+                    detailCard("My Pos Rank", posRanks[player.id] || "N/A"),
+                    detailCard("Underdog ADP", formatAdp(player.udAdp, player.udPick)),
+                    detailCard("UD Var", underdogVariance.label, underdogVariance.className),
+                    detailCard("Sleeper ADP", formatAdp(player.sleeperAdp, player.sleeperPick)),
+                    detailCard("Sleeper Var", sleeperVariance.label, sleeperVariance.className),
+                    detailCard("Flock Rank", formatMarketRank(flockRank)),
+                    detailCard("Flock Var", flockVariance.label, flockVariance.className)
+                );
+
+                elements.playerDrawerContent.replaceChildren(head, grid);
+                elements.playerDrawerBackdrop.hidden = false;
+            };
             const getVisibleItems = () => {
                 const byId = playersById();
                 const searchQuery = normalizeSearch(state.searchQuery);
-                const showTierRows = state.selectedPositions.size === 0 && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly;
+                const showTierRows = state.selectedPositions.size === 0 && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly && !state.sort.key;
                 let playerIndex = 0;
                 let currentTierLabel = "";
 
@@ -1315,11 +1631,12 @@
                 updateDraftStatus();
                 const visibleItems = getVisibleItems();
                 const posRanks = getPositionRanks();
+                const displayItems = sortedVisibleItems(visibleItems, posRanks);
                 const fragment = document.createDocumentFragment();
                 const visiblePlayerCount = visibleItems.filter(({ player }) => player).length;
 
                 elements.body.replaceChildren();
-                visibleItems.forEach(({ item, player, globalIndex, tierLabel }) => {
+                displayItems.forEach(({ item, player, globalIndex, tierLabel }) => {
                     if (item.type === "tier") {
                         fragment.appendChild(createTierRow(item));
                     } else {
@@ -1337,6 +1654,7 @@
                     button.setAttribute("aria-pressed", String(pressed));
                 });
                 elements.teamFilter.value = state.activeTeam;
+                updateSortButtons();
             };
 
             const normalizeFlockRankings = (payload) => {
@@ -1646,6 +1964,12 @@
                     render();
                 });
 
+                elements.sortButtons.forEach((button) => {
+                    button.addEventListener("click", () => {
+                        cycleSort(button.dataset.sort);
+                    });
+                });
+
                 elements.playerSearch.addEventListener("input", () => {
                     state.searchQuery = elements.playerSearch.value;
                     render();
@@ -1677,6 +2001,18 @@
                 });
 
                 elements.draftStop.addEventListener("click", stopDraftSync);
+
+                elements.playerDrawerClose.addEventListener("click", closePlayerDetails);
+                elements.playerDrawerBackdrop.addEventListener("click", (event) => {
+                    if (event.target === elements.playerDrawerBackdrop) {
+                        closePlayerDetails();
+                    }
+                });
+                document.addEventListener("keydown", (event) => {
+                    if (event.key === "Escape" && !elements.playerDrawerBackdrop.hidden) {
+                        closePlayerDetails();
+                    }
+                });
 
                 window.addEventListener("focus", () => {
                     if (state.draft.active) {

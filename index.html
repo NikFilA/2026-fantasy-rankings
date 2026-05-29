@@ -1454,6 +1454,11 @@
                 return cell;
             };
 
+            const closestElement = (target, selector) => {
+                const element = target instanceof Element ? target : target?.parentElement;
+                return element ? element.closest(selector) : null;
+            };
+
             const attachDragEvents = (row, itemId) => {
                 row.draggable = !state.sort.key;
                 row.dataset.itemId = itemId;
@@ -1597,7 +1602,7 @@
                 );
 
                 row.addEventListener("click", (event) => {
-                    if (event.target.closest(".handle")) {
+                    if (closestElement(event.target, ".handle")) {
                         return;
                     }
                     openPlayerDetails(player.id);
@@ -2041,11 +2046,12 @@
             };
 
             const openPlayerDetails = (playerId) => {
-                const context = playerContext(playerId);
-                if (!context) {
-                    return;
-                }
-                state.selectedPlayerId = String(playerId);
+                try {
+                    const context = playerContext(playerId);
+                    if (!context) {
+                        return;
+                    }
+                    state.selectedPlayerId = String(playerId);
                 const { player, globalIndex, tierLabel } = context;
                 const myRank = globalIndex + 1;
                 const posRanks = getPositionRanks();
@@ -2090,15 +2096,18 @@
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
                 );
 
-                elements.playerDrawerContent.replaceChildren(
-                    profileNavButton("<", player.id, -1),
-                    profileNavButton(">", player.id, 1),
-                    head,
-                    myGrid,
-                    positionStatsGrid(player, yearly),
-                    performanceChart(performance)
-                );
-                elements.playerDrawerBackdrop.hidden = false;
+                    elements.playerDrawerContent.replaceChildren(
+                        profileNavButton("<", player.id, -1),
+                        profileNavButton(">", player.id, 1),
+                        head,
+                        myGrid,
+                        positionStatsGrid(player, yearly),
+                        performanceChart(performance)
+                    );
+                    elements.playerDrawerBackdrop.hidden = false;
+                } catch (error) {
+                    console.warn("Player details could not be opened.", error);
+                }
             };
             const getVisibleItems = () => {
                 const byId = playersById();
@@ -2501,6 +2510,26 @@
                 elements.teamFilter.addEventListener("change", () => {
                     state.activeTeam = elements.teamFilter.value;
                     render();
+                });
+
+                elements.body.addEventListener("click", (event) => {
+                    if (closestElement(event.target, ".handle")) {
+                        return;
+                    }
+                    const row = closestElement(event.target, "tr[data-id]");
+                    if (row) {
+                        openPlayerDetails(row.dataset.id);
+                    }
+                });
+
+                elements.body.addEventListener("keydown", (event) => {
+                    if (event.key !== "Enter") {
+                        return;
+                    }
+                    const row = closestElement(event.target, "tr[data-id]");
+                    if (row) {
+                        openPlayerDetails(row.dataset.id);
+                    }
                 });
 
                 elements.sortButtons.forEach((button) => {

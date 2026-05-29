@@ -137,7 +137,11 @@
         .filter-btn,
         .player-search,
         .team-select,
-        .reset-btn {
+        .reset-btn,
+        .lab-select,
+        .lab-input,
+        .lab-btn,
+        .compare-btn {
             min-height: 38px;
             border: 1px solid var(--line);
             border-radius: 8px;
@@ -152,7 +156,9 @@
         }
 
         .player-search,
-        .team-select {
+        .team-select,
+        .lab-select,
+        .lab-input {
             width: 100%;
             padding: 0 12px;
             color: var(--text);
@@ -187,9 +193,120 @@
 
         .filter-btn:hover,
         .reset-btn:hover,
-        .draft-btn:hover {
+        .draft-btn:hover,
+        .lab-btn:hover,
+        .compare-btn:hover {
             border-color: var(--accent);
             transform: translateY(-1px);
+        }
+
+        .data-lab {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(23, 27, 31, 0.82);
+            padding: 12px;
+        }
+
+        .lab-row {
+            display: grid;
+            grid-template-columns: minmax(170px, 1fr) minmax(130px, 170px) repeat(2, minmax(110px, 140px)) auto auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .lab-field {
+            display: grid;
+            gap: 5px;
+        }
+
+        .lab-field span,
+        .compare-panel > span {
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .lab-select,
+        .lab-input,
+        .lab-btn {
+            font-size: 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .lab-btn[aria-pressed="true"] {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .lab-status {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .compare-panel {
+            display: grid;
+            gap: 8px;
+        }
+
+        .compare-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 8px;
+        }
+
+        .compare-card {
+            border: 1px solid var(--line-soft);
+            border-radius: 8px;
+            background: rgba(17, 20, 22, 0.68);
+            padding: 10px;
+        }
+
+        .compare-card strong {
+            display: block;
+            font-size: 17px;
+            line-height: 1.2;
+        }
+
+        .compare-card span {
+            display: block;
+            margin-top: 5px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .compare-stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 6px;
+            margin-top: 9px;
+        }
+
+        .compare-stat {
+            border: 1px solid var(--line-soft);
+            border-radius: 8px;
+            padding: 7px;
+        }
+
+        .compare-stat span {
+            margin: 0;
+            font-size: 9px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .compare-stat b {
+            display: block;
+            margin-top: 4px;
+            font-size: 15px;
         }
 
         .draft-panel {
@@ -513,6 +630,7 @@
         }
 
         .player-text {
+            flex: 1 1 auto;
             min-width: 0;
         }
 
@@ -619,9 +737,8 @@
 
         .player-drawer {
             position: relative;
-            width: min(1320px, 100%);
-            max-height: min(94vh, 940px);
-            overflow: auto;
+            width: min(1320px, calc(100% - 116px));
+            overflow: visible;
             border: 1px solid var(--line);
             border-radius: 8px;
             background: #111416;
@@ -781,6 +898,12 @@
             background: var(--red);
         }
 
+        .bar-fill.inactive {
+            min-height: 3px;
+            background: #4b5563;
+            opacity: 0.62;
+        }
+
         .modal-stat-strip {
             display: grid;
             grid-template-columns: repeat(5, minmax(80px, 1fr));
@@ -825,11 +948,11 @@
         }
 
         .profile-nav.prev {
-            left: 14px;
+            left: -56px;
         }
 
         .profile-nav.next {
-            right: 14px;
+            right: -56px;
         }
 
         .stat-grid {
@@ -905,6 +1028,19 @@
             color: var(--orange);
         }
 
+        .compare-btn {
+            width: 34px;
+            min-height: 30px;
+            padding: 0;
+            color: var(--text);
+            line-height: 1;
+        }
+
+        .compare-btn.active {
+            border-color: var(--accent);
+            background: rgba(56, 189, 248, 0.15);
+        }
+
         @media (max-width: 860px) {
             .app {
                 width: min(100% - 20px, 1380px);
@@ -914,6 +1050,7 @@
             .topbar,
             .controls,
             .draft-panel,
+            .lab-row,
             .profile-summary,
             .drawer-head,
             .modal-stat-strip {
@@ -944,6 +1081,11 @@
 
             .profile-nav.next {
                 right: 8px;
+            }
+
+            .player-drawer {
+                width: min(100%, 1320px);
+                overflow: auto;
             }
 
             .player-meta {
@@ -988,6 +1130,50 @@
                 <option value="ALL">All Teams</option>
             </select>
             <button class="reset-btn" type="button" id="resetButton">Reset to ADP Base</button>
+        </section>
+
+        <section class="data-lab" aria-label="Data lab">
+            <div class="lab-row">
+                <label class="lab-field">
+                    <span>Sort metric</span>
+                    <select class="lab-select" id="labMetric">
+                        <option value="">Board order</option>
+                        <option value="myRank">My rank</option>
+                        <option value="age">Age</option>
+                        <option value="ppg">PPG</option>
+                        <option value="games">Games</option>
+                        <option value="targets">Targets</option>
+                        <option value="rec">Receptions</option>
+                        <option value="recYds">Receiving yards</option>
+                        <option value="snap">Snap %</option>
+                        <option value="yprr">YPRR</option>
+                        <option value="recTd">Receiving TD</option>
+                        <option value="rushYds">Rushing yards</option>
+                        <option value="rushTd">Rushing TD</option>
+                    </select>
+                </label>
+                <label class="lab-field">
+                    <span>Direction</span>
+                    <select class="lab-select" id="labDirection">
+                        <option value="desc">High to low</option>
+                        <option value="asc">Low to high</option>
+                    </select>
+                </label>
+                <label class="lab-field">
+                    <span>Min age</span>
+                    <input class="lab-input" id="labMinAge" type="number" min="18" max="50" step="0.1" placeholder="Any">
+                </label>
+                <label class="lab-field">
+                    <span>Max age</span>
+                    <input class="lab-input" id="labMaxAge" type="number" min="18" max="50" step="0.1" placeholder="Any">
+                </label>
+                <button class="lab-btn" type="button" id="labReset">Reset lab</button>
+                <span class="lab-status" id="labStatus">Choose a metric to sort the board.</span>
+            </div>
+            <div class="compare-panel" id="comparePanel" aria-live="polite">
+                <span>Compare</span>
+                <div class="compare-grid" id="compareGrid"></div>
+            </div>
         </section>
 
         <section class="draft-panel" aria-label="Sleeper draft sync">
@@ -1090,6 +1276,14 @@
                 sort: { key: "", direction: "" },
                 selectedPlayerId: "",
                 draggedItemId: null,
+                lab: {
+                    metric: "",
+                    direction: "desc",
+                    minAge: "",
+                    maxAge: "",
+                    loading: false,
+                },
+                compareIds: [],
                 draft: {
                     id: "",
                     active: false,
@@ -1124,6 +1318,14 @@
                 draftStatus: document.getElementById("draftStatus"),
                 rosterTracker: document.getElementById("rosterTracker"),
                 sortButtons: Array.from(document.querySelectorAll(".sort-btn")),
+                labMetric: document.getElementById("labMetric"),
+                labDirection: document.getElementById("labDirection"),
+                labMinAge: document.getElementById("labMinAge"),
+                labMaxAge: document.getElementById("labMaxAge"),
+                labReset: document.getElementById("labReset"),
+                labStatus: document.getElementById("labStatus"),
+                comparePanel: document.getElementById("comparePanel"),
+                compareGrid: document.getElementById("compareGrid"),
                 tableScroll: document.querySelector(".table-scroll"),
                 playerDrawerBackdrop: document.getElementById("playerDrawerBackdrop"),
                 playerDrawerClose: document.getElementById("playerDrawerClose"),
@@ -1615,7 +1817,18 @@
                 playerMeta.className = "player-meta";
                 playerMeta.textContent = `${player.pos} / ${player.team}`;
                 playerText.append(playerName, playerMeta);
-                playerCell.append(playerMedia, playerText);
+                const compareButton = document.createElement("button");
+                const compareActive = state.compareIds.includes(player.id);
+                compareButton.className = `compare-btn${compareActive ? " active" : ""}`;
+                compareButton.type = "button";
+                compareButton.textContent = compareActive ? "-" : "+";
+                compareButton.title = compareActive ? "Remove from comparison" : "Add to comparison";
+                compareButton.setAttribute("aria-label", compareButton.title);
+                compareButton.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    toggleComparePlayer(player.id);
+                });
+                playerCell.append(playerMedia, playerText, compareButton);
 
                 row.append(
                     createCell("drag-cell", handle),
@@ -1678,6 +1891,78 @@
 
             const normalizeSearch = (value) => String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
 
+            const LAB_METRICS = {
+                myRank: { label: "My Rank", direction: "asc", source: "base" },
+                age: { label: "Age", direction: "asc", source: "profile" },
+                ppg: { label: "PPG", direction: "desc", source: "performance" },
+                games: { label: "Games", direction: "desc", source: "yearly" },
+                targets: { label: "Targets", direction: "desc", source: "yearly", serialIds: ["ReceivingTargets", "Targets"] },
+                rec: { label: "Rec", direction: "desc", source: "yearly", serialIds: ["Receptions", "ReceivingReceptions"] },
+                recYds: { label: "Rec Yds", direction: "desc", source: "yearly", serialIds: ["ReceivingYards"] },
+                snap: { label: "Snap %", direction: "desc", source: "yearly", serialIds: ["SnapShare"], suffix: "%" },
+                yprr: { label: "YPRR", direction: "desc", source: "yearly", serialIds: ["YardsPerRouteRun"] },
+                recTd: { label: "Rec TD", direction: "desc", source: "yearly", serialIds: ["ReceivingTouchdowns"] },
+                rushYds: { label: "Rush Yds", direction: "desc", source: "yearly", serialIds: ["RushingYards"] },
+                rushTd: { label: "Rush TD", direction: "desc", source: "yearly", serialIds: ["RushingTouchdowns"] },
+            };
+
+            const numericOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+
+            const selectedYearStats = (yearly) => {
+                const seasons = yearly?.data?.allYearlyStats || [];
+                return seasons.find((season) => Number(season.year) === Number(state.profileYear)) || null;
+            };
+
+            const findSeasonStat = (season, serialIds) => {
+                const ids = Array.isArray(serialIds) ? serialIds : [serialIds];
+                return season?.stats?.find((item) => ids.includes(item.serial_id) && !String(item.description || "").includes("Per Game"));
+            };
+
+            const seasonStatValue = (yearly, serialIds) => {
+                const stat = findSeasonStat(selectedYearStats(yearly), serialIds);
+                return numericOrNull(stat?.value);
+            };
+
+            const seasonGamesValue = (yearly) => {
+                const season = selectedYearStats(yearly);
+                if (!season) {
+                    return null;
+                }
+                const direct = numericOrNull(season.games ?? season.gamesPlayed ?? season.gp ?? season.games_played);
+                if (direct !== null) {
+                    return direct;
+                }
+                return seasonStatValue(yearly, ["Games", "GamesPlayed", "GP"]);
+            };
+
+            const playerAgeValue = (player, flockDetail, performance) => {
+                const age = decimalAge(performance?.data?.dob || flockDetail?.dob, flockDetail?.age);
+                return age === "N/A" ? null : Number(age);
+            };
+
+            const metricValueForPlayer = (player, globalIndex, metricKey) => {
+                const flockDetail = state.flockDetails[playerMarketKey(player)];
+                const performance = performanceForPlayer(player, flockDetail);
+                const yearly = yearlyForPlayer(player, flockDetail);
+                const metric = LAB_METRICS[metricKey];
+                if (!metric) {
+                    return null;
+                }
+                if (metricKey === "myRank") {
+                    return globalIndex + 1;
+                }
+                if (metricKey === "age") {
+                    return playerAgeValue(player, flockDetail, performance);
+                }
+                if (metricKey === "ppg") {
+                    return numericOrNull(performance?.data?.pointsPerGame ?? flockDetail?.previousYearPprAverage);
+                }
+                if (metricKey === "games") {
+                    return seasonGamesValue(yearly);
+                }
+                return seasonStatValue(yearly, metric.serialIds);
+            };
+
             const sortValue = (entry, posRanks) => {
                 if (!entry.player) {
                     return { value: "", missing: true };
@@ -1694,16 +1979,17 @@
                     flockRank: Number.isFinite(flockRank) ? flockRank : Number.POSITIVE_INFINITY,
                     flockVar: Number.isFinite(flockRank) ? flockRank - myRank : Number.POSITIVE_INFINITY,
                 };
-                const value = values[state.sort.key];
-                const missing = value === Number.POSITIVE_INFINITY || value === undefined || Number.isNaN(value);
+                const value = state.lab.metric ? metricValueForPlayer(player, entry.globalIndex, state.lab.metric) : values[state.sort.key];
+                const missing = value === null || value === Number.POSITIVE_INFINITY || value === undefined || Number.isNaN(value);
                 return { value, missing };
             };
 
             const sortedVisibleItems = (visibleItems, posRanks) => {
-                if (!state.sort.key) {
+                const hasLabSort = Boolean(state.lab.metric);
+                if (!state.sort.key && !hasLabSort) {
                     return visibleItems;
                 }
-                const direction = state.sort.direction === "desc" ? -1 : 1;
+                const direction = (hasLabSort ? state.lab.direction : state.sort.direction) === "desc" ? -1 : 1;
                 return visibleItems
                     .filter(({ player }) => player)
                     .slice()
@@ -1871,10 +2157,22 @@
                 }
             };
 
-            const weeklyPoints = (performance) => Object.entries(performance?.data?.weeklyPointsPerGame || {})
-                .map(([week, points]) => ({ week: Number(week), points: Number(points) }))
-                .filter((item) => Number.isFinite(item.week) && Number.isFinite(item.points))
-                .sort((a, b) => a.week - b.week);
+            const weeklyPoints = (performance) => {
+                const pointsByWeek = Object.entries(performance?.data?.weeklyPointsPerGame || {})
+                    .reduce((weeks, [week, points]) => {
+                        const weekNumber = Number(week);
+                        const value = Number(points);
+                        if (Number.isFinite(weekNumber) && Number.isFinite(value)) {
+                            weeks.set(weekNumber, value);
+                        }
+                        return weeks;
+                    }, new Map());
+                return Array.from({ length: 18 }, (_, index) => {
+                    const week = index + 1;
+                    const hasData = pointsByWeek.has(week);
+                    return { week, points: hasData ? pointsByWeek.get(week) : 0, hasData };
+                });
+            };
 
             const playerProfileImageUrl = (flockDetail, player) => {
                 const asset = state.playerAssets[playerMarketKey(player)];
@@ -1894,17 +2192,6 @@
                     return image;
                 }
                 return playerInitials(player);
-            };
-
-            const selectedYearStats = (yearly) => {
-                const seasons = yearly?.data?.allYearlyStats || [];
-                return seasons.find((season) => Number(season.year) === Number(state.profileYear)) || null;
-            };
-
-            const seasonStatValue = (yearly, serialId) => {
-                const season = selectedYearStats(yearly);
-                const stat = season?.stats?.find((item) => item.serial_id === serialId && !String(item.description || "").includes("Per Game"));
-                return Number.isFinite(Number(stat?.value)) ? Number(stat.value) : null;
             };
 
             const formatStatValue = (value, suffix = "") => value === null ? "N/A" : `${formatDecimal(value)}${suffix}`;
@@ -1961,7 +2248,8 @@
                     const labelNode = document.createElement("span");
                     const valueNode = document.createElement("strong");
                     labelNode.textContent = label;
-                    valueNode.textContent = formatStatValue(seasonStatValue(yearly, serialId), suffix);
+                    const value = serialId === "Games" ? seasonGamesValue(yearly) : seasonStatValue(yearly, serialId);
+                    valueNode.textContent = formatStatValue(value, suffix);
                     card.append(labelNode, valueNode);
                     grid.appendChild(card);
                 });
@@ -2039,7 +2327,7 @@
                 const rows = weeklyPoints(performance);
                 if (performance?.loading) {
                     chart.textContent = "Loading game log...";
-                } else if (!rows.length) {
+                } else if (!performance?.data) {
                     chart.textContent = performance?.error || "Game log unavailable.";
                 } else {
                     const maxPoints = Math.max(1, ...rows.map((row) => row.points));
@@ -2055,8 +2343,10 @@
                         stack.className = "bar-stack";
                         stack.style.height = `${Math.max(4, (row.points / maxPoints) * 100)}%`;
                         label.className = "bar-value";
-                        label.textContent = formatDecimal(row.points);
-                        fill.className = `bar-fill${row.points < 10 ? " low" : row.points < 20 ? " mid" : ""}`;
+                        label.textContent = row.hasData ? formatDecimal(row.points) : "0";
+                        fill.className = row.hasData
+                            ? `bar-fill${row.points < 10 ? " low" : row.points < 20 ? " mid" : ""}`
+                            : "bar-fill inactive";
                         fill.style.height = "100%";
                         week.textContent = String(row.week);
                         stack.append(label, fill);
@@ -2145,7 +2435,8 @@
             const getVisibleItems = () => {
                 const byId = playersById();
                 const searchQuery = normalizeSearch(state.searchQuery);
-                const showTierRows = state.selectedPositions.size === 0 && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly && !state.sort.key;
+                const hasLabFilter = state.lab.metric || state.lab.minAge || state.lab.maxAge;
+                const showTierRows = state.selectedPositions.size === 0 && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly && !state.sort.key && !hasLabFilter;
                 let playerIndex = 0;
                 let currentTierLabel = "";
 
@@ -2170,7 +2461,12 @@
                     const teamMatch = state.activeTeam === "ALL" || player.team === state.activeTeam;
                     const searchMatch = !searchQuery || normalizeSearch(player.name).includes(searchQuery);
                     const availabilityMatch = !state.availableOnly || !state.draft.active || !state.draft.draftedKeys.has(playerKey);
-                    if (positionMatch && teamMatch && searchMatch && availabilityMatch) {
+                    const age = metricValueForPlayer(player, globalIndex, "age");
+                    const minAge = Number(state.lab.minAge);
+                    const maxAge = Number(state.lab.maxAge);
+                    const minAgeMatch = !state.lab.minAge || (Number.isFinite(age) && age >= minAge);
+                    const maxAgeMatch = !state.lab.maxAge || (Number.isFinite(age) && age <= maxAge);
+                    if (positionMatch && teamMatch && searchMatch && availabilityMatch && minAgeMatch && maxAgeMatch) {
                         visible.push({ globalIndex, item, player, tierLabel: showTierRows ? "" : currentTierLabel });
                     }
                     return visible;
@@ -2201,6 +2497,99 @@
                 elements.availableOnly.checked = state.availableOnly;
             };
 
+            const hasLabCriteria = () => Boolean(state.lab.metric || state.lab.minAge || state.lab.maxAge);
+
+            const metricLabel = (metricKey) => LAB_METRICS[metricKey]?.label || "Metric";
+
+            const metricDisplayValue = (player, globalIndex, metricKey) => {
+                const metric = LAB_METRICS[metricKey];
+                const value = metricValueForPlayer(player, globalIndex, metricKey);
+                if (value === null) {
+                    return "N/A";
+                }
+                return `${formatDecimal(value)}${metric?.suffix || ""}`;
+            };
+
+            const toggleComparePlayer = (playerId) => {
+                const id = String(playerId);
+                if (state.compareIds.includes(id)) {
+                    state.compareIds = state.compareIds.filter((item) => item !== id);
+                } else {
+                    state.compareIds = state.compareIds.concat(id).slice(-4);
+                }
+                render();
+                loadDataLabStats();
+            };
+
+            const renderComparePanel = () => {
+                const byId = playersById();
+                elements.compareGrid.replaceChildren();
+                if (state.compareIds.length === 0) {
+                    const card = document.createElement("div");
+                    card.className = "compare-card";
+                    card.textContent = "Use + beside players to build a head-to-head comparison.";
+                    elements.compareGrid.appendChild(card);
+                    return;
+                }
+
+                const posRanks = getPositionRanks();
+                state.compareIds.forEach((playerId) => {
+                    const player = byId.get(playerId);
+                    const context = player ? playerContext(playerId) : null;
+                    if (!player || !context) {
+                        return;
+                    }
+                    const flockDetail = state.flockDetails[playerMarketKey(player)];
+                    const performance = performanceForPlayer(player, flockDetail);
+                    const yearly = yearlyForPlayer(player, flockDetail);
+                    const card = document.createElement("div");
+                    card.className = "compare-card";
+                    const title = document.createElement("strong");
+                    const meta = document.createElement("span");
+                    const stats = document.createElement("div");
+                    title.textContent = player.name;
+                    meta.textContent = `${posRanks[player.id] || player.pos} / ${player.team}`;
+                    stats.className = "compare-stats";
+                    [
+                        ["Age", metricDisplayValue(player, context.globalIndex, "age")],
+                        ["PPG", metricDisplayValue(player, context.globalIndex, "ppg")],
+                        ["Games", formatStatValue(seasonGamesValue(yearly))],
+                        ["YPRR", formatStatValue(seasonStatValue(yearly, ["YardsPerRouteRun"]))],
+                    ].forEach(([label, value]) => {
+                        const stat = document.createElement("div");
+                        const statLabel = document.createElement("span");
+                        const statValue = document.createElement("b");
+                        stat.className = "compare-stat";
+                        statLabel.textContent = label;
+                        statValue.textContent = value;
+                        stat.append(statLabel, statValue);
+                        stats.appendChild(stat);
+                    });
+                    card.append(title, meta, stats);
+                    elements.compareGrid.appendChild(card);
+                    if (!performance?.data) {
+                        refreshPlayerPerformance(player, flockDetail);
+                    }
+                    if (!yearly?.data) {
+                        refreshYearlyStats(player, flockDetail);
+                    }
+                });
+            };
+
+            const updateLabStatus = (visiblePlayerCount) => {
+                elements.labMetric.value = state.lab.metric;
+                elements.labDirection.value = state.lab.direction;
+                elements.labMinAge.value = state.lab.minAge;
+                elements.labMaxAge.value = state.lab.maxAge;
+                if (state.lab.loading) {
+                    elements.labStatus.textContent = "Loading advanced stats...";
+                } else if (hasLabCriteria()) {
+                    elements.labStatus.textContent = `${visiblePlayerCount} players in data view.`;
+                } else {
+                    elements.labStatus.textContent = "Choose a metric to sort the board.";
+                }
+            };
+
             const render = () => {
                 updateDraftStatus();
                 const visibleItems = getVisibleItems();
@@ -2229,6 +2618,8 @@
                 });
                 elements.teamFilter.value = state.activeTeam;
                 updateSortButtons();
+                updateLabStatus(visiblePlayerCount);
+                renderComparePanel();
             };
 
             const normalizeFlockRankings = (payload) => {
@@ -2525,6 +2916,45 @@
                 draftTimer = setInterval(refreshDraftPicks, DRAFT_REFRESH_MS);
             };
 
+            const loadDataLabStats = async () => {
+                if (state.lab.loading || !hasLabCriteria()) {
+                    return;
+                }
+                const metric = LAB_METRICS[state.lab.metric];
+                const needsPerformance = state.lab.metric === "ppg" || state.lab.metric === "age" || state.lab.minAge || state.lab.maxAge;
+                const needsYearly = metric?.source === "yearly" || state.compareIds.length > 0;
+                if (!needsPerformance && !needsYearly) {
+                    return;
+                }
+
+                const entries = getVisibleItems().filter(({ player }) => player);
+                const tasks = entries.flatMap(({ player }) => {
+                    const flockDetail = state.flockDetails[playerMarketKey(player)];
+                    const jobs = [];
+                    if (needsPerformance) {
+                        jobs.push(() => refreshPlayerPerformance(player, flockDetail));
+                    }
+                    if (needsYearly) {
+                        jobs.push(() => refreshYearlyStats(player, flockDetail));
+                    }
+                    return jobs;
+                });
+                if (!tasks.length) {
+                    return;
+                }
+
+                state.lab.loading = true;
+                render();
+                try {
+                    for (let index = 0; index < tasks.length; index += 8) {
+                        await Promise.all(tasks.slice(index, index + 8).map((task) => task()));
+                    }
+                } finally {
+                    state.lab.loading = false;
+                    render();
+                }
+            };
+
             const bindTableDragScroll = () => {
                 const scrollArea = elements.tableScroll;
                 let pointerId = null;
@@ -2615,23 +3045,59 @@
                             state.selectedPositions.add(filter);
                         }
                         render();
+                        loadDataLabStats();
                     });
                 });
 
                 elements.teamFilter.addEventListener("change", () => {
                     state.activeTeam = elements.teamFilter.value;
                     render();
+                    loadDataLabStats();
                 });
 
                 elements.sortButtons.forEach((button) => {
                     button.addEventListener("click", () => {
+                        state.lab.metric = "";
                         cycleSort(button.dataset.sort);
                     });
+                });
+
+                elements.labMetric.addEventListener("change", () => {
+                    state.lab.metric = elements.labMetric.value;
+                    if (state.lab.metric && LAB_METRICS[state.lab.metric]) {
+                        state.sort = { key: "", direction: "" };
+                        state.lab.direction = LAB_METRICS[state.lab.metric].direction;
+                    }
+                    render();
+                    loadDataLabStats();
+                });
+
+                elements.labDirection.addEventListener("change", () => {
+                    state.lab.direction = elements.labDirection.value;
+                    render();
+                });
+
+                [elements.labMinAge, elements.labMaxAge].forEach((input) => {
+                    input.addEventListener("input", () => {
+                        state.lab.minAge = elements.labMinAge.value;
+                        state.lab.maxAge = elements.labMaxAge.value;
+                        render();
+                        loadDataLabStats();
+                    });
+                });
+
+                elements.labReset.addEventListener("click", () => {
+                    state.lab.metric = "";
+                    state.lab.direction = "desc";
+                    state.lab.minAge = "";
+                    state.lab.maxAge = "";
+                    render();
                 });
 
                 elements.playerSearch.addEventListener("input", () => {
                     state.searchQuery = elements.playerSearch.value;
                     render();
+                    loadDataLabStats();
                 });
 
                 elements.availableOnly.addEventListener("change", () => {

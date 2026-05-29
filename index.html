@@ -321,7 +321,7 @@
 
         table {
             width: 100%;
-            min-width: 900px;
+            min-width: 1180px;
             border-collapse: collapse;
         }
 
@@ -361,7 +361,7 @@
         }
 
         .sort-btn::after {
-            content: "sort";
+            content: "";
             color: var(--subtle);
             font-size: 11px;
         }
@@ -385,7 +385,7 @@
 
         th,
         td {
-            padding: 0 14px;
+            padding: 0 9px;
         }
 
         tbody tr {
@@ -418,7 +418,7 @@
         }
 
         .drag-cell {
-            width: 50px;
+            width: 44px;
             color: var(--subtle);
             text-align: center;
         }
@@ -437,13 +437,13 @@
         }
 
         .rank {
-            width: 72px;
+            width: 56px;
             color: var(--accent-strong);
             font-weight: 900;
         }
 
         .player {
-            min-width: 260px;
+            min-width: 220px;
         }
 
         .tier-row td {
@@ -475,7 +475,7 @@
 
         .player-card {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
             min-width: 0;
         }
@@ -483,8 +483,8 @@
         .player-photo,
         .player-initials {
             flex: 0 0 auto;
-            width: 34px;
-            height: 34px;
+            width: 30px;
+            height: 30px;
             border: 1px solid var(--line);
             border-radius: 50%;
             background: #101418;
@@ -782,11 +782,11 @@
                     <thead>
                         <tr>
                             <th class="drag-cell" scope="col">Move</th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="myRank">My Rank</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="name">Player</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="pos">Pos</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="team">Team</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="posRank">My Pos Rank</button></th>
+                            <th scope="col">My Rank</th>
+                            <th scope="col">Player</th>
+                            <th scope="col">Pos</th>
+                            <th scope="col">Team</th>
+                            <th scope="col">My Pos Rank</th>
                             <th scope="col"><button class="sort-btn" type="button" data-sort="udAdp">Underdog ADP</button></th>
                             <th scope="col"><button class="sort-btn" type="button" data-sort="udVar">UD Var</button></th>
                             <th scope="col"><button class="sort-btn" type="button" data-sort="sleeperAdp">Sleeper ADP</button></th>
@@ -1423,10 +1423,6 @@
                 const flockRank = state.flockRanks[playerMarketKey(player)];
                 const values = {
                     myRank,
-                    name: player.name.toLowerCase(),
-                    pos: player.pos,
-                    team: player.team,
-                    posRank: Number(String(posRanks[player.id] || "").replace(/[^0-9]/g, "")),
                     udAdp: player.udAdp,
                     udVar: player.udAdp === 999 ? Number.POSITIVE_INFINITY : player.udAdp - myRank,
                     sleeperAdp: player.sleeperAdp,

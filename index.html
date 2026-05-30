@@ -2547,6 +2547,24 @@
                 });
                 return tabs;
             };
+
+            const comparisonYearTabs = () => {
+                const tabs = document.createElement("span");
+                tabs.className = "year-tabs";
+                [2025, 2024, 2023].forEach((year) => {
+                    const button = document.createElement("button");
+                    button.className = `year-tab${Number(state.profileYear) === year ? " active" : ""}`;
+                    button.type = "button";
+                    button.textContent = String(year);
+                    button.addEventListener("click", () => {
+                        state.profileYear = year;
+                        openComparisonDetails();
+                    });
+                    tabs.appendChild(button);
+                });
+                return tabs;
+            };
+
             const profileStatStrip = (player, flockDetail, performance, flockRank, myRank) => {
                 const strip = document.createElement("div");
                 strip.className = "modal-stat-strip";
@@ -2703,20 +2721,25 @@
                         const finish = finishValueForPlayer(entry.player);
                         return finish ? `${entry.player.pos}${finish}` : "N/A";
                     } },
+                    { label: "PPG", highWins: true, rankable: true, requiresPerformance: true, loading: (entry) => entry.performance?.loading, value: comparisonPpgValue, display: (entry) => entry.performance?.loading ? "Loading" : formatDecimal(comparisonPpgValue(entry)) },
                     { label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
-                    { label: "Sleeper ADP", highWins: false, value: (entry) => entry.player.sleeperAdp === 999 ? null : entry.player.sleeperAdp, display: (entry) => formatAdp(entry.player.sleeperAdp, entry.player.sleeperPick) },
-                    { label: "Flock Rank", highWins: false, value: (entry) => Number.isFinite(entry.flockRank) ? entry.flockRank : null, display: (entry) => formatMarketRank(entry.flockRank) },
-                    { label: "PPG", highWins: true, rankable: true, value: (entry) => numericOrNull(entry.performance?.data?.pointsPerGame ?? entry.flockDetail?.previousYearPprAverage), display: (entry) => formatDecimal(entry.performance?.data?.pointsPerGame ?? entry.flockDetail?.previousYearPprAverage) },
-                    { label: "Age", highWins: null, value: (entry) => playerAgeValue(entry.player, entry.flockDetail, entry.performance), display: (entry) => decimalAge(entry.performance?.data?.dob || entry.flockDetail?.dob, entry.flockDetail?.age) },
                     ...positionStats,
                 ];
             };
+
+            const comparisonPpgValue = (entry) => numericOrNull(
+                entry.performance?.data?.pointsPerGame
+                    ?? (Number(state.profileYear) === PLAYER_PROFILE_SEASON ? entry.flockDetail?.previousYearPprAverage : null)
+            );
 
             const comparisonPositionRank = (entry, metric) => {
                 if (!metric.rankable || metric.highWins === null) {
                     return null;
                 }
                 if (metric.requiresYearly && positionRankDataPending(entry.player.pos)) {
+                    return null;
+                }
+                if (metric.requiresPerformance && positionPerformanceDataPending(entry.player.pos)) {
                     return null;
                 }
                 return positionRankForValue(entry.player, (candidate) => {
@@ -2737,11 +2760,27 @@
                     return !yearly || yearly.loading;
                 });
 
+            const positionPerformanceDataPending = (pos) => orderedPlayers()
+                .filter((player) => player.pos === pos)
+                .some((player) => {
+                    const detail = state.flockDetails[playerMarketKey(player)];
+                    const playerId = performancePlayerId(player, detail);
+                    if (!playerId) {
+                        return false;
+                    }
+                    const performance = state.playerPerformance[formatPerformanceKey(playerId)];
+                    return !performance || performance.loading;
+                });
+
             const ensureComparisonRankData = (entries) => {
                 const positions = new Set(entries.map((entry) => entry.player.pos));
                 orderedPlayers()
                     .filter((player) => positions.has(player.pos))
-                    .forEach((player) => refreshYearlyStats(player, state.flockDetails[playerMarketKey(player)]));
+                    .forEach((player) => {
+                        const detail = state.flockDetails[playerMarketKey(player)];
+                        refreshYearlyStats(player, detail);
+                        refreshPlayerPerformance(player, detail);
+                    });
             };
 
             const comparisonPlayerHeader = (entry) => {
@@ -2784,7 +2823,8 @@
                 title.id = "playerDrawerTitle";
                 title.textContent = "Player Comparison";
                 subtitle.className = "drawer-subtitle";
-                subtitle.textContent = `${entries.length} selected players`;
+                subtitle.textContent = `${entries.length} selected players / Season `;
+                subtitle.appendChild(comparisonYearTabs());
                 header.className = "drawer-section";
                 header.append(title, subtitle);
                 table.className = "comparison-table";
@@ -3103,10 +3143,6 @@
                 elements.compareOpen.disabled = state.compareIds.length < 2;
                 elements.compareClear.disabled = state.compareIds.length === 0;
                 if (state.compareIds.length === 0) {
-                    const card = document.createElement("div");
-                    card.className = "compare-card";
-                    card.textContent = "Check players in the table, then open comparison.";
-                    elements.compareGrid.appendChild(card);
                     return;
                 }
 

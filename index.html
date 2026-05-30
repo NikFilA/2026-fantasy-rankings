@@ -201,23 +201,23 @@
         }
 
         .data-lab {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
             align-items: center;
             margin-bottom: 16px;
             border: 1px solid var(--line);
             border-radius: 8px;
             background: rgba(23, 27, 31, 0.82);
-            padding: 10px 12px;
+            padding: 8px 12px;
         }
 
         .lab-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
-            flex: 1 1 auto;
+            min-width: 0;
         }
 
         .lab-field {
@@ -225,13 +225,18 @@
             gap: 5px;
         }
 
-        .lab-field span,
-        .compare-panel > span {
+        .lab-field span {
             color: var(--muted);
             font-size: 10px;
             font-weight: 900;
             letter-spacing: 0.08em;
             text-transform: uppercase;
+        }
+
+        .data-lab .lab-field span,
+        .compare-panel > span,
+        .lab-status {
+            display: none;
         }
 
         .lab-select,
@@ -244,6 +249,7 @@
 
         .lab-select {
             min-width: 220px;
+            min-height: 38px;
         }
 
         .metric-chips {
@@ -301,18 +307,12 @@
             color: var(--text);
         }
 
-        .lab-status {
-            color: var(--muted);
-            font-size: 12px;
-            font-weight: 800;
-        }
-
         .compare-panel {
             display: flex;
-            flex: 1 1 260px;
-            gap: 9px;
+            gap: 8px;
             align-items: center;
             justify-content: flex-end;
+            min-width: 0;
         }
 
         .compare-grid {
@@ -1226,11 +1226,16 @@
             .topbar,
             .controls,
             .draft-panel,
+            .data-lab,
             .lab-row,
             .profile-summary,
             .drawer-head,
             .modal-stat-strip {
                 grid-template-columns: 1fr;
+            }
+
+            .compare-panel {
+                justify-content: flex-start;
             }
 
             .summary {
@@ -1453,6 +1458,8 @@
                     loading: false,
                 },
                 compareIds: [],
+                compareYears: {},
+                comparisonRankLoadKey: "",
                 draft: {
                     id: "",
                     active: false,
@@ -1526,6 +1533,36 @@
             }));
 
             const tierLabel = (index) => `Tier ${index + 1}`;
+
+            const TIER_COLORS = [
+                ["#ef4444", "#f97316", "#fff7ed"],
+                ["#f59e0b", "#eab308", "#111827"],
+                ["#22c55e", "#14b8a6", "#052e16"],
+                ["#06b6d4", "#3b82f6", "#eff6ff"],
+                ["#8b5cf6", "#d946ef", "#faf5ff"],
+                ["#ec4899", "#f43f5e", "#fff1f2"],
+                ["#64748b", "#334155", "#f8fafc"],
+                ["#84cc16", "#16a34a", "#052e16"],
+            ];
+
+            const tierIndexFromLabel = (label) => {
+                const match = String(label || "").match(/\d+/);
+                return match ? Math.max(0, Number(match[0]) - 1) : 0;
+            };
+
+            const tierPalette = (label) => TIER_COLORS[tierIndexFromLabel(label) % TIER_COLORS.length];
+
+            const applyTierColor = (element, label, subtle = false) => {
+                const [start, end, text] = tierPalette(label);
+                if (subtle) {
+                    element.style.background = `linear-gradient(90deg, ${start}26, ${end}26)`;
+                    element.style.borderColor = `${start}99`;
+                    element.style.color = start;
+                    return;
+                }
+                element.style.background = `linear-gradient(90deg, ${start}, ${end})`;
+                element.style.color = text;
+            };
 
             const tierLabelFromItem = (item, index) => {
                 const match = String(item.id || "").match(/^tier-(\d+)$/);
@@ -1931,6 +1968,7 @@
                 const label = document.createElement("div");
                 label.className = "tier-label";
                 label.textContent = item.label;
+                applyTierColor(label, item.label);
 
                 const labelCell = createCell("", label);
                 labelCell.colSpan = 11 + state.lab.metrics.length;
@@ -1972,6 +2010,7 @@
                     const tierBadge = document.createElement("span");
                     tierBadge.className = "tier-chip";
                     tierBadge.textContent = tierLabel;
+                    applyTierColor(tierBadge, tierLabel, true);
                     playerName.appendChild(tierBadge);
                 }
                 if (isDrafted) {
@@ -2100,9 +2139,9 @@
 
             const numericOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 
-            const selectedYearStats = (yearly) => {
+            const selectedYearStats = (yearly, year = state.profileYear) => {
                 const seasons = yearly?.data?.allYearlyStats || [];
-                return seasons.find((season) => Number(season.year) === Number(state.profileYear)) || null;
+                return seasons.find((season) => Number(season.year) === Number(year)) || null;
             };
 
             const findSeasonStat = (season, serialIds, options = {}) => {
@@ -2116,12 +2155,12 @@
             };
 
             const seasonStatValue = (yearly, serialIds, options = {}) => {
-                const stat = findSeasonStat(selectedYearStats(yearly), serialIds, options);
+                const stat = findSeasonStat(selectedYearStats(yearly, options.year), serialIds, options);
                 return numericOrNull(stat?.value);
             };
 
-            const seasonGamesValue = (yearly) => {
-                const season = selectedYearStats(yearly);
+            const seasonGamesValue = (yearly, year = state.profileYear) => {
+                const season = selectedYearStats(yearly, year);
                 if (!season) {
                     return null;
                 }
@@ -2129,7 +2168,7 @@
                 if (direct !== null) {
                     return direct;
                 }
-                return seasonStatValue(yearly, ["Games", "GamesPlayed", "GP"]);
+                return seasonStatValue(yearly, ["Games", "GamesPlayed", "GP"], { year });
             };
 
             const seasonTotalPoints = (performance) => {
@@ -2155,10 +2194,10 @@
                 return index >= 0 ? index + 1 : null;
             };
 
-            const finishValueForPlayer = (player) => {
+            const finishValueForPlayer = (player, year = state.profileYear) => {
                 const detail = state.flockDetails[playerMarketKey(player)];
                 const yearly = yearlyForPlayer(player, detail);
-                const officialFinish = seasonStatValue(yearly, `FantasyPointsRank${player.pos}`);
+                const officialFinish = seasonStatValue(yearly, `FantasyPointsRank${player.pos}`, { year });
                 if (officialFinish !== null) {
                     return officialFinish;
                 }
@@ -2167,7 +2206,7 @@
                 }
                 return positionRankForValue(player, (candidate) => {
                     const candidateDetail = state.flockDetails[playerMarketKey(candidate)];
-                    return seasonTotalPoints(performanceForPlayer(candidate, candidateDetail));
+                    return seasonTotalPoints(performanceForPlayer(candidate, candidateDetail, year));
                 }, true);
             };
 
@@ -2337,9 +2376,9 @@
                 return String(flockDetail?.playerId || asset?.id || player.id || "");
             };
 
-            const performanceForPlayer = (player, flockDetail) => {
+            const performanceForPlayer = (player, flockDetail, year = state.profileYear) => {
                 const playerId = performancePlayerId(player, flockDetail);
-                return playerId ? state.playerPerformance[formatPerformanceKey(playerId)] : null;
+                return playerId ? state.playerPerformance[formatPerformanceKey(playerId, year)] : null;
             };
 
             const yearlyForPlayer = (player, flockDetail) => {
@@ -2347,12 +2386,12 @@
                 return playerId ? state.playerYearlyStats[formatYearlyKey(playerId)] : null;
             };
 
-            const refreshPlayerPerformance = async (player, flockDetail) => {
+            const refreshPlayerPerformance = async (player, flockDetail, year = state.profileYear, options = {}) => {
                 const playerId = performancePlayerId(player, flockDetail);
                 if (!playerId) {
                     return;
                 }
-                const key = formatPerformanceKey(playerId);
+                const key = formatPerformanceKey(playerId, year);
                 if (state.playerPerformance[key]?.loading || state.playerPerformance[key]?.data || state.playerPerformance[key]?.error) {
                     return;
                 }
@@ -2360,14 +2399,17 @@
                 try {
                     let payload;
                     try {
-                        payload = await fetchJson(`${FLOCK_PERFORMANCE_PROXY_URL}?playerId=${encodeURIComponent(playerId)}&year=${state.profileYear}`);
+                        payload = await fetchJson(`${FLOCK_PERFORMANCE_PROXY_URL}?playerId=${encodeURIComponent(playerId)}&year=${year}`);
                     } catch (proxyError) {
-                        payload = await fetchJson(`${FLOCK_PERFORMANCE_DIRECT_URL}/${encodeURIComponent(playerId)}/performance?year=${state.profileYear}`);
+                        payload = await fetchJson(`${FLOCK_PERFORMANCE_DIRECT_URL}/${encodeURIComponent(playerId)}/performance?year=${year}`);
                     }
                     state.playerPerformance[key] = { loading: false, data: payload, error: "" };
                 } catch (error) {
                     console.warn("Flock player performance could not be loaded.", error);
                     state.playerPerformance[key] = { loading: false, data: null, error: "Performance data unavailable" };
+                }
+                if (options.silent) {
+                    return;
                 }
                 if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
                     openPlayerDetails(player.id);
@@ -2376,7 +2418,7 @@
                 }
             };
 
-            const refreshYearlyStats = async (player, flockDetail) => {
+            const refreshYearlyStats = async (player, flockDetail, options = {}) => {
                 const playerId = performancePlayerId(player, flockDetail);
                 if (!playerId) {
                     return;
@@ -2397,6 +2439,9 @@
                 } catch (error) {
                     console.warn("Flock yearly stats could not be loaded.", error);
                     state.playerYearlyStats[key] = { loading: false, data: null, error: "Yearly stats unavailable" };
+                }
+                if (options.silent) {
+                    return;
                 }
                 if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
                     openPlayerDetails(player.id);
@@ -2548,16 +2593,20 @@
                 return tabs;
             };
 
-            const comparisonYearTabs = () => {
+            const comparisonYearForPlayer = (playerId) => Number(state.compareYears[playerId]) || PLAYER_PROFILE_SEASON;
+
+            const comparisonYearTabs = (playerId) => {
                 const tabs = document.createElement("span");
                 tabs.className = "year-tabs";
+                const activeYear = comparisonYearForPlayer(playerId);
                 [2025, 2024, 2023].forEach((year) => {
                     const button = document.createElement("button");
-                    button.className = `year-tab${Number(state.profileYear) === year ? " active" : ""}`;
+                    button.className = `year-tab${activeYear === year ? " active" : ""}`;
                     button.type = "button";
                     button.textContent = String(year);
                     button.addEventListener("click", () => {
-                        state.profileYear = year;
+                        state.compareYears[playerId] = year;
+                        state.comparisonRankLoadKey = "";
                         openComparisonDetails();
                     });
                     tabs.appendChild(button);
@@ -2635,24 +2684,25 @@
                 elements.playerDrawerContent.replaceChildren();
             };
 
-            const comparisonEntry = (playerId, shouldRefresh = true) => {
+            const comparisonEntry = (playerId, shouldRefresh = true, forcedYear = null) => {
                 const context = playerContext(playerId);
                 if (!context) {
                     return null;
                 }
                 const { player, globalIndex } = context;
+                const year = Number(forcedYear) || comparisonYearForPlayer(player.id);
                 const myRank = globalIndex + 1;
                 const posRanks = getPositionRanks();
                 const playerKey = playerMarketKey(player);
                 const flockRank = state.flockRanks[playerKey];
                 const flockDetail = state.flockDetails[playerKey];
                 if (shouldRefresh) {
-                    refreshPlayerPerformance(player, flockDetail);
+                    refreshPlayerPerformance(player, flockDetail, year);
                     refreshYearlyStats(player, flockDetail);
                 }
-                const performance = performanceForPlayer(player, flockDetail);
+                const performance = performanceForPlayer(player, flockDetail, year);
                 const yearly = yearlyForPlayer(player, flockDetail);
-                return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly };
+                return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly, year };
             };
 
             const posRankNumber = (rank) => {
@@ -2673,8 +2723,8 @@
                                 rankable: true,
                                 requiresYearly: true,
                                 loading: (entry) => entry.yearly?.loading,
-                                value: (entry) => serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId),
-                                display: (entry) => entry.yearly?.loading ? "Loading" : formatStatValue(serialId === "Games" ? seasonGamesValue(entry.yearly) : seasonStatValue(entry.yearly, serialId), suffix),
+                                value: (entry) => serialId === "Games" ? seasonGamesValue(entry.yearly, entry.year) : seasonStatValue(entry.yearly, serialId, { year: entry.year }),
+                                display: (entry) => entry.yearly?.loading ? "Loading" : formatStatValue(serialId === "Games" ? seasonGamesValue(entry.yearly, entry.year) : seasonStatValue(entry.yearly, serialId, { year: entry.year }), suffix),
                             });
                         }
                         const perGameLabel = `${label}/G`;
@@ -2687,24 +2737,24 @@
                                 requiresYearly: true,
                                 loading: (entry) => entry.yearly?.loading,
                                 value: (entry) => {
-                                    const direct = seasonStatValue(entry.yearly, serialId, { perGame: true });
+                                    const direct = seasonStatValue(entry.yearly, serialId, { perGame: true, year: entry.year });
                                     if (direct !== null) {
                                         return direct;
                                     }
-                                    const total = seasonStatValue(entry.yearly, serialId);
-                                    const games = seasonGamesValue(entry.yearly);
+                                    const total = seasonStatValue(entry.yearly, serialId, { year: entry.year });
+                                    const games = seasonGamesValue(entry.yearly, entry.year);
                                     return total !== null && games ? total / games : null;
                                 },
                                 display: (entry) => {
                                     if (entry.yearly?.loading) {
                                         return "Loading";
                                     }
-                                    const direct = seasonStatValue(entry.yearly, serialId, { perGame: true });
+                                    const direct = seasonStatValue(entry.yearly, serialId, { perGame: true, year: entry.year });
                                     if (direct !== null) {
                                         return `${formatDecimal(direct)}${suffix}`;
                                     }
-                                    const total = seasonStatValue(entry.yearly, serialId);
-                                    const games = seasonGamesValue(entry.yearly);
+                                    const total = seasonStatValue(entry.yearly, serialId, { year: entry.year });
+                                    const games = seasonGamesValue(entry.yearly, entry.year);
                                     return total !== null && games ? `${formatDecimal(total / games)}${suffix}` : "N/A";
                                 },
                             });
@@ -2714,11 +2764,11 @@
                 return [
                     { label: "My Rank", highWins: false, value: (entry) => entry.myRank, display: (entry) => String(entry.myRank) },
                     { label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
-                    { label: "Finish", highWins: false, rankable: false, requiresYearly: true, loading: (entry) => entry.yearly?.loading, value: (entry) => finishValueForPlayer(entry.player), display: (entry) => {
+                    { label: "Finish", highWins: false, rankable: false, requiresYearly: true, loading: (entry) => entry.yearly?.loading, value: (entry) => finishValueForPlayer(entry.player, entry.year), display: (entry) => {
                         if (entry.yearly?.loading) {
                             return "Loading";
                         }
-                        const finish = finishValueForPlayer(entry.player);
+                        const finish = finishValueForPlayer(entry.player, entry.year);
                         return finish ? `${entry.player.pos}${finish}` : "N/A";
                     } },
                     { label: "PPG", highWins: true, rankable: true, requiresPerformance: true, loading: (entry) => entry.performance?.loading, value: comparisonPpgValue, display: (entry) => entry.performance?.loading ? "Loading" : formatDecimal(comparisonPpgValue(entry)) },
@@ -2729,26 +2779,26 @@
 
             const comparisonPpgValue = (entry) => numericOrNull(
                 entry.performance?.data?.pointsPerGame
-                    ?? (Number(state.profileYear) === PLAYER_PROFILE_SEASON ? entry.flockDetail?.previousYearPprAverage : null)
+                    ?? (Number(entry.year) === PLAYER_PROFILE_SEASON ? entry.flockDetail?.previousYearPprAverage : null)
             );
 
             const comparisonPositionRank = (entry, metric) => {
                 if (!metric.rankable || metric.highWins === null) {
                     return null;
                 }
-                if (metric.requiresYearly && positionRankDataPending(entry.player.pos)) {
+                if (metric.requiresYearly && positionRankDataPending(entry.player.pos, entry.year)) {
                     return null;
                 }
-                if (metric.requiresPerformance && positionPerformanceDataPending(entry.player.pos)) {
+                if (metric.requiresPerformance && positionPerformanceDataPending(entry.player.pos, entry.year)) {
                     return null;
                 }
                 return positionRankForValue(entry.player, (candidate) => {
-                    const candidateEntry = comparisonEntry(candidate.id, false);
+                    const candidateEntry = comparisonEntry(candidate.id, false, entry.year);
                     return candidateEntry ? metric.value(candidateEntry) : null;
                 }, metric.highWins);
             };
 
-            const positionRankDataPending = (pos) => orderedPlayers()
+            const positionRankDataPending = (pos, year) => orderedPlayers()
                 .filter((player) => player.pos === pos)
                 .some((player) => {
                     const detail = state.flockDetails[playerMarketKey(player)];
@@ -2760,7 +2810,7 @@
                     return !yearly || yearly.loading;
                 });
 
-            const positionPerformanceDataPending = (pos) => orderedPlayers()
+            const positionPerformanceDataPending = (pos, year) => orderedPlayers()
                 .filter((player) => player.pos === pos)
                 .some((player) => {
                     const detail = state.flockDetails[playerMarketKey(player)];
@@ -2768,19 +2818,33 @@
                     if (!playerId) {
                         return false;
                     }
-                    const performance = state.playerPerformance[formatPerformanceKey(playerId)];
+                    const performance = state.playerPerformance[formatPerformanceKey(playerId, year)];
                     return !performance || performance.loading;
                 });
 
-            const ensureComparisonRankData = (entries) => {
-                const positions = new Set(entries.map((entry) => entry.player.pos));
-                orderedPlayers()
-                    .filter((player) => positions.has(player.pos))
-                    .forEach((player) => {
+            const ensureComparisonRankData = async (entries) => {
+                const positionYears = [...new Set(entries.map((entry) => `${entry.player.pos}|${entry.year}`))].sort();
+                const loadKey = positionYears.join(",");
+                if (!loadKey || state.comparisonRankLoadKey === loadKey) {
+                    return;
+                }
+                state.comparisonRankLoadKey = loadKey;
+                const tasks = orderedPlayers().flatMap((player) => positionYears
+                    .filter((positionYear) => positionYear.startsWith(`${player.pos}|`))
+                    .map((positionYear) => () => {
+                        const year = Number(positionYear.split("|")[1]);
                         const detail = state.flockDetails[playerMarketKey(player)];
-                        refreshYearlyStats(player, detail);
-                        refreshPlayerPerformance(player, detail);
-                    });
+                        return Promise.all([
+                            refreshYearlyStats(player, detail, { silent: true }),
+                            refreshPlayerPerformance(player, detail, year, { silent: true }),
+                        ]);
+                    }));
+                for (let index = 0; index < tasks.length; index += 12) {
+                    await Promise.all(tasks.slice(index, index + 12).map((task) => task()));
+                }
+                if (!state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
+                    openComparisonDetails();
+                }
             };
 
             const comparisonPlayerHeader = (entry) => {
@@ -2791,7 +2855,7 @@
                 playerCard.className = "comparison-player";
                 name.textContent = entry.player.name;
                 meta.textContent = `${entry.posRank} / ${entry.player.team}`;
-                text.append(name, meta);
+                text.append(name, meta, comparisonYearTabs(entry.player.id));
                 playerCard.append(profileImage(entry.player, entry.flockDetail), text);
                 return playerCard;
             };
@@ -2812,6 +2876,8 @@
                 if (state.compareIds.length < 2) {
                     return;
                 }
+                const wasOpen = !elements.playerDrawerBackdrop.hidden && elements.playerDrawerContent.classList.contains("comparison-board");
+                const restoreScrollTop = elements.playerDrawerBackdrop.scrollTop;
                 state.selectedPlayerId = "";
                 const entries = state.compareIds.map(comparisonEntry).filter(Boolean);
                 ensureComparisonRankData(entries);
@@ -2823,8 +2889,7 @@
                 title.id = "playerDrawerTitle";
                 title.textContent = "Player Comparison";
                 subtitle.className = "drawer-subtitle";
-                subtitle.textContent = `${entries.length} selected players / Season `;
-                subtitle.appendChild(comparisonYearTabs());
+                subtitle.textContent = `${entries.length} selected players`;
                 header.className = "drawer-section";
                 header.append(title, subtitle);
                 table.className = "comparison-table";
@@ -2857,7 +2922,9 @@
                 elements.playerDrawerContent.replaceChildren(header, table);
                 elements.playerDrawerBackdrop.hidden = false;
                 document.body.classList.add("drawer-open");
-                elements.playerDrawerBackdrop.scrollTop = 0;
+                requestAnimationFrame(() => {
+                    elements.playerDrawerBackdrop.scrollTop = wasOpen ? restoreScrollTop : 0;
+                });
             };
 
             const openPlayerDetails = (playerId) => {
@@ -3107,9 +3174,19 @@
                 const id = String(playerId);
                 if (state.compareIds.includes(id)) {
                     state.compareIds = state.compareIds.filter((item) => item !== id);
+                    delete state.compareYears[id];
                 } else {
                     state.compareIds = state.compareIds.concat(id).slice(-4);
+                    state.compareIds.forEach((compareId) => {
+                        state.compareYears[compareId] ||= PLAYER_PROFILE_SEASON;
+                    });
+                    Object.keys(state.compareYears).forEach((compareId) => {
+                        if (!state.compareIds.includes(compareId)) {
+                            delete state.compareYears[compareId];
+                        }
+                    });
                 }
+                state.comparisonRankLoadKey = "";
                 updateCompareButtons();
                 renderComparePanel();
                 if (state.compareScroll) {
@@ -3661,6 +3738,8 @@
 
                 elements.compareClear.addEventListener("click", () => {
                     state.compareIds = [];
+                    state.compareYears = {};
+                    state.comparisonRankLoadKey = "";
                     updateCompareButtons();
                     renderComparePanel();
                 });

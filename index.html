@@ -2070,12 +2070,12 @@
 
                 row.addEventListener("click", (event) => {
                     if (!closestElement(event.target, ".handle")) {
-                        openPlayerDetails(player.id);
+                        openPlayerDetails(player.id, { resetYear: true });
                     }
                 });
                 row.addEventListener("keydown", (event) => {
                     if (event.key === "Enter") {
-                        openPlayerDetails(player.id);
+                        openPlayerDetails(player.id, { resetYear: true });
                     }
                 });
 
@@ -2412,7 +2412,7 @@
                     return;
                 }
                 if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
-                    openPlayerDetails(player.id);
+                    openPlayerDetails(player.id, { preserveYear: true });
                 } else if (!state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
                     openComparisonDetails();
                 }
@@ -2444,7 +2444,7 @@
                     return;
                 }
                 if (state.selectedPlayerId === player.id && !elements.playerDrawerBackdrop.hidden) {
-                    openPlayerDetails(player.id);
+                    openPlayerDetails(player.id, { preserveYear: true });
                 } else if (!state.selectedPlayerId && state.compareIds.includes(player.id) && !elements.playerDrawerBackdrop.hidden) {
                     openComparisonDetails();
                 }
@@ -2570,7 +2570,7 @@
                 button.addEventListener("click", () => {
                     const nextId = adjacentPlayerId(playerId, offset);
                     if (nextId) {
-                        openPlayerDetails(nextId);
+                        openPlayerDetails(nextId, { preserveYear: true });
                     }
                 });
                 return button;
@@ -2586,7 +2586,7 @@
                     button.textContent = String(year);
                     button.addEventListener("click", () => {
                         state.profileYear = year;
-                        openPlayerDetails(playerId);
+                        openPlayerDetails(playerId, { preserveYear: true });
                     });
                     tabs.appendChild(button);
                 });
@@ -2927,10 +2927,13 @@
                 });
             };
 
-            const openPlayerDetails = (playerId) => {
+            const openPlayerDetails = (playerId, options = {}) => {
                 const context = playerContext(playerId);
                 if (!context) {
                     return;
+                }
+                if (options.resetYear || !options.preserveYear) {
+                    state.profileYear = PLAYER_PROFILE_SEASON;
                 }
                 elements.playerDrawerContent.className = "";
                 state.selectedPlayerId = String(playerId);
@@ -3794,7 +3797,7 @@
                         event.preventDefault();
                         const nextId = adjacentPlayerId(state.selectedPlayerId, event.key === "ArrowLeft" ? -1 : 1);
                         if (nextId) {
-                            openPlayerDetails(nextId);
+                            openPlayerDetails(nextId, { preserveYear: true });
                         }
                     }
                 });

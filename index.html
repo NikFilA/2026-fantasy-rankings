@@ -55,15 +55,11 @@
         .app {
             width: min(1380px, calc(100% - 32px));
             margin: 0 auto;
-            padding: 28px 0 42px;
+            padding: 18px 0 42px;
         }
 
         .topbar {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 18px;
-            align-items: end;
-            margin-bottom: 22px;
+            margin-bottom: 14px;
         }
 
         .eyebrow {
@@ -77,10 +73,10 @@
 
         h1 {
             margin: 0;
-            max-width: 780px;
-            font-size: clamp(30px, 5vw, 58px);
-            line-height: 0.96;
+            font-size: clamp(24px, 3vw, 36px);
+            line-height: 1;
             letter-spacing: 0;
+            text-transform: lowercase;
         }
 
         .summary {
@@ -117,8 +113,8 @@
 
         .controls {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(220px, 320px) minmax(150px, 210px) auto;
-            gap: 14px;
+            grid-template-columns: minmax(0, 1fr) minmax(220px, 320px) minmax(150px, 210px) auto auto auto;
+            gap: 10px;
             align-items: center;
             margin-bottom: 16px;
             border: 1px solid var(--line);
@@ -189,6 +185,30 @@
         .reset-btn {
             padding: 0 14px;
             color: var(--text);
+        }
+
+        .board-status {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(17, 20, 22, 0.58);
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            padding: 0 12px;
+        }
+
+        .board-status strong {
+            color: var(--text);
+            font-size: 13px;
+            letter-spacing: 0;
         }
 
         .filter-btn:hover,
@@ -317,9 +337,13 @@
 
         .compare-grid {
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             gap: 6px;
             justify-content: flex-end;
+            max-width: min(36vw, 390px);
+            min-height: 38px;
+            overflow-x: auto;
+            scrollbar-width: thin;
         }
 
         .compare-card {
@@ -330,6 +354,7 @@
             font-size: 12px;
             font-weight: 900;
             padding: 8px 10px;
+            white-space: nowrap;
         }
 
         .compare-card strong {
@@ -561,6 +586,15 @@
             font-size: 13px;
         }
 
+        .draft-save-row {
+            color: var(--subtle);
+        }
+
+        .draft-save-row strong {
+            color: var(--accent-strong);
+            font-size: 12px;
+        }
+
         .draft-status.error,
         .draft-status .error {
             color: var(--red);
@@ -589,6 +623,30 @@
             background: #13171b;
             color: var(--text);
             padding: 0 10px;
+        }
+
+        .scroll-top-btn {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            z-index: 30;
+            min-height: 42px;
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            border-radius: 999px;
+            background: rgba(17, 24, 39, 0.92);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            padding: 0 16px;
+            text-transform: uppercase;
+            box-shadow: 0 18px 36px var(--shadow);
+        }
+
+        .scroll-top-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent-strong);
         }
 
         .table-shell {
@@ -1247,6 +1305,14 @@
                 width: 100%;
             }
 
+            .board-status {
+                justify-content: flex-start;
+            }
+
+            .compare-grid {
+                max-width: 100%;
+            }
+
             .table-scroll {
                 max-height: none;
             }
@@ -1278,24 +1344,7 @@
 <body>
     <main class="app">
         <section class="topbar" aria-label="Draft board overview">
-            <div>
-                <p class="eyebrow">2026 Best Ball Utility</p>
-                <h1>Interactive Fantasy Football Draft Board</h1>
-            </div>
-            <div class="summary" aria-label="Ranking summary">
-                <div class="metric">
-                    <span>Players</span>
-                    <strong id="playerCount">0</strong>
-                </div>
-                <div class="metric">
-                    <span>Filter</span>
-                    <strong id="filterLabel">ALL</strong>
-                </div>
-                <div class="metric">
-                    <span>Saved</span>
-                    <strong id="saveState">Local</strong>
-                </div>
-            </div>
+            <h1>2026 redraft tool</h1>
         </section>
 
         <section class="draft-panel" aria-label="Sleeper draft sync">
@@ -1312,6 +1361,7 @@
             <div class="draft-status" aria-live="polite">
                 <strong id="draftBest">Best available: Off</strong>
                 <span id="draftStatus">Paste a Sleeper draft link when you are drafting.</span>
+                <span class="draft-save-row">Saved: <strong id="saveState">Local</strong></span>
             </div>
             <div class="roster-tracker" id="rosterTracker" aria-live="polite">
                 <span>My roster</span>
@@ -1373,6 +1423,12 @@
             <select class="team-select" id="teamFilter" aria-label="Team filter">
                 <option value="ALL">All Teams</option>
             </select>
+            <div class="board-status" aria-label="Board status">
+                <span>Players <strong id="playerCount">0</strong></span>
+                <span>Filter <strong id="filterLabel">ALL</strong></span>
+            </div>
+            <button class="reset-btn" type="button" id="homeButton">Home</button>
+            <button class="reset-btn" type="button" id="topButton">Top</button>
             <button class="reset-btn" type="button" id="resetButton">Reset to ADP Base</button>
         </section>
 
@@ -1400,6 +1456,7 @@
                 <div class="empty" id="emptyState" hidden>No players match this filter.</div>
             </div>
         </section>
+        <button class="scroll-top-btn" type="button" id="scrollTopButton">Top</button>
     </main>
 
     <div class="drawer-backdrop" id="playerDrawerBackdrop" hidden>
@@ -1482,6 +1539,9 @@
                 playerSearch: document.getElementById("playerSearch"),
                 teamFilter: document.getElementById("teamFilter"),
                 reset: document.getElementById("resetButton"),
+                home: document.getElementById("homeButton"),
+                top: document.getElementById("topButton"),
+                scrollTop: document.getElementById("scrollTopButton"),
                 playerCount: document.getElementById("playerCount"),
                 filterLabel: document.getElementById("filterLabel"),
                 saveState: document.getElementById("saveState"),
@@ -1798,6 +1858,25 @@
                 populateTeamFilter();
                 savePlayers();
                 render();
+            };
+
+            const scrollBoardTop = (smooth = true) => {
+                elements.tableScroll.scrollTo({ top: 0, left: 0, behavior: smooth ? "smooth" : "auto" });
+                window.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
+            };
+
+            const resetBoardView = () => {
+                state.selectedPositions.clear();
+                state.activeTeam = "ALL";
+                state.searchQuery = "";
+                state.availableOnly = false;
+                state.sort = { key: "", direction: "" };
+                state.lab.metrics = [];
+                state.lab.filters = {};
+                elements.playerSearch.value = "";
+                elements.availableOnly.checked = false;
+                render();
+                scrollBoardTop();
             };
 
             const nameKey = (name) => String(name || "")
@@ -3704,6 +3783,7 @@
                             state.selectedPositions.add(filter);
                         }
                         render();
+                        scrollBoardTop(false);
                         loadDataLabStats();
                     });
                 });
@@ -3711,6 +3791,7 @@
                 elements.teamFilter.addEventListener("change", () => {
                     state.activeTeam = elements.teamFilter.value;
                     render();
+                    scrollBoardTop(false);
                     loadDataLabStats();
                 });
 
@@ -3750,13 +3831,19 @@
                 elements.playerSearch.addEventListener("input", () => {
                     state.searchQuery = elements.playerSearch.value;
                     render();
+                    elements.tableScroll.scrollTop = 0;
                     loadDataLabStats();
                 });
 
                 elements.availableOnly.addEventListener("change", () => {
                     state.availableOnly = elements.availableOnly.checked;
                     render();
+                    scrollBoardTop(false);
                 });
+
+                elements.home.addEventListener("click", resetBoardView);
+                elements.top.addEventListener("click", () => scrollBoardTop());
+                elements.scrollTop.addEventListener("click", () => scrollBoardTop());
 
                 elements.mySlot.addEventListener("change", () => {
                     state.draft.myRosterId = elements.mySlot.value;

@@ -235,19 +235,26 @@
 
         .data-lab {
             display: grid;
-            grid-template-columns: minmax(360px, 1fr) minmax(220px, 390px) auto;
-            gap: 12px;
+            grid-template-columns: minmax(430px, 1fr) minmax(280px, 440px) auto;
+            gap: 10px;
             align-items: center;
             margin-bottom: 16px;
             border: 1px solid var(--line);
             border-radius: 8px;
-            background: rgba(23, 27, 31, 0.82);
-            padding: 8px 12px;
+            background: linear-gradient(180deg, rgba(25, 30, 35, 0.92), rgba(18, 22, 26, 0.92));
+            padding: 10px;
         }
 
         .lab-row {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+            min-width: 0;
+        }
+
+        .metric-tools {
             display: flex;
-            flex-wrap: wrap;
             gap: 8px;
             align-items: center;
             min-width: 0;
@@ -272,6 +279,15 @@
             display: none;
         }
 
+        .metric-chips .lab-status {
+            display: flex;
+            align-items: center;
+            min-height: 38px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
         .lab-select,
         .lab-input,
         .lab-btn {
@@ -287,9 +303,13 @@
 
         .metric-chips {
             display: flex;
-            flex: 1 1 420px;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             gap: 8px;
+            min-width: 0;
+            max-height: 40px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
         }
 
         .metric-chip {
@@ -297,6 +317,7 @@
             grid-template-columns: auto 76px 76px auto;
             gap: 6px;
             align-items: center;
+            flex: 0 0 auto;
             min-height: 38px;
             border: 1px solid var(--line-soft);
             border-radius: 8px;
@@ -356,13 +377,27 @@
             display: flex;
             flex-wrap: nowrap;
             gap: 6px;
-            justify-content: flex-end;
+            justify-content: center;
             max-width: 100%;
             min-height: 38px;
             max-height: 38px;
+            border: 1px dashed rgba(148, 163, 184, 0.22);
+            border-radius: 8px;
+            background: rgba(11, 15, 18, 0.32);
+            padding: 0 6px;
             overflow-x: auto;
             overflow-y: hidden;
             scrollbar-width: thin;
+        }
+
+        .compare-grid:empty::before {
+            content: "Select players";
+            align-self: center;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
         }
 
         .compare-card {
@@ -448,13 +483,14 @@
         .comparison-table {
             display: grid;
             gap: 6px;
-            min-width: 0;
+            min-width: max-content;
         }
 
         .comparison-row {
             display: grid;
             gap: 8px;
             align-items: stretch;
+            min-width: max-content;
         }
 
         .comparison-label,
@@ -1317,6 +1353,14 @@
                 justify-content: flex-start;
             }
 
+            .metric-tools {
+                flex-wrap: wrap;
+            }
+
+            .lab-select {
+                min-width: min(220px, 100%);
+            }
+
             .summary {
                 grid-template-columns: repeat(3, 1fr);
                 min-width: 0;
@@ -1401,33 +1445,35 @@
 
         <section class="data-lab" aria-label="Data lab">
             <div class="lab-row">
-                <label class="lab-field">
-                    <span>Add table metric</span>
-                    <select class="lab-select" id="metricSelect">
-                        <option value="age">Age</option>
-                        <option value="finish">Pos finish</option>
-                        <option value="ppg">PPG</option>
-                        <option value="games">Games</option>
-                        <option value="targets">Targets</option>
-                        <option value="targetsPg">Targets/G</option>
-                        <option value="rec">Receptions</option>
-                        <option value="recPg">Rec/G</option>
-                        <option value="recYds">Receiving yards</option>
-                        <option value="recYdsPg">Rec yards/G</option>
-                        <option value="snap">Snap %</option>
-                        <option value="yprr">YPRR</option>
-                        <option value="recTd">Receiving TD</option>
-                        <option value="recTdPg">Rec TD/G</option>
-                        <option value="rushAttPg">Rush att/G</option>
-                        <option value="rushYds">Rushing yards</option>
-                        <option value="rushYdsPg">Rush yards/G</option>
-                        <option value="rushTd">Rushing TD</option>
-                        <option value="rushTdPg">Rush TD/G</option>
-                    </select>
-                </label>
-                <button class="lab-btn" type="button" id="metricAdd">Add column</button>
+                <div class="metric-tools">
+                    <label class="lab-field">
+                        <span>Add table metric</span>
+                        <select class="lab-select" id="metricSelect">
+                            <option value="age">Age</option>
+                            <option value="finish">Pos finish</option>
+                            <option value="ppg">PPG</option>
+                            <option value="games">Games</option>
+                            <option value="targets">Targets</option>
+                            <option value="targetsPg">Targets/G</option>
+                            <option value="rec">Receptions</option>
+                            <option value="recPg">Rec/G</option>
+                            <option value="recYds">Receiving yards</option>
+                            <option value="recYdsPg">Rec yards/G</option>
+                            <option value="snap">Snap %</option>
+                            <option value="yprr">YPRR</option>
+                            <option value="recTd">Receiving TD</option>
+                            <option value="recTdPg">Rec TD/G</option>
+                            <option value="rushAttPg">Rush att/G</option>
+                            <option value="rushYds">Rushing yards</option>
+                            <option value="rushYdsPg">Rush yards/G</option>
+                            <option value="rushTd">Rushing TD</option>
+                            <option value="rushTdPg">Rush TD/G</option>
+                        </select>
+                    </label>
+                    <button class="lab-btn" type="button" id="metricAdd">Add column</button>
+                    <button class="lab-btn" type="button" id="metricReset">Clear metrics</button>
+                </div>
                 <div class="metric-chips" id="metricChips" aria-live="polite"></div>
-                <button class="lab-btn" type="button" id="metricReset">Clear metrics</button>
                 <span class="lab-status" id="labStatus">Add metrics to create sortable stat columns.</span>
             </div>
             <div class="compare-panel" id="comparePanel" aria-live="polite">
@@ -1510,6 +1556,7 @@
             const FLOCK_PERFORMANCE_PROXY_URL = "/api/flock-player-performance";
             const FLOCK_YEARLY_PROXY_URL = "/api/flock-player-yearly";
             const FLOCK_PERFORMANCE_DIRECT_URL = "https://api.flockfantasy.com/players/card-stats";
+            const FANTASYPROS_ADP_PROXY_URL = "/api/fantasypros-adp";
             const PLAYER_PROFILE_SEASON = 2025;
             const DEFAULT_SYNC_CONFIG = {
                 provider: "local",
@@ -1596,6 +1643,8 @@
             let draftTimer = null;
 
             const basePlayers = () => clonePlayers(window.defaultPlayers || defaultPlayers || []);
+
+            const sourcePlayers = () => window.defaultPlayers || defaultPlayers || [];
 
             const initialsFor = (name) => String(name || "")
                 .split(/\s+/)
@@ -1907,6 +1956,13 @@
             };
 
             const playerMarketKey = (player) => `${nameKey(player.name)}|${marketTeam(player.team)}|${player.pos}`;
+
+            const pickLabelFromAdp = (adp) => {
+                const pick = Math.max(1, Math.round(Number(adp)));
+                const round = Math.floor((pick - 1) / 12) + 1;
+                const slot = ((pick - 1) % 12) + 1;
+                return `${round}.${slot}`;
+            };
 
             const formatAdp = (adp, pickLabel) => {
                 if (adp === 999) {
@@ -3268,7 +3324,7 @@
                     state.compareIds = state.compareIds.filter((item) => item !== id);
                     delete state.compareYears[id];
                 } else {
-                    state.compareIds = state.compareIds.concat(id).slice(-4);
+                    state.compareIds = state.compareIds.concat(id);
                     state.compareIds.forEach((compareId) => {
                         state.compareYears[compareId] ||= PLAYER_PROFILE_SEASON;
                     });
@@ -3393,6 +3449,42 @@
                     throw new Error(`Request failed: ${response.status}`);
                 }
                 return response.json();
+            };
+
+            const refreshFantasyProsAdp = async () => {
+                try {
+                    const payload = await fetchJson(FANTASYPROS_ADP_PROXY_URL);
+                    const adpRows = Array.isArray(payload?.players) ? payload.players : [];
+                    const adpByKey = new Map(adpRows.map((row) => [
+                        `${nameKey(row.name)}|${marketTeam(row.team)}|${String(row.pos || "").toUpperCase()}`,
+                        row,
+                    ]));
+                    const adpByNamePos = new Map();
+                    adpRows.forEach((row) => {
+                        const key = `${nameKey(row.name)}|${String(row.pos || "").toUpperCase()}`;
+                        if (adpByNamePos.has(key)) {
+                            adpByNamePos.set(key, null);
+                            return;
+                        }
+                        adpByNamePos.set(key, row);
+                    });
+                    let updated = 0;
+                    sourcePlayers().forEach((player) => {
+                        const row = adpByKey.get(playerMarketKey(player)) || adpByNamePos.get(`${nameKey(player.name)}|${player.pos}`);
+                        const adp = Number(row?.underdogAdp);
+                        if (!Number.isFinite(adp)) {
+                            return;
+                        }
+                        player.udAdp = adp;
+                        player.udPick = row.underdogPick || pickLabelFromAdp(adp);
+                        updated += 1;
+                    });
+                    if (updated) {
+                        render();
+                    }
+                } catch (error) {
+                    console.warn("FantasyPros Underdog ADP could not be loaded.", error);
+                }
             };
 
             const refreshFlockRanks = async () => {
@@ -3926,6 +4018,7 @@
                 populateTeamFilter();
                 bindEvents();
                 render();
+                refreshFantasyProsAdp();
                 refreshFlockRanks();
                 refreshSleeperPlayers().then(() => {
                     const savedDraftId = localStorage.getItem(DRAFT_STORAGE_KEY);

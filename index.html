@@ -2413,6 +2413,11 @@
                 return { value, missing };
             };
 
+            const hasConsensusMarketCoverage = (player) => {
+                const flockRank = state.flockRanks[playerMarketKey(player)];
+                return player.udAdp !== 999 && (player.sleeperAdp !== 999 || Number.isFinite(flockRank));
+            };
+
             const sortedVisibleItems = (visibleItems, posRanks) => {
                 if (!state.sort.key) {
                     return visibleItems;
@@ -2420,6 +2425,7 @@
                 const direction = state.sort.direction === "desc" ? -1 : 1;
                 return visibleItems
                     .filter(({ player }) => player)
+                    .filter(({ player }) => state.sort.key !== "udVar" || hasConsensusMarketCoverage(player))
                     .slice()
                     .sort((a, b) => {
                         const left = sortValue(a, posRanks);

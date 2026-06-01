@@ -71,12 +71,25 @@
             text-transform: uppercase;
         }
 
+        .site-title {
+            display: inline-flex;
+            border: 0;
+            background: transparent;
+            color: var(--accent-strong);
+            cursor: pointer;
+            font: inherit;
+            padding: 0;
+            text-align: left;
+        }
+
         h1 {
             margin: 0;
-            font-size: clamp(24px, 3vw, 36px);
+            font-size: clamp(27px, 3.6vw, 44px);
+            font-weight: 950;
             line-height: 1;
-            letter-spacing: 0;
-            text-transform: lowercase;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            text-shadow: 0 0 22px rgba(56, 189, 248, 0.22);
         }
 
         .summary {
@@ -113,7 +126,7 @@
 
         .controls {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(220px, 320px) minmax(150px, 210px) auto auto auto;
+            grid-template-columns: minmax(0, 1fr) minmax(220px, 320px) minmax(150px, 210px) auto;
             gap: 10px;
             align-items: center;
             margin-bottom: 16px;
@@ -222,7 +235,7 @@
 
         .data-lab {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: minmax(360px, 1fr) minmax(220px, 390px) auto;
             gap: 12px;
             align-items: center;
             margin-bottom: 16px;
@@ -328,6 +341,10 @@
         }
 
         .compare-panel {
+            display: contents;
+        }
+
+        .compare-actions {
             display: flex;
             gap: 8px;
             align-items: center;
@@ -340,9 +357,11 @@
             flex-wrap: nowrap;
             gap: 6px;
             justify-content: flex-end;
-            max-width: min(36vw, 390px);
+            max-width: 100%;
             min-height: 38px;
+            max-height: 38px;
             overflow-x: auto;
+            overflow-y: hidden;
             scrollbar-width: thin;
         }
 
@@ -351,9 +370,11 @@
             border-radius: 8px;
             background: rgba(17, 20, 22, 0.68);
             color: var(--text);
+            flex: 0 0 auto;
             font-size: 12px;
             font-weight: 900;
-            padding: 8px 10px;
+            min-height: 38px;
+            padding: 9px 10px;
             white-space: nowrap;
         }
 
@@ -1309,6 +1330,10 @@
                 justify-content: flex-start;
             }
 
+            .compare-actions {
+                justify-content: flex-start;
+            }
+
             .compare-grid {
                 max-width: 100%;
             }
@@ -1344,7 +1369,9 @@
 <body>
     <main class="app">
         <section class="topbar" aria-label="Draft board overview">
-            <h1>2026 redraft tool</h1>
+            <button class="site-title" type="button" id="homeButton">
+                <h1>Fantasy Football Rankings</h1>
+            </button>
         </section>
 
         <section class="draft-panel" aria-label="Sleeper draft sync">
@@ -1406,8 +1433,10 @@
             <div class="compare-panel" id="comparePanel" aria-live="polite">
                 <span>Compare</span>
                 <div class="compare-grid" id="compareGrid"></div>
-                <button class="compare-open" type="button" id="compareOpen" disabled>Open Comparison</button>
-                <button class="lab-btn" type="button" id="compareClear" disabled>Clear</button>
+                <div class="compare-actions">
+                    <button class="compare-open" type="button" id="compareOpen" disabled>Open Comparison</button>
+                    <button class="lab-btn" type="button" id="compareClear" disabled>Clear</button>
+                </div>
             </div>
         </section>
 
@@ -1427,9 +1456,6 @@
                 <span>Players <strong id="playerCount">0</strong></span>
                 <span>Filter <strong id="filterLabel">ALL</strong></span>
             </div>
-            <button class="reset-btn" type="button" id="homeButton">Home</button>
-            <button class="reset-btn" type="button" id="topButton">Top</button>
-            <button class="reset-btn" type="button" id="resetButton">Reset to ADP Base</button>
         </section>
 
         <section class="table-shell" aria-label="Custom rankings table">
@@ -1538,9 +1564,7 @@
                 filters: Array.from(document.querySelectorAll(".filter-btn")),
                 playerSearch: document.getElementById("playerSearch"),
                 teamFilter: document.getElementById("teamFilter"),
-                reset: document.getElementById("resetButton"),
                 home: document.getElementById("homeButton"),
-                top: document.getElementById("topButton"),
                 scrollTop: document.getElementById("scrollTopButton"),
                 playerCount: document.getElementById("playerCount"),
                 filterLabel: document.getElementById("filterLabel"),
@@ -1844,20 +1868,6 @@
                             elements.saveState.textContent = "Local";
                         });
                 }
-            };
-
-            const resetPlayers = () => {
-                const confirmed = window.confirm("Reset your board to ADP base? This will replace your saved custom order and tiers.");
-                if (!confirmed) {
-                    return;
-                }
-                localStorage.removeItem(STORAGE_KEY);
-                state.items = buildDefaultItems(basePlayers());
-                state.sort = { key: "", direction: "" };
-                elements.saveState.textContent = "Base";
-                populateTeamFilter();
-                savePlayers();
-                render();
             };
 
             const scrollBoardTop = (smooth = true) => {
@@ -3842,7 +3852,6 @@
                 });
 
                 elements.home.addEventListener("click", resetBoardView);
-                elements.top.addEventListener("click", () => scrollBoardTop());
                 elements.scrollTop.addEventListener("click", () => scrollBoardTop());
 
                 elements.mySlot.addEventListener("change", () => {
@@ -3901,7 +3910,6 @@
                     }
                 });
 
-                elements.reset.addEventListener("click", resetPlayers);
             };
 
             const init = async () => {

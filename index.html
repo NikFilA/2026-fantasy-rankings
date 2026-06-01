@@ -1266,6 +1266,44 @@
             font-size: 18px;
         }
 
+        .betting-props-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .betting-prop-card {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(17, 24, 29, 0.86);
+            padding: 10px;
+        }
+
+        .betting-prop-card span,
+        .betting-prop-card small {
+            display: block;
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .betting-prop-card strong {
+            display: block;
+            margin-top: 5px;
+            color: var(--text);
+            font-size: 22px;
+            line-height: 1;
+        }
+
+        .betting-prop-card small {
+            margin-top: 7px;
+            color: var(--subtle);
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
         .expert-list {
             display: grid;
             gap: 7px;
@@ -1387,6 +1425,7 @@
             }
 
             .stat-grid,
+            .betting-props-grid,
             .detail-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
@@ -1557,6 +1596,7 @@
             const FLOCK_YEARLY_PROXY_URL = "/api/flock-player-yearly";
             const FLOCK_PERFORMANCE_DIRECT_URL = "https://api.flockfantasy.com/players/card-stats";
             const FANTASYPROS_ADP_PROXY_URL = "/api/fantasypros-adp";
+            const BETTING_PROPS_PROXY_URL = "/api/bettingpros-player-futures";
             const PLAYER_PROFILE_SEASON = 2025;
             const DEFAULT_SYNC_CONFIG = {
                 provider: "local",
@@ -1572,6 +1612,7 @@
                 flockDetails: {},
                 playerPerformance: {},
                 playerYearlyStats: {},
+                bettingProps: { loading: false, byKey: {}, byNamePos: {}, updatedAt: "", source: "", error: "" },
                 profileYear: PLAYER_PROFILE_SEASON,
                 playerAssets: {},
                 sleeperKeyById: {},
@@ -1970,6 +2011,30 @@
                 }
                 const base = Number.isInteger(adp) ? String(adp) : adp.toFixed(1);
                 return pickLabel ? `${base} (${pickLabel})` : base;
+            };
+
+            const formatAmericanOdds = (value) => {
+                const number = Number(value);
+                if (!Number.isFinite(number)) {
+                    return "N/A";
+                }
+                return number > 0 ? `+${number}` : String(number);
+            };
+
+            const bettingLineLabel = (prop) => {
+                if (!prop || !Number.isFinite(Number(prop.line))) {
+                    return "N/A";
+                }
+                return Number.isInteger(Number(prop.line)) ? String(Number(prop.line)) : Number(prop.line).toFixed(1);
+            };
+
+            const playerBettingProps = (player) => {
+                const exact = state.bettingProps.byKey[playerMarketKey(player)];
+                if (exact) {
+                    return exact.props || [];
+                }
+                const fallback = state.bettingProps.byNamePos[`${nameKey(player.name)}|${player.pos}`];
+                return fallback?.props || [];
             };
 
             const varianceClass = (variance) => {
@@ -2700,6 +2765,44 @@
                 return grid;
             };
 
+            const bettingPropsSection = (player) => {
+                const section = document.createElement("section");
+                section.className = "drawer-section";
+                const heading = document.createElement("h3");
+                const grid = document.createElement("div");
+                const props = playerBettingProps(player);
+                heading.textContent = "Betting Lines / Season Props";
+                grid.className = "betting-props-grid";
+
+                if (state.bettingProps.loading) {
+                    const card = document.createElement("div");
+                    card.className = "betting-prop-card";
+                    card.textContent = "Loading betting lines...";
+                    grid.appendChild(card);
+                } else if (props.length === 0) {
+                    const card = document.createElement("div");
+                    card.className = "betting-prop-card";
+                    card.textContent = state.bettingProps.error || "No fantasy-relevant season props available.";
+                    grid.appendChild(card);
+                } else {
+                    props.forEach((prop) => {
+                        const card = document.createElement("div");
+                        const label = document.createElement("span");
+                        const value = document.createElement("strong");
+                        const odds = document.createElement("small");
+                        card.className = "betting-prop-card";
+                        label.textContent = prop.label;
+                        value.textContent = bettingLineLabel(prop);
+                        odds.textContent = `O ${formatAmericanOdds(prop.overCost)} / U ${formatAmericanOdds(prop.underCost)}`;
+                        card.append(label, value, odds);
+                        grid.appendChild(card);
+                    });
+                }
+
+                section.append(heading, grid);
+                return section;
+            };
+
             const profilePlayerIds = () => sortedVisibleItems(getVisibleItems(), getPositionRanks())
                 .filter(({ player }) => player)
                 .map(({ player }) => player.id);
@@ -2853,7 +2956,8 @@
                 }
                 const performance = performanceForPlayer(player, flockDetail, year);
                 const yearly = yearlyForPlayer(player, flockDetail);
-                return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly, year };
+                const betProps = playerBettingProps(player);
+                return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly, year, betProps };
             };
 
             const posRankNumber = (rank) => {
@@ -2863,7 +2967,9 @@
 
             const comparisonMetricDefinitions = (entries) => {
                 const positionStats = [];
+                const bettingStats = [];
                 const seen = new Set();
+                const seenBetting = new Set();
                 entries.forEach(({ player }) => {
                     positionStatDefinitions(player.pos).forEach(([label, serialId, suffix]) => {
                         if (!seen.has(label)) {
@@ -2912,6 +3018,27 @@
                         }
                     });
                 });
+                entries.forEach((entry) => {
+                    entry.betProps.forEach((prop) => {
+                        if (seenBetting.has(prop.key)) {
+                            return;
+                        }
+                        seenBetting.add(prop.key);
+                        bettingStats.push({
+                            label: prop.label,
+                            highWins: true,
+                            rankable: false,
+                            value: (candidate) => {
+                                const match = candidate.betProps.find((item) => item.key === prop.key);
+                                return match ? Number(match.line) : null;
+                            },
+                            display: (candidate) => {
+                                const match = candidate.betProps.find((item) => item.key === prop.key);
+                                return match ? `${bettingLineLabel(match)} O ${formatAmericanOdds(match.overCost)}` : "N/A";
+                            },
+                        });
+                    });
+                });
                 return [
                     { label: "My Rank", highWins: false, value: (entry) => entry.myRank, display: (entry) => String(entry.myRank) },
                     { label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
@@ -2924,6 +3051,7 @@
                     } },
                     { label: "PPG", highWins: true, rankable: true, requiresPerformance: true, loading: (entry) => entry.performance?.loading, value: comparisonPpgValue, display: (entry) => entry.performance?.loading ? "Loading" : formatDecimal(comparisonPpgValue(entry)) },
                     { label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
+                    ...bettingStats,
                     ...positionStats,
                 ];
             };
@@ -3141,7 +3269,7 @@
                 try {
                     const performance = performanceForPlayer(player, flockDetail);
                     const yearly = yearlyForPlayer(player, flockDetail);
-                    elements.playerDrawerContent.append(positionStatsGrid(player, yearly), performanceChart(performance));
+                    elements.playerDrawerContent.append(positionStatsGrid(player, yearly), bettingPropsSection(player), performanceChart(performance));
                     refreshPlayerPerformance(player, flockDetail);
                     refreshYearlyStats(player, flockDetail);
                 } catch (error) {
@@ -3490,6 +3618,46 @@
                     }
                 } catch (error) {
                     console.warn("FantasyPros Underdog ADP could not be loaded.", error);
+                }
+            };
+
+            const refreshBettingProps = async () => {
+                if (state.bettingProps.loading) {
+                    return;
+                }
+                state.bettingProps = { ...state.bettingProps, loading: true, error: "" };
+                try {
+                    const payload = await fetchJson(BETTING_PROPS_PROXY_URL);
+                    const byKey = {};
+                    const byNamePos = {};
+                    (payload?.players || []).forEach((player) => {
+                        const props = Array.isArray(player.props) ? player.props : [];
+                        const row = { ...player, props };
+                        byKey[`${nameKey(player.name)}|${marketTeam(player.team)}|${String(player.pos || "").toUpperCase()}`] = row;
+                        const fallbackKey = `${nameKey(player.name)}|${String(player.pos || "").toUpperCase()}`;
+                        if (byNamePos[fallbackKey]) {
+                            byNamePos[fallbackKey] = null;
+                        } else {
+                            byNamePos[fallbackKey] = row;
+                        }
+                    });
+                    state.bettingProps = {
+                        loading: false,
+                        byKey,
+                        byNamePos,
+                        updatedAt: payload?.updatedAt || "",
+                        source: payload?.source || "",
+                        error: "",
+                    };
+                    render();
+                    if (state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
+                        openPlayerDetails(state.selectedPlayerId, { preserveYear: true });
+                    } else if (!state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
+                        openComparisonDetails();
+                    }
+                } catch (error) {
+                    console.warn("BettingPros player futures could not be loaded.", error);
+                    state.bettingProps = { ...state.bettingProps, loading: false, error: "Betting lines unavailable." };
                 }
             };
 
@@ -4025,6 +4193,7 @@
                 bindEvents();
                 render();
                 refreshFantasyProsAdp();
+                refreshBettingProps();
                 refreshFlockRanks();
                 refreshSleeperPlayers().then(() => {
                     const savedDraftId = localStorage.getItem(DRAFT_STORAGE_KEY);

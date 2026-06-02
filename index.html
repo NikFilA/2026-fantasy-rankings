@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fantasy Draft Board</title>
     <script src="data.js"></script>
+    <script src="team-projections.js"></script>
     <script src="sync-config.js"></script>
     <style>
         :root {
@@ -1597,6 +1598,7 @@
             const FLOCK_PERFORMANCE_DIRECT_URL = "https://api.flockfantasy.com/players/card-stats";
             const FANTASYPROS_ADP_PROXY_URL = "/api/fantasypros-adp";
             const BETTING_PROPS_PROXY_URL = "/api/bettingpros-player-futures";
+            const TEAM_FUTURES_PROXY_URL = "/api/bettingpros-team-futures";
             const PLAYER_PROFILE_SEASON = 2025;
             const DEFAULT_SYNC_CONFIG = {
                 provider: "local",
@@ -1613,6 +1615,7 @@
                 playerPerformance: {},
                 playerYearlyStats: {},
                 bettingProps: { loading: false, byKey: {}, byNamePos: {}, updatedAt: "", source: "", error: "" },
+                teamFutures: { loading: false, byTeam: {}, updatedAt: "", source: "", error: "" },
                 profileYear: PLAYER_PROFILE_SEASON,
                 playerAssets: {},
                 sleeperKeyById: {},
@@ -1996,6 +1999,11 @@
                 return TEAM_ALIASES[normalized] || normalized;
             };
 
+            const clayTeam = (team) => {
+                const normalized = String(team || "").toUpperCase();
+                return normalized === "WSH" ? "WAS" : normalized;
+            };
+
             const playerMarketKey = (player) => `${nameKey(player.name)}|${marketTeam(player.team)}|${player.pos}`;
 
             const pickLabelFromAdp = (adp) => {
@@ -2036,6 +2044,11 @@
                 const fallback = state.bettingProps.byNamePos[`${nameKey(player.name)}|${player.pos}`];
                 return fallback?.props || [];
             };
+
+            const clayTeamProjection = (team) => (window.clayTeamProjections || [])
+                .find((projection) => projection.team === clayTeam(team));
+
+            const teamWinFuture = (team) => state.teamFutures.byTeam[marketTeam(team)] || null;
 
             const varianceClass = (variance) => {
                 if (variance > 0) {
@@ -2480,7 +2493,7 @@
 
             const hasConsensusMarketCoverage = (player) => {
                 const flockRank = state.flockRanks[playerMarketKey(player)];
-                return player.udAdp !== 999 && (player.sleeperAdp !== 999 || Number.isFinite(flockRank));
+                return player.udAdp !== 999 && player.sleeperAdp !== 999 && Number.isFinite(flockRank);
             };
 
             const sortedVisibleItems = (visibleItems, posRanks) => {
@@ -2570,6 +2583,22 @@
                     return "N/A";
                 }
                 return Number.isInteger(number) ? String(number) : number.toFixed(1);
+            };
+
+            const formatWhole = (value) => {
+                const number = Number(value);
+                if (!Number.isFinite(number)) {
+                    return "N/A";
+                }
+                return Math.round(number).toLocaleString();
+            };
+
+            const formatPercent = (value) => {
+                const number = Number(value);
+                if (!Number.isFinite(number)) {
+                    return "N/A";
+                }
+                return `${Math.round(number)}%`;
             };
 
             const decimalAge = (dob, fallbackAge) => {
@@ -2799,6 +2828,64 @@
                     });
                 }
 
+                section.append(heading, grid);
+                return section;
+            };
+
+            const teamContextSection = (player) => {
+                const section = document.createElement("section");
+                const heading = document.createElement("h3");
+                const grid = document.createElement("div");
+                const clay = clayTeamProjection(player.team);
+                const future = teamWinFuture(player.team);
+                const offense = clay?.offense || {};
+                const positions = clay?.positions || {};
+                const targets = Number(offense.targets);
+                section.className = "drawer-section";
+                heading.textContent = `${player.team} Team Context`;
+                grid.className = "betting-props-grid";
+
+                const card = (label, value, detail = "") => {
+                    const node = document.createElement("div");
+                    const labelNode = document.createElement("span");
+                    const valueNode = document.createElement("strong");
+                    const detailNode = document.createElement("small");
+                    node.className = "betting-prop-card";
+                    labelNode.textContent = label;
+                    valueNode.textContent = value;
+                    detailNode.textContent = detail;
+                    node.append(labelNode, valueNode, detailNode);
+                    return node;
+                };
+
+                if (state.teamFutures.loading) {
+                    grid.appendChild(card("BettingPros Wins", "Loading", "Season win total"));
+                } else if (future) {
+                    grid.appendChild(card(
+                        "BettingPros Wins",
+                        bettingLineLabel(future),
+                        `O ${formatAmericanOdds(future.overCost)} / U ${formatAmericanOdds(future.underCost)}`
+                    ));
+                } else {
+                    grid.appendChild(card("BettingPros Wins", "N/A", state.teamFutures.error || "No win total available"));
+                }
+
+                if (!clay) {
+                    grid.appendChild(card("Mike Clay", "N/A", "Team projection unavailable"));
+                    section.append(heading, grid);
+                    return section;
+                }
+
+                grid.append(
+                    card("Clay Projected Wins", formatDecimal(clay.clayWins), `NFL rank ${clay.clayWinsRank}`),
+                    card("Clay Passing", formatWhole(offense.passYds), `${formatWhole(offense.passAtt)} att / ${formatWhole(offense.passTd)} TD`),
+                    card("Clay Rushing", formatWhole(offense.rushYds), `${formatWhole(offense.rushAtt)} att / ${formatWhole(offense.rushTd)} TD`),
+                    ...["RB", "WR", "TE"].map((pos) => {
+                        const posTargets = Number(positions[pos]?.targets);
+                        const share = targets > 0 && Number.isFinite(posTargets) ? (posTargets / targets) * 100 : null;
+                        return card(`${pos} Target Share`, formatPercent(share), `${formatWhole(posTargets)} targets / ${formatWhole(positions[pos]?.ppr)} PPR`);
+                    })
+                );
                 section.append(heading, grid);
                 return section;
             };
@@ -3269,7 +3356,7 @@
                 try {
                     const performance = performanceForPlayer(player, flockDetail);
                     const yearly = yearlyForPlayer(player, flockDetail);
-                    elements.playerDrawerContent.append(positionStatsGrid(player, yearly), bettingPropsSection(player), performanceChart(performance));
+                    elements.playerDrawerContent.append(positionStatsGrid(player, yearly), teamContextSection(player), bettingPropsSection(player), performanceChart(performance));
                     refreshPlayerPerformance(player, flockDetail);
                     refreshYearlyStats(player, flockDetail);
                 } catch (error) {
@@ -3658,6 +3745,33 @@
                 } catch (error) {
                     console.warn("BettingPros player futures could not be loaded.", error);
                     state.bettingProps = { ...state.bettingProps, loading: false, error: "Betting lines unavailable." };
+                }
+            };
+
+            const refreshTeamFutures = async () => {
+                if (state.teamFutures.loading) {
+                    return;
+                }
+                state.teamFutures = { ...state.teamFutures, loading: true, error: "" };
+                try {
+                    const payload = await fetchJson(TEAM_FUTURES_PROXY_URL);
+                    const byTeam = {};
+                    (payload?.teams || []).forEach((team) => {
+                        byTeam[marketTeam(team.team)] = team;
+                    });
+                    state.teamFutures = {
+                        loading: false,
+                        byTeam,
+                        updatedAt: payload?.updatedAt || "",
+                        source: payload?.source || "",
+                        error: "",
+                    };
+                    if (state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
+                        openPlayerDetails(state.selectedPlayerId, { preserveYear: true });
+                    }
+                } catch (error) {
+                    console.warn("BettingPros team futures could not be loaded.", error);
+                    state.teamFutures = { ...state.teamFutures, loading: false, error: "Team win total unavailable." };
                 }
             };
 
@@ -4194,6 +4308,7 @@
                 render();
                 refreshFantasyProsAdp();
                 refreshBettingProps();
+                refreshTeamFutures();
                 refreshFlockRanks();
                 refreshSleeperPlayers().then(() => {
                     const savedDraftId = localStorage.getItem(DRAFT_STORAGE_KEY);

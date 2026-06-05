@@ -1320,7 +1320,8 @@
             padding: 10px;
         }
 
-        .betting-prop-card.team-context-card {
+        .betting-prop-card.team-context-card,
+        .betting-prop-card.prop-context-card {
             position: relative;
             overflow: hidden;
             border-color: color-mix(in srgb, var(--line) 74%, var(--rank-color, var(--muted)));
@@ -1346,23 +1347,28 @@
             letter-spacing: 0.04em;
         }
 
-        .team-context-card.rank-elite {
+        .team-context-card.rank-elite,
+        .prop-context-card.rank-elite {
             --rank-color: var(--green);
         }
 
-        .team-context-card.rank-good {
+        .team-context-card.rank-good,
+        .prop-context-card.rank-good {
             --rank-color: #86efac;
         }
 
-        .team-context-card.rank-mid {
+        .team-context-card.rank-mid,
+        .prop-context-card.rank-mid {
             --rank-color: var(--yellow);
         }
 
-        .team-context-card.rank-low {
+        .team-context-card.rank-low,
+        .prop-context-card.rank-low {
             --rank-color: var(--orange);
         }
 
-        .team-context-card.rank-bad {
+        .team-context-card.rank-bad,
+        .prop-context-card.rank-bad {
             --rank-color: var(--red);
         }
 
@@ -1384,7 +1390,8 @@
             line-height: 1;
         }
 
-        .team-context-card strong {
+        .team-context-card strong,
+        .prop-context-card strong {
             padding-right: 48px;
         }
 
@@ -1549,7 +1556,7 @@
         </section>
 
         <section class="draft-panel" aria-label="Draft sync">
-            <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or Underdog copied board text" aria-label="Draft URL or copied board text" autocomplete="off">
+            <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or copied Underdog board text" aria-label="Sleeper draft URL or copied Underdog board text" autocomplete="off">
             <button class="draft-btn" type="button" id="draftConnectButton">Connect Draft</button>
             <button class="draft-btn secondary" type="button" id="draftStopButton">Stop</button>
             <select class="draft-select" id="mySlotSelect" aria-label="My Sleeper draft slot">
@@ -1726,6 +1733,7 @@
                 compareIds: [],
                 compareYears: {},
                 comparisonRankLoadKey: "",
+                drawerReturnScroll: null,
                 draft: {
                     provider: "sleeper",
                     id: "",
@@ -1796,7 +1804,7 @@
                 id: String(player.id || index + 1),
                 name: String(player.name || "Unknown Player"),
                 pos: POSITIONS.includes(player.pos) ? player.pos : "WR",
-                team: String(player.team || "FA"),
+                team: displayTeam(player.team || "FA"),
                 udAdp: Number.isFinite(Number(player.udAdp)) ? Number(player.udAdp) : 999,
                 udPick: String(player.udPick || ""),
                 sleeperAdp: Number.isFinite(Number(player.sleeperAdp)) ? Number(player.sleeperAdp) : 999,
@@ -2093,8 +2101,13 @@
                 return TEAM_ALIASES[normalized] || normalized;
             };
 
-            const clayTeam = (team) => {
+            const displayTeam = (team) => {
                 const normalized = String(team || "").toUpperCase();
+                return ({ JAX: "JAC", JAC: "JAC", WSH: "WAS", WAS: "WAS" })[normalized] || normalized;
+            };
+
+            const clayTeam = (team) => {
+                const normalized = displayTeam(team);
                 return normalized === "WSH" ? "WAS" : normalized;
             };
 
@@ -2145,7 +2158,7 @@
                         .filter((player) => `${nameKey(player.name)}|${player.pos}` === key)
                         .forEach((player) => {
                             if (meta.team) {
-                                player.team = clayTeam(meta.team);
+                                player.team = displayTeam(meta.team);
                             }
                             if (meta.pos && POSITIONS.includes(meta.pos)) {
                                 player.pos = meta.pos;
@@ -2212,6 +2225,27 @@
                 const targets = Number(projection?.offense?.targets);
                 const posTargets = Number(projection?.positions?.[pos]?.targets);
                 return targets > 0 && Number.isFinite(posTargets) ? (posTargets / targets) * 100 : null;
+            };
+
+            const propLineRank = (player, prop) => {
+                const propKey = prop?.key;
+                const pos = String(player?.pos || "").toUpperCase();
+                const rows = Object.values(state.bettingProps.byKey)
+                    .filter((row) => String(row.pos || "").toUpperCase() === pos)
+                    .map((row) => {
+                        const match = (row.props || []).find((item) => item.key === propKey);
+                        return {
+                            key: `${nameKey(row.name)}|${marketTeam(row.team)}|${String(row.pos || "").toUpperCase()}`,
+                            value: Number(match?.line),
+                        };
+                    })
+                    .filter((row) => Number.isFinite(row.value));
+                const targetKey = playerMarketKey(player);
+                if (!propKey || !rows.some((row) => row.key === targetKey)) {
+                    return null;
+                }
+                const sorted = rows.slice().sort((a, b) => b.value - a.value);
+                return { rank: sorted.findIndex((row) => row.key === targetKey) + 1, total: sorted.length };
             };
 
             const varianceClass = (variance) => {
@@ -2983,7 +3017,14 @@
                         const label = document.createElement("span");
                         const value = document.createElement("strong");
                         const odds = document.createElement("small");
-                        card.className = "betting-prop-card";
+                        const rank = propLineRank(player, prop);
+                        if (rank?.rank && rank?.total) {
+                            const rankNode = document.createElement("b");
+                            rankNode.className = "rank-chip";
+                            rankNode.textContent = `${rank.rank}/${rank.total}`;
+                            card.appendChild(rankNode);
+                        }
+                        card.className = `betting-prop-card prop-context-card ${rankClass(rank?.rank, rank?.total)}`;
                         label.textContent = prop.label;
                         value.textContent = bettingLineLabel(prop);
                         odds.textContent = `O ${formatAmericanOdds(prop.overCost)} / U ${formatAmericanOdds(prop.underCost)}`;
@@ -3205,12 +3246,33 @@
                 return section;
             };
 
+            const captureBoardScroll = () => ({
+                tableLeft: elements.tableScroll.scrollLeft,
+                tableTop: elements.tableScroll.scrollTop,
+                windowX: window.scrollX,
+                windowY: window.scrollY,
+            });
+
+            const restoreBoardScroll = (scroll) => {
+                if (!scroll) {
+                    return;
+                }
+                requestAnimationFrame(() => {
+                    elements.tableScroll.scrollLeft = scroll.tableLeft;
+                    elements.tableScroll.scrollTop = scroll.tableTop;
+                    window.scrollTo(scroll.windowX, scroll.windowY);
+                });
+            };
+
             const closePlayerDetails = () => {
+                const restoreScroll = state.drawerReturnScroll;
                 state.selectedPlayerId = "";
                 elements.playerDrawerBackdrop.hidden = true;
                 document.body.classList.remove("drawer-open");
                 elements.playerDrawerContent.className = "";
                 elements.playerDrawerContent.replaceChildren();
+                state.drawerReturnScroll = null;
+                restoreBoardScroll(restoreScroll);
             };
 
             const comparisonEntry = (playerId, shouldRefresh = true, forcedYear = null) => {
@@ -3437,6 +3499,9 @@
                     return;
                 }
                 const wasOpen = !elements.playerDrawerBackdrop.hidden && elements.playerDrawerContent.classList.contains("comparison-board");
+                if (elements.playerDrawerBackdrop.hidden) {
+                    state.drawerReturnScroll = captureBoardScroll();
+                }
                 const restoreScrollTop = elements.playerDrawerBackdrop.scrollTop;
                 state.selectedPlayerId = "";
                 const entries = state.compareIds.map(comparisonEntry).filter(Boolean);
@@ -3505,6 +3570,9 @@
                 const context = playerContext(playerId);
                 if (!context) {
                     return;
+                }
+                if (elements.playerDrawerBackdrop.hidden) {
+                    state.drawerReturnScroll = captureBoardScroll();
                 }
                 if (options.resetYear || !options.preserveYear) {
                     state.profileYear = PLAYER_PROFILE_SEASON;
@@ -3597,7 +3665,7 @@
                     playerIndex += 1;
                     const playerKey = playerMarketKey(player);
                     const positionMatch = state.selectedPositions.size === 0 || state.selectedPositions.has(player.pos);
-                    const teamMatch = state.activeTeam === "ALL" || player.team === state.activeTeam;
+                    const teamMatch = state.activeTeam === "ALL" || displayTeam(player.team) === displayTeam(state.activeTeam);
                     const searchMatch = !searchQuery || normalizeSearch(player.name).includes(searchQuery);
                     const availabilityMatch = !state.availableOnly || !state.draft.active || !state.draft.draftedKeys.has(playerKey);
                     if (positionMatch && teamMatch && searchMatch && availabilityMatch && metricFilterMatch(player, globalIndex)) {
@@ -3610,7 +3678,7 @@
             const filterLabel = () => {
                 const parts = [state.selectedPositions.size ? Array.from(state.selectedPositions).join(" / ") : "ALL"];
                 if (state.activeTeam !== "ALL") {
-                    parts.push(state.activeTeam);
+                    parts.push(displayTeam(state.activeTeam));
                 }
                 if (state.searchQuery.trim()) {
                     parts.push("Search");
@@ -3619,8 +3687,8 @@
             };
 
             const populateTeamFilter = () => {
-                const currentTeam = state.activeTeam;
-                const teams = Array.from(new Set(orderedPlayers().map((player) => player.team))).sort();
+                const currentTeam = displayTeam(state.activeTeam);
+                const teams = Array.from(new Set(orderedPlayers().map((player) => displayTeam(player.team)))).sort();
                 elements.teamFilter.replaceChildren(new Option("All Teams", "ALL"));
                 teams.forEach((team) => {
                     elements.teamFilter.appendChild(new Option(team, team));
@@ -4324,7 +4392,7 @@
                     state.draft.provider = "underdog";
                     state.draft.id = "underdog-url";
                     state.draft.active = true;
-                    state.draft.error = "Underdog draft URLs are session-protected. Paste copied draft-board text from the Underdog room to import picks.";
+                    state.draft.error = "Underdog links are not supported. Paste copied draft-board text from the Underdog room to import picks.";
                     state.draft.draftedKeys = new Set();
                     state.draft.bestAvailableKey = "";
                     localStorage.removeItem(DRAFT_STORAGE_KEY);

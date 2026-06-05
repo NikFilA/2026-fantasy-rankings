@@ -60,7 +60,18 @@ const readWinTotalOffer = (offer) => {
     };
 };
 
+const setCorsHeaders = (response) => {
+    response.setHeader("Access-Control-Allow-Origin", "*");
+    response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+};
+
 export default async function handler(request, response) {
+    setCorsHeaders(response);
+    if (request.method === "OPTIONS") {
+        response.status(204).end();
+        return;
+    }
     response.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate=3600");
 
     try {

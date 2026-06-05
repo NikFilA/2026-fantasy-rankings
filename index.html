@@ -594,6 +594,11 @@
             color: var(--accent);
         }
 
+        .comparison-row.team-context .comparison-label {
+            border-color: rgba(248, 113, 113, 0.24);
+            color: #fca5a5;
+        }
+
         .comparison-row.production .comparison-label {
             border-color: rgba(74, 222, 128, 0.22);
             color: #86efac;
@@ -1074,7 +1079,10 @@
         }
 
         .drawer-close {
-            float: right;
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            z-index: 3;
             width: 34px;
             height: 34px;
             border: 1px solid var(--line);
@@ -1605,6 +1613,14 @@
                             <option value="rushYdsPg">Rush yards/G</option>
                             <option value="rushTd">Rushing TD</option>
                             <option value="rushTdPg">Rush TD/G</option>
+                            <option value="teamWins">BettingPros wins</option>
+                            <option value="teamTargetShare">Team pos target share</option>
+                            <option value="teamPassYds">Clay team pass yds</option>
+                            <option value="teamRushYds">Clay team rush yds</option>
+                            <option value="propRecYds">Prop rec yards</option>
+                            <option value="propRecTd">Prop rec TD</option>
+                            <option value="propRushYds">Prop rush yards</option>
+                            <option value="propRushTd">Prop rush TD</option>
                         </select>
                     </label>
                     <button class="lab-btn" type="button" id="metricAdd">Add column</button>
@@ -1686,17 +1702,19 @@
             const MARKET_REFRESH_MS = 15 * 60 * 1000;
             const POSITIONS = ["QB", "RB", "WR", "TE"];
             const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
-            const FLOCK_PROXY_URL = "/api/flock-rankings";
+            const REMOTE_APP_ORIGIN = "https://2026-fantasy-rankings.vercel.app";
+            const apiPath = (path) => window.location.protocol === "file:" ? `${REMOTE_APP_ORIGIN}${path}` : path;
+            const FLOCK_PROXY_URL = apiPath("/api/flock-rankings");
             const FLOCK_DIRECT_URL = "https://api.flockfantasy.com/rankings?format=BEST_BALL&pickType=general";
-            const SLEEPER_PLAYERS_PROXY_URL = "/api/sleeper-players";
+            const SLEEPER_PLAYERS_PROXY_URL = apiPath("/api/sleeper-players");
             const SLEEPER_PLAYERS_DIRECT_URL = "https://api.sleeper.app/v1/players/nfl";
             const SLEEPER_DRAFT_BASE_URL = "https://api.sleeper.app/v1/draft";
-            const FLOCK_PERFORMANCE_PROXY_URL = "/api/flock-player-performance";
-            const FLOCK_YEARLY_PROXY_URL = "/api/flock-player-yearly";
+            const FLOCK_PERFORMANCE_PROXY_URL = apiPath("/api/flock-player-performance");
+            const FLOCK_YEARLY_PROXY_URL = apiPath("/api/flock-player-yearly");
             const FLOCK_PERFORMANCE_DIRECT_URL = "https://api.flockfantasy.com/players/card-stats";
-            const FANTASYPROS_ADP_PROXY_URL = "/api/fantasypros-adp";
-            const BETTING_PROPS_PROXY_URL = "/api/bettingpros-player-futures";
-            const TEAM_FUTURES_PROXY_URL = "/api/bettingpros-team-futures";
+            const FANTASYPROS_ADP_PROXY_URL = apiPath("/api/fantasypros-adp");
+            const BETTING_PROPS_PROXY_URL = apiPath("/api/bettingpros-player-futures");
+            const TEAM_FUTURES_PROXY_URL = apiPath("/api/bettingpros-team-futures");
             const PLAYER_PROFILE_SEASON = 2025;
             const DEFAULT_SYNC_CONFIG = {
                 provider: "local",
@@ -2227,6 +2245,29 @@
                 return targets > 0 && Number.isFinite(posTargets) ? (posTargets / targets) * 100 : null;
             };
 
+            const teamMetricValue = (player, metricKey) => {
+                const clay = clayTeamProjection(player.team);
+                const future = teamWinFuture(player.team);
+                if (metricKey === "teamWins") {
+                    return numericOrNull(future?.line);
+                }
+                if (metricKey === "teamTargetShare") {
+                    return ["RB", "WR", "TE"].includes(player.pos) ? numericOrNull(teamPositionShare(clay, player.pos)) : null;
+                }
+                if (metricKey === "teamPassYds") {
+                    return numericOrNull(clay?.offense?.passYds);
+                }
+                if (metricKey === "teamRushYds") {
+                    return numericOrNull(clay?.offense?.rushYds);
+                }
+                return null;
+            };
+
+            const propMetricValue = (player, metric) => {
+                const prop = playerBettingProps(player).find((item) => item.key === metric?.propKey);
+                return numericOrNull(prop?.line);
+            };
+
             const propLineRank = (player, prop) => {
                 const propKey = prop?.key;
                 const pos = String(player?.pos || "").toUpperCase();
@@ -2556,6 +2597,14 @@
                 rushYdsPg: { label: "Rush Yds/G", direction: "desc", source: "yearly", serialIds: ["RushingYards"], perGame: true, highWins: true },
                 rushTd: { label: "Rush TD", direction: "desc", source: "yearly", serialIds: ["RushingTouchdowns"], highWins: true },
                 rushTdPg: { label: "Rush TD/G", direction: "desc", source: "yearly", serialIds: ["RushingTouchdowns"], perGame: true, highWins: true },
+                teamWins: { label: "BP Wins", direction: "desc", source: "team", highWins: true },
+                teamTargetShare: { label: "Team Tgt Share", direction: "desc", source: "team", suffix: "%", highWins: true },
+                teamPassYds: { label: "Clay Pass Yds", direction: "desc", source: "team", format: "whole", highWins: true },
+                teamRushYds: { label: "Clay Rush Yds", direction: "desc", source: "team", format: "whole", highWins: true },
+                propRecYds: { label: "Prop Rec Yds", direction: "desc", source: "prop", propKey: "recYds", highWins: true },
+                propRecTd: { label: "Prop Rec TD", direction: "desc", source: "prop", propKey: "recTd", highWins: true },
+                propRushYds: { label: "Prop Rush Yds", direction: "desc", source: "prop", propKey: "rushYds", highWins: true },
+                propRushTd: { label: "Prop Rush TD", direction: "desc", source: "prop", propKey: "rushTd", highWins: true },
             };
 
             const numericOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
@@ -2653,6 +2702,12 @@
                 }
                 if (metricKey === "games") {
                     return seasonGamesValue(yearly);
+                }
+                if (metric.source === "team") {
+                    return teamMetricValue(player, metricKey);
+                }
+                if (metric.source === "prop") {
+                    return propMetricValue(player, metric);
                 }
                 if (metric.perGame) {
                     const direct = seasonStatValue(yearly, metric.serialIds, { perGame: true });
@@ -3307,6 +3362,46 @@
                 const bettingStats = [];
                 const seen = new Set();
                 const seenBetting = new Set();
+                const teamStats = [
+                    {
+                        category: "Team Context",
+                        label: "Team",
+                        highWins: null,
+                        value: () => 0,
+                        display: (entry) => displayTeam(entry.player.team),
+                    },
+                    {
+                        category: "Team Context",
+                        label: "BettingPros Wins",
+                        highWins: true,
+                        value: (entry) => teamMetricValue(entry.player, "teamWins"),
+                        display: (entry) => formatDecimal(teamMetricValue(entry.player, "teamWins")),
+                    },
+                    {
+                        category: "Team Context",
+                        label: "Pos Target Share",
+                        highWins: true,
+                        value: (entry) => teamMetricValue(entry.player, "teamTargetShare"),
+                        display: (entry) => {
+                            const share = teamMetricValue(entry.player, "teamTargetShare");
+                            return share === null ? "N/A" : `${entry.player.pos} ${formatPercent(share)}`;
+                        },
+                    },
+                    {
+                        category: "Team Context",
+                        label: "Clay Passing",
+                        highWins: true,
+                        value: (entry) => teamMetricValue(entry.player, "teamPassYds"),
+                        display: (entry) => formatWhole(teamMetricValue(entry.player, "teamPassYds")),
+                    },
+                    {
+                        category: "Team Context",
+                        label: "Clay Rushing",
+                        highWins: true,
+                        value: (entry) => teamMetricValue(entry.player, "teamRushYds"),
+                        display: (entry) => formatWhole(teamMetricValue(entry.player, "teamRushYds")),
+                    },
+                ];
                 entries.forEach(({ player }) => {
                     positionStatDefinitions(player.pos).forEach(([label, serialId, suffix]) => {
                         if (!seen.has(label)) {
@@ -3384,6 +3479,7 @@
                     { category: "My Board", label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
                     { category: "Markets", label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
                     ...bettingStats,
+                    ...teamStats,
                     { category: "Production", label: "Finish", highWins: false, rankable: false, requiresYearly: true, loading: (entry) => entry.yearly?.loading, value: (entry) => finishValueForPlayer(entry.player, entry.year), display: (entry) => {
                         if (entry.yearly?.loading) {
                             return "Loading";
@@ -3712,6 +3808,9 @@
                 if (metricKey === "finish") {
                     return `${player.pos}${value}`;
                 }
+                if (metric?.format === "whole") {
+                    return formatWhole(value);
+                }
                 return `${formatDecimal(value)}${metric?.suffix || ""}`;
             };
 
@@ -4030,6 +4129,7 @@
                 } catch (error) {
                     console.warn("BettingPros player futures could not be loaded.", error);
                     state.bettingProps = { ...state.bettingProps, loading: false, error: "Betting lines unavailable." };
+                    render();
                 }
             };
 
@@ -4051,12 +4151,16 @@
                         source: payload?.source || "",
                         error: "",
                     };
+                    render();
                     if (state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
                         openPlayerDetails(state.selectedPlayerId, { preserveYear: true });
+                    } else if (!state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
+                        openComparisonDetails();
                     }
                 } catch (error) {
                     console.warn("BettingPros team futures could not be loaded.", error);
                     state.teamFutures = { ...state.teamFutures, loading: false, error: "Team win total unavailable." };
+                    render();
                 }
             };
 

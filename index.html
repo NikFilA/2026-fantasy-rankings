@@ -483,8 +483,8 @@
 
         .comparison-table {
             display: grid;
-            gap: 6px;
-            min-width: max-content;
+            gap: 7px;
+            min-width: 720px;
         }
 
         .comparison-row {
@@ -511,6 +511,25 @@
             font-weight: 900;
             letter-spacing: 0.08em;
             text-transform: uppercase;
+        }
+
+        .comparison-section-row {
+            margin-top: 8px;
+        }
+
+        .comparison-section {
+            min-height: 30px;
+            border: 1px solid rgba(56, 189, 248, 0.24);
+            border-radius: 8px;
+            background: rgba(56, 189, 248, 0.08);
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 950;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
         }
 
         .comparison-player {
@@ -549,14 +568,35 @@
         .comparison-cell {
             min-height: 44px;
             color: var(--text);
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 950;
         }
 
         .comparison-cell.winner {
-            border-color: rgba(74, 222, 128, 0.7);
-            background: rgba(74, 222, 128, 0.13);
+            border-color: rgba(74, 222, 128, 0.58);
+            background:
+                linear-gradient(90deg, rgba(74, 222, 128, 0.15), rgba(74, 222, 128, 0.05)),
+                rgba(23, 27, 31, 0.78);
             color: var(--green);
+        }
+
+        .comparison-cell.missing {
+            color: var(--subtle);
+        }
+
+        .comparison-row.market .comparison-label {
+            border-color: rgba(250, 204, 21, 0.24);
+            color: var(--yellow);
+        }
+
+        .comparison-row.props .comparison-label {
+            border-color: rgba(56, 189, 248, 0.24);
+            color: var(--accent);
+        }
+
+        .comparison-row.production .comparison-label {
+            border-color: rgba(74, 222, 128, 0.22);
+            color: #86efac;
         }
 
         .draft-panel {
@@ -1280,6 +1320,52 @@
             padding: 10px;
         }
 
+        .betting-prop-card.team-context-card {
+            position: relative;
+            overflow: hidden;
+            border-color: color-mix(in srgb, var(--line) 74%, var(--rank-color, var(--muted)));
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--rank-color, var(--muted)) 18%, transparent), rgba(17, 24, 29, 0.9) 56%),
+                rgba(17, 24, 29, 0.86);
+        }
+
+        .rank-chip {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: inline-grid;
+            place-items: center;
+            min-width: 42px;
+            min-height: 22px;
+            border: 1px solid color-mix(in srgb, var(--rank-color, var(--muted)) 70%, transparent);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--rank-color, var(--muted)) 16%, rgba(17, 24, 29, 0.92));
+            color: var(--rank-color, var(--muted));
+            font-size: 10px;
+            font-weight: 950;
+            letter-spacing: 0.04em;
+        }
+
+        .team-context-card.rank-elite {
+            --rank-color: var(--green);
+        }
+
+        .team-context-card.rank-good {
+            --rank-color: #86efac;
+        }
+
+        .team-context-card.rank-mid {
+            --rank-color: var(--yellow);
+        }
+
+        .team-context-card.rank-low {
+            --rank-color: var(--orange);
+        }
+
+        .team-context-card.rank-bad {
+            --rank-color: var(--red);
+        }
+
         .betting-prop-card span,
         .betting-prop-card small {
             display: block;
@@ -1296,6 +1382,10 @@
             color: var(--text);
             font-size: 22px;
             line-height: 1;
+        }
+
+        .team-context-card strong {
+            padding-right: 48px;
         }
 
         .betting-prop-card small {
@@ -1458,8 +1548,8 @@
             </button>
         </section>
 
-        <section class="draft-panel" aria-label="Sleeper draft sync">
-            <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or ID" aria-label="Sleeper draft URL or ID" autocomplete="off">
+        <section class="draft-panel" aria-label="Draft sync">
+            <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or Underdog copied board text" aria-label="Draft URL or copied board text" autocomplete="off">
             <button class="draft-btn" type="button" id="draftConnectButton">Connect Draft</button>
             <button class="draft-btn secondary" type="button" id="draftStopButton">Stop</button>
             <select class="draft-select" id="mySlotSelect" aria-label="My Sleeper draft slot">
@@ -1471,7 +1561,7 @@
             </label>
             <div class="draft-status" aria-live="polite">
                 <strong id="draftBest">Best available: Off</strong>
-                <span id="draftStatus">Paste a Sleeper draft link when you are drafting.</span>
+                <span id="draftStatus">Paste a Sleeper draft link or copied Underdog board when you are drafting.</span>
                 <span class="draft-save-row">Saved: <strong id="saveState">Local</strong></span>
             </div>
             <div class="roster-tracker" id="rosterTracker" aria-live="polite">
@@ -1586,6 +1676,7 @@
             const DRAFT_STORAGE_KEY = "sleeperDraftId";
             const MY_SLOT_STORAGE_KEY = "sleeperMyRosterId";
             const DRAFT_REFRESH_MS = 1000;
+            const MARKET_REFRESH_MS = 15 * 60 * 1000;
             const POSITIONS = ["QB", "RB", "WR", "TE"];
             const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
             const FLOCK_PROXY_URL = "/api/flock-rankings";
@@ -1616,6 +1707,7 @@
                 playerYearlyStats: {},
                 bettingProps: { loading: false, byKey: {}, byNamePos: {}, updatedAt: "", source: "", error: "" },
                 teamFutures: { loading: false, byTeam: {}, updatedAt: "", source: "", error: "" },
+                livePlayerMeta: {},
                 profileYear: PLAYER_PROFILE_SEASON,
                 playerAssets: {},
                 sleeperKeyById: {},
@@ -1635,6 +1727,7 @@
                 compareYears: {},
                 comparisonRankLoadKey: "",
                 draft: {
+                    provider: "sleeper",
                     id: "",
                     active: false,
                     loading: false,
@@ -1685,6 +1778,7 @@
                 playerDrawerContent: document.getElementById("playerDrawerContent"),
             };
             let draftTimer = null;
+            let marketTimer = null;
 
             const basePlayers = () => clonePlayers(window.defaultPlayers || defaultPlayers || []);
 
@@ -2045,10 +2139,80 @@
                 return fallback?.props || [];
             };
 
+            const applyLivePlayerMeta = () => {
+                Object.entries(state.livePlayerMeta).forEach(([key, meta]) => {
+                    sourcePlayers()
+                        .filter((player) => `${nameKey(player.name)}|${player.pos}` === key)
+                        .forEach((player) => {
+                            if (meta.team) {
+                                player.team = clayTeam(meta.team);
+                            }
+                            if (meta.pos && POSITIONS.includes(meta.pos)) {
+                                player.pos = meta.pos;
+                            }
+                        });
+                });
+            };
+
             const clayTeamProjection = (team) => (window.clayTeamProjections || [])
                 .find((projection) => projection.team === clayTeam(team));
 
             const teamWinFuture = (team) => state.teamFutures.byTeam[marketTeam(team)] || null;
+
+            const rankClass = (rank, total = 32) => {
+                if (!Number.isFinite(rank) || !Number.isFinite(total) || total <= 0) {
+                    return "rank-mid";
+                }
+                const percentile = rank / total;
+                if (percentile <= 0.2) {
+                    return "rank-elite";
+                }
+                if (percentile <= 0.4) {
+                    return "rank-good";
+                }
+                if (percentile <= 0.6) {
+                    return "rank-mid";
+                }
+                if (percentile <= 0.8) {
+                    return "rank-low";
+                }
+                return "rank-bad";
+            };
+
+            const rankAmongTeams = (team, valueForTeam, highWins = true) => {
+                const rows = (window.clayTeamProjections || [])
+                    .map((projection) => ({
+                        team: projection.team,
+                        value: Number(valueForTeam(projection)),
+                    }))
+                    .filter((row) => Number.isFinite(row.value));
+                const targetTeam = clayTeam(team);
+                const target = rows.find((row) => row.team === targetTeam);
+                if (!target) {
+                    return null;
+                }
+                const sorted = rows.slice().sort((a, b) => highWins ? b.value - a.value : a.value - b.value);
+                return { rank: sorted.findIndex((row) => row.team === targetTeam) + 1, total: sorted.length };
+            };
+
+            const rankAmongFutures = (team) => {
+                const rows = Object.values(state.teamFutures.byTeam)
+                    .map((future) => ({ team: marketTeam(future.team), value: Number(future.line) }))
+                    .filter((row) => row.team && Number.isFinite(row.value));
+                const targetTeam = marketTeam(team);
+                const target = rows.find((row) => row.team === targetTeam);
+                if (!target) {
+                    return null;
+                }
+                const sorted = rows.slice().sort((a, b) => b.value - a.value);
+                return { rank: sorted.findIndex((row) => row.team === targetTeam) + 1, total: sorted.length };
+            };
+
+            const teamPositionShare = (projection, pos) => {
+                const targets = Number(projection?.offense?.targets);
+                const posTargets = Number(projection?.positions?.[pos]?.targets);
+                return targets > 0 && Number.isFinite(posTargets) ? (posTargets / targets) * 100 : null;
+            };
 
             const varianceClass = (variance) => {
                 if (variance > 0) {
@@ -2840,20 +3004,25 @@
                 const future = teamWinFuture(player.team);
                 const offense = clay?.offense || {};
                 const positions = clay?.positions || {};
-                const targets = Number(offense.targets);
                 section.className = "drawer-section";
                 heading.textContent = `${player.team} Team Context`;
                 grid.className = "betting-props-grid";
 
-                const card = (label, value, detail = "") => {
+                const card = (label, value, detail = "", rank = null) => {
                     const node = document.createElement("div");
                     const labelNode = document.createElement("span");
                     const valueNode = document.createElement("strong");
                     const detailNode = document.createElement("small");
-                    node.className = "betting-prop-card";
+                    const rankNode = document.createElement("b");
+                    node.className = `betting-prop-card team-context-card ${rankClass(rank?.rank, rank?.total)}`;
                     labelNode.textContent = label;
                     valueNode.textContent = value;
                     detailNode.textContent = detail;
+                    if (rank?.rank && rank?.total) {
+                        rankNode.className = "rank-chip";
+                        rankNode.textContent = `${rank.rank}/${rank.total}`;
+                        node.appendChild(rankNode);
+                    }
                     node.append(labelNode, valueNode, detailNode);
                     return node;
                 };
@@ -2864,7 +3033,8 @@
                     grid.appendChild(card(
                         "BettingPros Wins",
                         bettingLineLabel(future),
-                        `O ${formatAmericanOdds(future.overCost)} / U ${formatAmericanOdds(future.underCost)}`
+                        `O ${formatAmericanOdds(future.overCost)} / U ${formatAmericanOdds(future.underCost)}`,
+                        rankAmongFutures(player.team)
                     ));
                 } else {
                     grid.appendChild(card("BettingPros Wins", "N/A", state.teamFutures.error || "No win total available"));
@@ -2876,15 +3046,33 @@
                     return section;
                 }
 
+                const positionShareCard = ["RB", "WR", "TE"].includes(player.pos)
+                    ? (() => {
+                        const posTargets = Number(positions[player.pos]?.targets);
+                        const share = teamPositionShare(clay, player.pos);
+                        return card(
+                            `${player.pos} Target Share`,
+                            formatPercent(share),
+                            `${formatWhole(posTargets)} targets / ${formatWhole(positions[player.pos]?.ppr)} PPR`,
+                            rankAmongTeams(player.team, (projection) => teamPositionShare(projection, player.pos))
+                        );
+                    })()
+                    : null;
+
                 grid.append(
-                    card("Clay Projected Wins", formatDecimal(clay.clayWins), `NFL rank ${clay.clayWinsRank}`),
-                    card("Clay Passing", formatWhole(offense.passYds), `${formatWhole(offense.passAtt)} att / ${formatWhole(offense.passTd)} TD`),
-                    card("Clay Rushing", formatWhole(offense.rushYds), `${formatWhole(offense.rushAtt)} att / ${formatWhole(offense.rushTd)} TD`),
-                    ...["RB", "WR", "TE"].map((pos) => {
-                        const posTargets = Number(positions[pos]?.targets);
-                        const share = targets > 0 && Number.isFinite(posTargets) ? (posTargets / targets) * 100 : null;
-                        return card(`${pos} Target Share`, formatPercent(share), `${formatWhole(posTargets)} targets / ${formatWhole(positions[pos]?.ppr)} PPR`);
-                    })
+                    ...(positionShareCard ? [positionShareCard] : []),
+                    card(
+                        "Clay Passing",
+                        formatWhole(offense.passYds),
+                        `${formatWhole(offense.passAtt)} att / ${formatWhole(offense.passTd)} TD`,
+                        rankAmongTeams(player.team, (projection) => projection.offense?.passYds)
+                    ),
+                    card(
+                        "Clay Rushing",
+                        formatWhole(offense.rushYds),
+                        `${formatWhole(offense.rushAtt)} att / ${formatWhole(offense.rushTd)} TD`,
+                        rankAmongTeams(player.team, (projection) => projection.offense?.rushYds)
+                    )
                 );
                 section.append(heading, grid);
                 return section;
@@ -3062,6 +3250,7 @@
                         if (!seen.has(label)) {
                             seen.add(label);
                             positionStats.push({
+                                category: "Production",
                                 label,
                                 highWins: true,
                                 rankable: true,
@@ -3075,6 +3264,7 @@
                         if (label !== "Games" && suffix !== "%" && !seen.has(perGameLabel)) {
                             seen.add(perGameLabel);
                             positionStats.push({
+                                category: "Production",
                                 label: perGameLabel,
                                 highWins: true,
                                 rankable: true,
@@ -3112,6 +3302,7 @@
                         }
                         seenBetting.add(prop.key);
                         bettingStats.push({
+                            category: "Props",
                             label: prop.label,
                             highWins: true,
                             rankable: false,
@@ -3127,18 +3318,18 @@
                     });
                 });
                 return [
-                    { label: "My Rank", highWins: false, value: (entry) => entry.myRank, display: (entry) => String(entry.myRank) },
-                    { label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
-                    { label: "Finish", highWins: false, rankable: false, requiresYearly: true, loading: (entry) => entry.yearly?.loading, value: (entry) => finishValueForPlayer(entry.player, entry.year), display: (entry) => {
+                    { category: "My Board", label: "My Rank", highWins: false, value: (entry) => entry.myRank, display: (entry) => String(entry.myRank) },
+                    { category: "My Board", label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
+                    { category: "Markets", label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
+                    ...bettingStats,
+                    { category: "Production", label: "Finish", highWins: false, rankable: false, requiresYearly: true, loading: (entry) => entry.yearly?.loading, value: (entry) => finishValueForPlayer(entry.player, entry.year), display: (entry) => {
                         if (entry.yearly?.loading) {
                             return "Loading";
                         }
                         const finish = finishValueForPlayer(entry.player, entry.year);
                         return finish ? `${entry.player.pos}${finish}` : "N/A";
                     } },
-                    { label: "PPG", highWins: true, rankable: true, requiresPerformance: true, loading: (entry) => entry.performance?.loading, value: comparisonPpgValue, display: (entry) => entry.performance?.loading ? "Loading" : formatDecimal(comparisonPpgValue(entry)) },
-                    { label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
-                    ...bettingStats,
+                    { category: "Production", label: "PPG", highWins: true, rankable: true, requiresPerformance: true, loading: (entry) => entry.performance?.loading, value: comparisonPpgValue, display: (entry) => entry.performance?.loading ? "Loading" : formatDecimal(comparisonPpgValue(entry)) },
                     ...positionStats,
                 ];
             };
@@ -3232,6 +3423,9 @@
                 cell.className = "comparison-cell";
                 const rank = comparisonPositionRank(entry, metric);
                 cell.textContent = `${metric.display(entry)}${rank ? ` (${rank})` : ""}`;
+                if (!Number.isFinite(value)) {
+                    cell.classList.add("missing");
+                }
                 if (metric.highWins !== null && Number.isFinite(value) && value === winnerValue) {
                     cell.classList.add("winner");
                 }
@@ -3269,14 +3463,28 @@
                 playerRow.append(emptyLabel, ...entries.map(comparisonPlayerHeader));
                 table.appendChild(playerRow);
 
+                let currentCategory = "";
                 comparisonMetricDefinitions(entries).forEach((metric) => {
+                    const category = metric.category || "Other";
+                    if (category !== currentCategory) {
+                        currentCategory = category;
+                        const sectionRow = document.createElement("div");
+                        const sectionLabel = document.createElement("div");
+                        sectionRow.className = "comparison-row comparison-section-row";
+                        sectionRow.style.gridTemplateColumns = template;
+                        sectionLabel.className = "comparison-section";
+                        sectionLabel.textContent = category;
+                        sectionLabel.style.gridColumn = `1 / ${entries.length + 2}`;
+                        sectionRow.appendChild(sectionLabel);
+                        table.appendChild(sectionRow);
+                    }
                     const values = entries.map(metric.value).filter((value) => Number.isFinite(value));
                     const winnerValue = metric.highWins === null || values.length === 0
                         ? null
                         : (metric.highWins ? Math.max(...values) : Math.min(...values));
                     const row = document.createElement("div");
                     const label = document.createElement("div");
-                    row.className = "comparison-row";
+                    row.className = `comparison-row ${category.toLowerCase().replace(/[^a-z]+/g, "-")}`;
                     row.style.gridTemplateColumns = template;
                     label.className = "comparison-label";
                     label.textContent = metric.label;
@@ -3696,11 +3904,20 @@
                         if (!Number.isFinite(adp)) {
                             return;
                         }
+                        if (row.team) {
+                            state.livePlayerMeta[`${nameKey(player.name)}|${player.pos}`] = {
+                                ...(state.livePlayerMeta[`${nameKey(player.name)}|${player.pos}`] || {}),
+                                team: row.team,
+                                pos: player.pos,
+                            };
+                        }
                         player.udAdp = adp;
                         player.udPick = row.underdogPick || pickLabelFromAdp(adp);
                         updated += 1;
                     });
                     if (updated) {
+                        applyLivePlayerMeta();
+                        populateTeamFilter();
                         render();
                     }
                 } catch (error) {
@@ -3814,13 +4031,21 @@
                     if (!id || !name || !pos || !team || !POSITIONS.includes(String(pos).toUpperCase())) {
                         return;
                     }
-                    const key = `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`;
+                    const position = String(pos).toUpperCase();
+                    const namePosKey = `${nameKey(name)}|${position}`;
+                    const key = `${nameKey(name)}|${marketTeam(team)}|${position}`;
+                    state.livePlayerMeta[namePosKey] = {
+                        ...(state.livePlayerMeta[namePosKey] || {}),
+                        team,
+                        pos: position,
+                    };
                     assets[key] = {
                         id,
                         imageUrl: `https://sleepercdn.com/content/nfl/players/thumb/${id}.jpg`,
                     };
                     sleeperKeyById[id] = key;
                 });
+                applyLivePlayerMeta();
                 state.playerAssets = assets;
                 state.sleeperKeyById = sleeperKeyById;
             };
@@ -3838,6 +4063,11 @@
                 } catch (error) {
                     console.warn("Sleeper player images could not be loaded.", error);
                 }
+            };
+
+            const refreshMarketData = async () => {
+                await Promise.allSettled([refreshFantasyProsAdp(), refreshSleeperPlayers()]);
+                await Promise.allSettled([refreshFlockRanks(), refreshBettingProps(), refreshTeamFutures()]);
             };
 
             const draftIdFromInput = (value) => {
@@ -3929,6 +4159,39 @@
                 return name && team && pos ? `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}` : "";
             };
 
+            const playerShortDraftKey = (player) => {
+                const parts = String(player.name || "").split(/\s+/).filter(Boolean);
+                const first = parts[0] || "";
+                const last = parts.slice(1).join(" ") || first;
+                return `${first[0] || ""}|${nameKey(last)}|${marketTeam(player.team)}|${player.pos}`.toLowerCase();
+            };
+
+            const keyFromUnderdogPick = (shortName, pos, team) => {
+                const shortParts = String(shortName || "").replace(/\s+/g, " ").trim().split(" ");
+                const initial = String(shortParts[0] || "").replace(/[^A-Za-z]/g, "")[0] || "";
+                const last = shortParts.slice(1).join(" ") || shortParts[0] || "";
+                const lookup = `${initial}|${nameKey(last)}|${marketTeam(team)}|${String(pos || "").toUpperCase()}`.toLowerCase();
+                const player = basePlayers().find((candidate) => playerShortDraftKey(candidate) === lookup);
+                return player ? playerMarketKey(player) : "";
+            };
+
+            const underdogDraftUrl = (value) => /app\.underdogsports\.com\/draft\/[0-9a-f-]{20,}/i.test(String(value || ""));
+
+            const underdogDraftKeysFromText = (value) => {
+                const text = String(value || "").replace(/\s+/g, " ");
+                const pattern = /(?:\d+\.\d+\|\d+\s+)([A-Z]\.\s*(?:[A-Z]\.\s*)?[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*){0,2})\s+(QB|RB|WR|TE)\s*-\s*([A-Z]{2,3})/g;
+                const keys = new Set();
+                let match = pattern.exec(text);
+                while (match) {
+                    const key = keyFromUnderdogPick(match[1], match[2], match[3]);
+                    if (key) {
+                        keys.add(key);
+                    }
+                    match = pattern.exec(text);
+                }
+                return keys;
+            };
+
             const findBestAvailable = () => {
                 const byId = playersById();
                 for (const item of state.items) {
@@ -3946,17 +4209,26 @@
             const updateDraftStatus = () => {
                 if (!state.draft.active) {
                     elements.draftBest.textContent = "Best available: Off";
-                    elements.draftStatus.textContent = "Paste a Sleeper draft link when you are drafting.";
+                    elements.draftStatus.textContent = "Paste a Sleeper draft link or copied Underdog board when you are drafting.";
                     elements.draftStatus.className = "";
                     updateRosterTracker();
+                    return;
+                }
+                if (state.draft.error) {
+                    state.draft.bestAvailableKey = "";
+                    elements.draftBest.textContent = "Best available: Off";
+                    elements.draftStatus.textContent = state.draft.error;
+                    elements.draftStatus.className = "error";
                     return;
                 }
                 const best = findBestAvailable();
                 state.draft.bestAvailableKey = best ? playerMarketKey(best) : "";
                 elements.draftBest.textContent = best ? `Best available: ${best.name}` : "Best available: None";
-                if (state.draft.error) {
-                    elements.draftStatus.textContent = state.draft.error;
-                    elements.draftStatus.className = "error";
+                if (state.draft.provider === "underdog") {
+                    const synced = state.draft.lastSync ? state.draft.lastSync.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "not imported";
+                    elements.draftStatus.textContent = `Underdog manual import · ${state.draft.draftedKeys.size} picked · imported ${synced}`;
+                    elements.draftStatus.className = "";
+                    updateRosterTracker();
                     return;
                 }
                 const picked = state.draft.picks.length;
@@ -3973,7 +4245,7 @@
             };
 
             const refreshDraftPicks = async () => {
-                if (!state.draft.id || state.draft.loading) {
+                if (state.draft.provider !== "sleeper" || !state.draft.id || state.draft.loading) {
                     return;
                 }
                 state.draft.loading = true;
@@ -4007,6 +4279,7 @@
                     draftTimer = null;
                 }
                 state.draft.active = false;
+                state.draft.provider = "sleeper";
                 state.draft.error = "";
                 state.draft.draftedKeys = new Set();
                 state.draft.bestAvailableKey = "";
@@ -4020,8 +4293,49 @@
             };
 
             const startDraftSync = async (rawValue) => {
+                const rawInput = String(rawValue || "").trim();
+                const underdogKeys = underdogDraftKeysFromText(rawInput);
+                if (underdogKeys.size > 0) {
+                    if (draftTimer) {
+                        clearInterval(draftTimer);
+                        draftTimer = null;
+                    }
+                    state.draft.provider = "underdog";
+                    state.draft.id = "underdog-manual";
+                    state.draft.active = true;
+                    state.draft.error = "";
+                    state.draft.details = null;
+                    state.draft.myRosterId = "";
+                    state.draft.picks = [];
+                    state.draft.draftedKeys = underdogKeys;
+                    state.draft.lastSync = new Date();
+                    localStorage.removeItem(DRAFT_STORAGE_KEY);
+                    localStorage.removeItem(MY_SLOT_STORAGE_KEY);
+                    populateMySlotOptions();
+                    updateDraftStatus();
+                    render();
+                    return;
+                }
+                if (underdogDraftUrl(rawInput)) {
+                    if (draftTimer) {
+                        clearInterval(draftTimer);
+                        draftTimer = null;
+                    }
+                    state.draft.provider = "underdog";
+                    state.draft.id = "underdog-url";
+                    state.draft.active = true;
+                    state.draft.error = "Underdog draft URLs are session-protected. Paste copied draft-board text from the Underdog room to import picks.";
+                    state.draft.draftedKeys = new Set();
+                    state.draft.bestAvailableKey = "";
+                    localStorage.removeItem(DRAFT_STORAGE_KEY);
+                    populateMySlotOptions();
+                    updateDraftStatus();
+                    render();
+                    return;
+                }
                 const draftId = draftIdFromInput(rawValue);
                 if (!draftId) {
+                    state.draft.provider = "sleeper";
                     state.draft.active = true;
                     state.draft.error = "Paste a valid Sleeper draft URL or ID.";
                     updateDraftStatus();
@@ -4030,6 +4344,7 @@
                 if (draftTimer) {
                     clearInterval(draftTimer);
                 }
+                state.draft.provider = "sleeper";
                 state.draft.id = draftId;
                 state.draft.active = true;
                 state.draft.error = "";
@@ -4279,14 +4594,18 @@
                 });
 
                 window.addEventListener("focus", () => {
-                    if (state.draft.active) {
+                    if (state.draft.active && state.draft.provider === "sleeper") {
                         refreshDraftPicks();
                     }
+                    refreshMarketData();
                 });
 
                 document.addEventListener("visibilitychange", () => {
-                    if (!document.hidden && state.draft.active) {
-                        refreshDraftPicks();
+                    if (!document.hidden) {
+                        if (state.draft.active && state.draft.provider === "sleeper") {
+                            refreshDraftPicks();
+                        }
+                        refreshMarketData();
                     }
                 });
 
@@ -4306,11 +4625,12 @@
                 populateTeamFilter();
                 bindEvents();
                 render();
-                refreshFantasyProsAdp();
-                refreshBettingProps();
-                refreshTeamFutures();
-                refreshFlockRanks();
-                refreshSleeperPlayers().then(() => {
+                if (marketTimer) {
+                    clearInterval(marketTimer);
+                }
+                const metadataRefresh = refreshMarketData();
+                marketTimer = setInterval(refreshMarketData, MARKET_REFRESH_MS);
+                metadataRefresh.then(() => {
                     const savedDraftId = localStorage.getItem(DRAFT_STORAGE_KEY);
                     if (savedDraftId) {
                         elements.draftInput.value = savedDraftId;

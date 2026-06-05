@@ -64,7 +64,7 @@ Christian McCaffrey,RB,SF,14.7,14.2
 Drake London,WR,ATL,15.6,15.9
 Ashton Jeanty,RB,LV,16.1,16.4
 Jonathan Taylor,RB,IND,17.4,17.2
-A.J. Brown,WR,PHI,18.6,18.3
+A.J. Brown,WR,NE,18.6,18.3
 Ladd McConkey,WR,LAC,19.5,20.1
 Josh Allen,QB,BUF,20.3,19.7
 Trey McBride,TE,ARI,21.4,21.2

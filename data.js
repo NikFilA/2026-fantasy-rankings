@@ -263,7 +263,7 @@ const defaultPlayers = [
         "id": "27",
         "name": "A.J. Brown",
         "pos": "WR",
-        "team": "PHI",
+        "team": "NE",
         "udAdp": 27,
         "udPick": "3.3",
         "sleeperAdp": 28,

@@ -60,6 +60,10 @@
         }
 
         .topbar {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+            gap: 14px;
+            align-items: start;
             margin-bottom: 14px;
         }
 
@@ -91,6 +95,59 @@
             letter-spacing: 0.08em;
             text-transform: uppercase;
             text-shadow: 0 0 22px rgba(56, 189, 248, 0.22);
+        }
+
+        .auth-panel {
+            display: grid;
+            gap: 8px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(23, 27, 31, 0.82);
+            padding: 10px;
+            box-shadow: 0 16px 36px var(--shadow);
+        }
+
+        .auth-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .auth-input,
+        .auth-btn {
+            min-height: 36px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #161b20;
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .auth-input {
+            width: 100%;
+            padding: 0 10px;
+            outline: none;
+        }
+
+        .auth-btn {
+            cursor: pointer;
+            padding: 0 12px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .auth-btn.secondary {
+            color: var(--muted);
+        }
+
+        .auth-status {
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
 
         .summary {
@@ -1493,6 +1550,10 @@
                 grid-template-columns: 1fr;
             }
 
+            .auth-row {
+                grid-template-columns: 1fr 1fr;
+            }
+
             .compare-panel {
                 justify-content: flex-start;
             }
@@ -1561,6 +1622,21 @@
             <button class="site-title" type="button" id="homeButton">
                 <h1>Fantasy Football Rankings</h1>
             </button>
+            <form class="auth-panel" id="authForm" aria-label="Account login">
+                <div class="auth-row" id="authSignedOut">
+                    <input class="auth-input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
+                    <input class="auth-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
+                    <button class="auth-btn" type="button" id="authSignIn">Sign In</button>
+                    <button class="auth-btn secondary" type="button" id="authSignUp">Create</button>
+                </div>
+                <div class="auth-row" id="authSignedIn" hidden>
+                    <span class="auth-status" id="authUser">Signed in</span>
+                    <span></span>
+                    <button class="auth-btn secondary" type="button" id="authUseLocal">Import Local</button>
+                    <button class="auth-btn secondary" type="button" id="authSignOut">Sign Out</button>
+                </div>
+                <span class="auth-status" id="authStatus">Sign in to save rankings to your account.</span>
+            </form>
         </section>
 
         <section class="draft-panel" aria-label="Draft sync">
@@ -1752,6 +1828,12 @@
                 compareYears: {},
                 comparisonRankLoadKey: "",
                 drawerReturnScroll: null,
+                auth: {
+                    user: null,
+                    loading: false,
+                    ready: false,
+                    message: "",
+                },
                 draft: {
                     provider: "sleeper",
                     id: "",
@@ -1802,6 +1884,17 @@
                 playerDrawerBackdrop: document.getElementById("playerDrawerBackdrop"),
                 playerDrawerClose: document.getElementById("playerDrawerClose"),
                 playerDrawerContent: document.getElementById("playerDrawerContent"),
+                authForm: document.getElementById("authForm"),
+                authSignedOut: document.getElementById("authSignedOut"),
+                authSignedIn: document.getElementById("authSignedIn"),
+                authEmail: document.getElementById("authEmail"),
+                authPassword: document.getElementById("authPassword"),
+                authSignIn: document.getElementById("authSignIn"),
+                authSignUp: document.getElementById("authSignUp"),
+                authSignOut: document.getElementById("authSignOut"),
+                authUseLocal: document.getElementById("authUseLocal"),
+                authUser: document.getElementById("authUser"),
+                authStatus: document.getElementById("authStatus"),
             };
             let draftTimer = null;
             let marketTimer = null;
@@ -1915,7 +2008,7 @@
 
             const localSavedState = () => {
                 try {
-                    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+                    const saved = JSON.parse(localStorage.getItem(accountStorageKey()) || localStorage.getItem(STORAGE_KEY) || "null");
                     return parseSavedState(saved);
                 } catch (error) {
                     console.warn("Saved rankings were ignored because they are not valid JSON.", error);
@@ -1923,10 +2016,13 @@
                 }
             };
 
-            const cloudSyncEnabled = () => syncConfig.provider === "supabase"
+            const supabaseEnabled = () => syncConfig.provider === "supabase"
                 && syncConfig.supabaseUrl
-                && syncConfig.supabaseAnonKey
-                && syncConfig.boardId;
+                && syncConfig.supabaseAnonKey;
+
+            const cloudSyncEnabled = () => supabaseEnabled() && Boolean(state.auth.user);
+
+            const accountStorageKey = () => state.auth.user?.id ? `${STORAGE_KEY}:${state.auth.user.id}` : STORAGE_KEY;
 
             const loadScript = (src) => new Promise((resolve, reject) => {
                 const existing = document.querySelector(`script[src="${src}"]`);
@@ -1946,7 +2042,7 @@
             });
 
             const supabaseClient = async () => {
-                if (!cloudSyncEnabled()) {
+                if (!supabaseEnabled()) {
                     return null;
                 }
                 if (!supabaseClientPromise) {
@@ -1960,13 +2056,30 @@
 
             const remoteSavedState = async () => {
                 const client = await supabaseClient();
-                if (!client) {
+                if (!client || !state.auth.user) {
+                    return null;
+                }
+                const { data, error } = await client
+                    .from(syncConfig.tableName)
+                    .select("state")
+                    .eq("user_id", state.auth.user.id)
+                    .maybeSingle();
+                if (error) {
+                    throw error;
+                }
+                return data ? parseSavedState(data.state) : null;
+            };
+
+            const legacyRemoteSavedState = async () => {
+                const client = await supabaseClient();
+                if (!client || !syncConfig.boardId) {
                     return null;
                 }
                 const { data, error } = await client
                     .from(syncConfig.tableName)
                     .select("state")
                     .eq("board_id", syncConfig.boardId)
+                    .is("user_id", null)
                     .maybeSingle();
                 if (error) {
                     throw error;
@@ -1982,16 +2095,17 @@
 
             const persistRemoteState = async (payload) => {
                 const client = await supabaseClient();
-                if (!client) {
+                if (!client || !state.auth.user) {
                     return;
                 }
                 const { error } = await client
                     .from(syncConfig.tableName)
                     .upsert({
-                        board_id: syncConfig.boardId,
+                        board_id: `user:${state.auth.user.id}`,
+                        user_id: state.auth.user.id,
                         state: payload,
                         updated_at: new Date().toISOString(),
-                    });
+                    }, { onConflict: "user_id" });
                 if (error) {
                     throw error;
                 }
@@ -2005,12 +2119,16 @@
                 try {
                     const remoteState = await remoteSavedState();
                     if (remoteState && (remoteState.items || remoteState.order)) {
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        localStorage.setItem(accountStorageKey(), JSON.stringify({
                             version: 4,
                             items: remoteState.items,
                             updatedAt: new Date().toISOString(),
                         }));
-                        return { ...remoteState, source: "Cloud" };
+                        return { ...remoteState, source: "Account" };
+                    }
+                    const legacyState = await legacyRemoteSavedState();
+                    if (legacyState && (legacyState.items || legacyState.order)) {
+                        return { ...legacyState, source: "Legacy" };
                     }
                     return { ...localState, source: localState.items || localState.order ? "Local" : "Base" };
                 } catch (error) {
@@ -2067,14 +2185,160 @@
                 return hydrated.length > 0 ? hydrated : buildDefaultItems(players);
             };
 
+            const applySavedStateToBoard = (saved) => {
+                const players = basePlayers();
+                if (saved.items) {
+                    state.items = hydrateSavedItems(players, saved.items);
+                } else if (saved.order) {
+                    state.items = buildDefaultItems(applySavedOrder(players, saved.order));
+                } else {
+                    state.items = buildDefaultItems(players);
+                }
+                elements.saveState.textContent = saved.source;
+                populateTeamFilter();
+                render();
+                loadDataLabStats();
+            };
+
+            const updateAuthUi = (message = "") => {
+                const signedIn = Boolean(state.auth.user);
+                elements.authSignedOut.hidden = signedIn;
+                elements.authSignedIn.hidden = !signedIn;
+                elements.authUser.textContent = signedIn ? state.auth.user.email : "Signed out";
+                elements.authStatus.textContent = message || (signedIn
+                    ? "Signed in. Rankings save to your account."
+                    : "Sign in to save rankings to your account.");
+                elements.authSignIn.disabled = state.auth.loading;
+                elements.authSignUp.disabled = state.auth.loading;
+                elements.authSignOut.disabled = state.auth.loading;
+                elements.authUseLocal.disabled = state.auth.loading || !signedIn;
+            };
+
+            const reloadSavedBoard = async () => {
+                const saved = await loadSavedState();
+                applySavedStateToBoard(saved);
+                if (saved.source === "Legacy" && state.auth.user) {
+                    savePlayers();
+                }
+                return saved;
+            };
+
+            const restoreAuthSession = async () => {
+                const client = await supabaseClient();
+                if (!client?.auth) {
+                    updateAuthUi("Account sync is not configured.");
+                    state.auth.ready = true;
+                    return;
+                }
+                const { data, error } = await client.auth.getSession();
+                if (error) {
+                    console.warn("Auth session could not be loaded.", error);
+                }
+                state.auth.user = data?.session?.user || null;
+                updateAuthUi();
+                client.auth.onAuthStateChange(async (_event, session) => {
+                    const nextUser = session?.user || null;
+                    const changedUser = (state.auth.user?.id || "") !== (nextUser?.id || "");
+                    state.auth.user = nextUser;
+                    updateAuthUi();
+                    if (state.auth.ready && changedUser) {
+                        await reloadSavedBoard();
+                    }
+                });
+                state.auth.ready = true;
+            };
+
+            const authCredentials = () => ({
+                email: elements.authEmail.value.trim(),
+                password: elements.authPassword.value,
+            });
+
+            const handleAuthAction = async (action) => {
+                const client = await supabaseClient();
+                const credentials = authCredentials();
+                if (!client?.auth) {
+                    updateAuthUi("Account sync is not configured.");
+                    return;
+                }
+                if (!credentials.email || !credentials.password) {
+                    updateAuthUi("Enter an email and password.");
+                    return;
+                }
+                state.auth.loading = true;
+                updateAuthUi(action === "signUp" ? "Creating account..." : "Signing in...");
+                try {
+                    const result = action === "signUp"
+                        ? await client.auth.signUp(credentials)
+                        : await client.auth.signInWithPassword(credentials);
+                    if (result.error) {
+                        throw result.error;
+                    }
+                    elements.authPassword.value = "";
+                    const sessionUser = result.data?.session?.user || null;
+                    if (sessionUser) {
+                        state.auth.user = sessionUser;
+                        updateAuthUi(action === "signUp" ? "Account created and signed in." : "Signed in.");
+                        await reloadSavedBoard();
+                    } else {
+                        updateAuthUi("Account created. Check your email to confirm, then sign in.");
+                    }
+                } catch (error) {
+                    console.warn("Auth action failed.", error);
+                    updateAuthUi(error.message || "Could not complete account action.");
+                } finally {
+                    state.auth.loading = false;
+                    updateAuthUi(elements.authStatus.textContent);
+                }
+            };
+
+            const signOut = async () => {
+                const client = await supabaseClient();
+                state.auth.loading = true;
+                updateAuthUi("Signing out...");
+                try {
+                    await client?.auth?.signOut();
+                    state.auth.user = null;
+                    await reloadSavedBoard();
+                    updateAuthUi("Signed out. Using local rankings.");
+                } catch (error) {
+                    console.warn("Sign out failed.", error);
+                    updateAuthUi("Could not sign out.");
+                } finally {
+                    state.auth.loading = false;
+                    updateAuthUi(elements.authStatus.textContent);
+                }
+            };
+
+            const importLocalRankings = async () => {
+                if (!state.auth.user) {
+                    updateAuthUi("Sign in before importing local rankings.");
+                    return;
+                }
+                const local = (() => {
+                    try {
+                        return parseSavedState(JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"));
+                    } catch {
+                        return { items: null, order: null };
+                    }
+                })();
+                if (!local.items && !local.order) {
+                    updateAuthUi("No local rankings found to import.");
+                    return;
+                }
+                applySavedStateToBoard({ ...local, source: "Local" });
+                savePlayers();
+                updateAuthUi("Local rankings imported to your account.");
+            };
+
             const savePlayers = () => {
                 const payload = currentPayload();
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-                elements.saveState.textContent = "Local";
+                localStorage.setItem(accountStorageKey(), JSON.stringify(payload));
+                elements.saveState.textContent = state.auth.user ? "Saving" : "Local";
                 if (cloudSyncEnabled()) {
                     persistRemoteState(payload)
                         .then(() => {
-                            elements.saveState.textContent = "Cloud";
+                            elements.saveState.textContent = "Account";
+                            updateAuthUi("Rankings saved to your account.");
                         })
                         .catch((error) => {
                             console.warn("Cloud rankings could not be saved.", error);
@@ -4743,6 +5007,15 @@
 
                 elements.draftStop.addEventListener("click", stopDraftSync);
 
+                elements.authForm.addEventListener("submit", (event) => {
+                    event.preventDefault();
+                    handleAuthAction("signIn");
+                });
+                elements.authSignIn.addEventListener("click", () => handleAuthAction("signIn"));
+                elements.authSignUp.addEventListener("click", () => handleAuthAction("signUp"));
+                elements.authSignOut.addEventListener("click", signOut);
+                elements.authUseLocal.addEventListener("click", importLocalRankings);
+
                 elements.playerDrawerClose.addEventListener("click", closePlayerDetails);
                 elements.playerDrawerBackdrop.addEventListener("click", (event) => {
                     if (event.target === elements.playerDrawerBackdrop) {
@@ -4784,19 +5057,11 @@
             };
 
             const init = async () => {
-                const players = basePlayers();
+                updateAuthUi("Loading account...");
+                await restoreAuthSession();
                 const saved = await loadSavedState();
-                if (saved.items) {
-                    state.items = hydrateSavedItems(players, saved.items);
-                } else if (saved.order) {
-                    state.items = buildDefaultItems(applySavedOrder(players, saved.order));
-                } else {
-                    state.items = buildDefaultItems(players);
-                }
-                elements.saveState.textContent = saved.source;
-                populateTeamFilter();
                 bindEvents();
-                render();
+                applySavedStateToBoard(saved);
                 if (marketTimer) {
                     clearInterval(marketTimer);
                 }

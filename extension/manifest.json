@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "2026 Fantasy Draft Assistant",
+  "description": "Open the fantasy rankings board beside live draft rooms and copy visible draft-board text for availability tracking.",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Fantasy Draft Assistant"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://sleeper.com/draft/*",
+        "https://*.sleeper.com/draft/*",
+        "https://app.underdogsports.com/draft/*",
+        "https://*.underdogsports.com/draft/*",
+        "https://football.fantasysports.yahoo.com/*",
+        "https://*.fantasysports.yahoo.com/*",
+        "https://fantasy.espn.com/*",
+        "https://*.espn.com/fantasy/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "https://2026-fantasy-rankings.vercel.app/*",
+    "https://sleeper.com/*",
+    "https://*.sleeper.com/*",
+    "https://app.underdogsports.com/*",
+    "https://*.underdogsports.com/*",
+    "https://football.fantasysports.yahoo.com/*",
+    "https://*.fantasysports.yahoo.com/*",
+    "https://fantasy.espn.com/*",
+    "https://*.espn.com/*"
+  ],
+  "permissions": ["activeTab", "scripting", "sidePanel", "storage", "tabs"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}

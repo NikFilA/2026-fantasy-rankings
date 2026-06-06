@@ -2,16 +2,17 @@
 
 This is a static site. You can host the project root on Netlify, Vercel, GitHub Pages, Cloudflare Pages, or any ordinary static host.
 
-## Cross-Browser Sync
+## Account Login And Sync
 
-Public hosting alone does not sync rankings between Chrome and Safari. To sync rankings, configure Supabase:
+Public hosting alone does not sync rankings between Chrome and Safari. To support email/password accounts and per-user rankings, configure Supabase:
 
 1. Create a Supabase project.
 2. Open the Supabase SQL editor and run `supabase-schema.sql`.
-3. Go to Project Settings > API and copy:
+3. In Authentication > Providers, keep Email enabled. Decide whether you want email confirmation required.
+4. Go to Project Settings > API and copy:
    - Project URL
    - anon public key
-4. Edit `sync-config.js`:
+5. Edit `sync-config.js`:
 
 ```js
 window.SYNC_CONFIG = {
@@ -23,9 +24,21 @@ window.SYNC_CONFIG = {
 };
 ```
 
-5. Deploy the folder.
+6. Deploy the folder.
 
-Every browser using the same hosted URL and `boardId` will share the same ranking order and tier rows.
+Signed-in users save their ranking order and tier rows to their own Supabase Auth account. The configured `boardId` is still used as a legacy seed: if a signed-in user has no personal rankings yet, the app can load the old shared board once and then save it to that user's account.
+
+## Local Chrome Extension
+
+The unpacked extension lives in `extension/`.
+
+1. Open `chrome://extensions`.
+2. Turn on Developer Mode.
+3. Click Load unpacked.
+4. Select the `extension/` folder.
+5. Open a supported draft room on Sleeper, Underdog, Yahoo, or ESPN.
+
+The extension adds a small Draft Board button on supported draft pages. The popup can open the rankings board and copy visible draft-room text, which can be pasted into the site's draft input for manual availability tracking.
 
 ## Refreshing ADP
 

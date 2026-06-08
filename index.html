@@ -6,6 +6,7 @@
     <title>Fantasy Draft Board</title>
     <script src="data.js"></script>
     <script src="team-projections.js"></script>
+    <script src="target-shares.js"></script>
     <script src="sync-config.js"></script>
     <style>
         :root {
@@ -97,9 +98,11 @@
             text-shadow: 0 0 22px rgba(56, 189, 248, 0.22);
         }
 
-        .auth-panel {
-            display: grid;
-            gap: 8px;
+        .account-panel {
+            justify-self: end;
+            display: flex;
+            align-items: center;
+            gap: 10px;
             border: 1px solid var(--line);
             border-radius: 8px;
             background: rgba(23, 27, 31, 0.82);
@@ -107,39 +110,160 @@
             box-shadow: 0 16px 36px var(--shadow);
         }
 
-        .auth-row {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
-            gap: 8px;
-            align-items: center;
+        .account-avatar {
+            display: inline-grid;
+            place-items: center;
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            background: #223042;
+            color: var(--accent-strong);
+            font-size: 12px;
+            font-weight: 950;
         }
 
-        .auth-input,
+        .account-copy {
+            min-width: 0;
+        }
+
+        .account-copy strong,
+        .account-copy span {
+            display: block;
+            max-width: 210px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .account-copy strong {
+            font-size: 13px;
+            font-weight: 950;
+        }
+
+        .account-copy span {
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .account-btn,
         .auth-btn {
             min-height: 36px;
             border: 1px solid var(--line);
             border-radius: 8px;
             background: #161b20;
             color: var(--text);
+            cursor: pointer;
             font-size: 12px;
             font-weight: 800;
-        }
-
-        .auth-input {
-            width: 100%;
-            padding: 0 10px;
-            outline: none;
-        }
-
-        .auth-btn {
-            cursor: pointer;
+            letter-spacing: 0.06em;
             padding: 0 12px;
+            text-transform: uppercase;
+        }
+
+        .account-btn.primary,
+        .auth-btn.primary {
+            border-color: rgba(56, 189, 248, 0.72);
+            color: var(--text);
+        }
+
+        .auth-modal-backdrop[hidden] {
+            display: none;
+        }
+
+        .auth-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            display: grid;
+            place-items: center;
+            background: rgba(0, 0, 0, 0.72);
+            padding: 24px;
+        }
+
+        .auth-dialog {
+            position: relative;
+            width: min(520px, 100%);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #111416;
+            box-shadow: 0 30px 90px rgba(0, 0, 0, 0.56);
+            padding: 30px;
+        }
+
+        .auth-dialog h2 {
+            margin: 0 0 6px;
+            font-size: 28px;
+            line-height: 1;
+        }
+
+        .auth-dialog p {
+            margin: 0 0 20px;
+            color: var(--muted);
+            font-weight: 700;
+        }
+
+        .auth-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .auth-tab {
+            min-height: 38px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #161b20;
+            color: var(--muted);
+            cursor: pointer;
+            font-weight: 900;
             letter-spacing: 0.06em;
             text-transform: uppercase;
         }
 
+        .auth-tab.active {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .auth-form {
+            display: grid;
+            gap: 12px;
+        }
+
+        .auth-input {
+            width: 100%;
+            min-height: 46px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #171b1f;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 800;
+            padding: 0 10px;
+            outline: none;
+        }
+
         .auth-btn.secondary {
             color: var(--muted);
+        }
+
+        .auth-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #161b20;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 20px;
         }
 
         .auth-status {
@@ -567,6 +691,9 @@
             font-size: 11px;
             font-weight: 900;
             letter-spacing: 0.08em;
+            line-height: 1.16;
+            min-width: 0;
+            overflow-wrap: anywhere;
             text-transform: uppercase;
         }
 
@@ -627,6 +754,20 @@
             color: var(--text);
             font-size: 18px;
             font-weight: 950;
+            line-height: 1.18;
+            min-width: 0;
+            overflow: hidden;
+            overflow-wrap: anywhere;
+        }
+
+        .comparison-cell small {
+            display: block;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
 
         .comparison-cell.winner {
@@ -654,6 +795,11 @@
         .comparison-row.team-context .comparison-label {
             border-color: rgba(248, 113, 113, 0.24);
             color: #fca5a5;
+        }
+
+        .comparison-row.target-shares .comparison-label {
+            border-color: rgba(74, 222, 128, 0.24);
+            color: #86efac;
         }
 
         .comparison-row.production .comparison-label {
@@ -1258,9 +1404,11 @@
         }
 
         .bar-stack {
-            display: grid;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
             gap: 5px;
-            align-items: end;
             width: 100%;
         }
 
@@ -1268,7 +1416,15 @@
             color: var(--text);
             font-size: 12px;
             font-weight: 900;
+            line-height: 1;
+            min-height: 14px;
             text-align: center;
+        }
+
+        .bar-value.tiny {
+            color: var(--muted);
+            font-size: 10px;
+            transform: translateY(-1px);
         }
 
         .bar-fill {
@@ -1395,6 +1551,16 @@
                 rgba(17, 24, 29, 0.86);
         }
 
+        .betting-prop-card.preview-enabled {
+            cursor: pointer;
+            transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+        }
+
+        .betting-prop-card.preview-enabled:hover {
+            transform: translateY(-1px);
+            border-color: color-mix(in srgb, var(--rank-color, var(--accent)) 78%, var(--line));
+        }
+
         .rank-chip {
             position: absolute;
             top: 10px;
@@ -1413,27 +1579,32 @@
         }
 
         .team-context-card.rank-elite,
-        .prop-context-card.rank-elite {
+        .prop-context-card.rank-elite,
+        .target-context-card.rank-elite {
             --rank-color: var(--green);
         }
 
         .team-context-card.rank-good,
-        .prop-context-card.rank-good {
+        .prop-context-card.rank-good,
+        .target-context-card.rank-good {
             --rank-color: #86efac;
         }
 
         .team-context-card.rank-mid,
-        .prop-context-card.rank-mid {
+        .prop-context-card.rank-mid,
+        .target-context-card.rank-mid {
             --rank-color: var(--yellow);
         }
 
         .team-context-card.rank-low,
-        .prop-context-card.rank-low {
+        .prop-context-card.rank-low,
+        .target-context-card.rank-low {
             --rank-color: var(--orange);
         }
 
         .team-context-card.rank-bad,
-        .prop-context-card.rank-bad {
+        .prop-context-card.rank-bad,
+        .target-context-card.rank-bad {
             --rank-color: var(--red);
         }
 
@@ -1456,7 +1627,8 @@
         }
 
         .team-context-card strong,
-        .prop-context-card strong {
+        .prop-context-card strong,
+        .target-context-card strong {
             padding-right: 48px;
         }
 
@@ -1465,6 +1637,109 @@
             color: var(--subtle);
             letter-spacing: 0;
             text-transform: none;
+        }
+
+        .context-preview-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            display: grid;
+            place-items: center;
+            padding: 22px;
+            background: rgba(2, 6, 10, 0.68);
+        }
+
+        .context-preview {
+            width: min(760px, 94vw);
+            max-height: min(720px, 86vh);
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #11161a;
+            box-shadow: 0 24px 74px rgba(0, 0, 0, 0.58);
+        }
+
+        .context-preview-head {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            border-bottom: 1px solid var(--line);
+            padding: 14px;
+        }
+
+        .context-preview-head h4 {
+            margin: 0;
+            color: var(--text);
+            font-size: 22px;
+            line-height: 1.1;
+        }
+
+        .context-preview-head span {
+            display: block;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .context-preview-list {
+            max-height: min(620px, calc(86vh - 82px));
+            overflow: auto;
+            scrollbar-width: thin;
+        }
+
+        .context-preview-row {
+            display: grid;
+            grid-template-columns: 58px minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid var(--line-soft);
+            padding: 10px 14px;
+        }
+
+        .context-preview-row:first-child {
+            border-top: 0;
+        }
+
+        .context-preview-row.current {
+            background: rgba(74, 222, 128, 0.11);
+            outline: 1px solid rgba(74, 222, 128, 0.38);
+            outline-offset: -1px;
+        }
+
+        .context-preview-rank {
+            color: var(--accent-strong);
+            font-size: 20px;
+            font-weight: 950;
+        }
+
+        .context-preview-name {
+            min-width: 0;
+        }
+
+        .context-preview-name strong,
+        .context-preview-value strong {
+            display: block;
+            color: var(--text);
+            font-size: 15px;
+            line-height: 1.15;
+        }
+
+        .context-preview-name span,
+        .context-preview-value span {
+            display: block;
+            margin-top: 3px;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 850;
+        }
+
+        .context-preview-value {
+            min-width: 94px;
+            text-align: right;
         }
 
         .expert-list {
@@ -1550,8 +1825,8 @@
                 grid-template-columns: 1fr;
             }
 
-            .auth-row {
-                grid-template-columns: 1fr 1fr;
+            .account-panel {
+                justify-self: stretch;
             }
 
             .compare-panel {
@@ -1622,22 +1897,36 @@
             <button class="site-title" type="button" id="homeButton">
                 <h1>Fantasy Football Rankings</h1>
             </button>
-            <form class="auth-panel" id="authForm" aria-label="Account login">
-                <div class="auth-row" id="authSignedOut">
-                    <input class="auth-input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
-                    <input class="auth-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
-                    <button class="auth-btn" type="button" id="authSignIn">Sign In</button>
-                    <button class="auth-btn secondary" type="button" id="authSignUp">Create</button>
-                </div>
-                <div class="auth-row" id="authSignedIn" hidden>
-                    <span class="auth-status" id="authUser">Signed in</span>
-                    <span></span>
-                    <button class="auth-btn secondary" type="button" id="authUseLocal">Import Local</button>
-                    <button class="auth-btn secondary" type="button" id="authSignOut">Sign Out</button>
-                </div>
-                <span class="auth-status" id="authStatus">Sign in to save rankings to your account.</span>
-            </form>
+            <div class="account-panel" aria-label="Account">
+                <span class="account-avatar" id="accountAvatar">--</span>
+                <span class="account-copy">
+                    <strong id="accountName">Signed out</strong>
+                    <span id="accountMeta">Local rankings</span>
+                </span>
+                <button class="account-btn primary" type="button" id="authOpen">Sign In</button>
+                <button class="account-btn secondary" type="button" id="authSignOut" hidden>Sign Out</button>
+            </div>
         </section>
+
+        <div class="auth-modal-backdrop" id="authModal" hidden>
+            <form class="auth-dialog" id="authForm" aria-label="Account login">
+                <button class="auth-close" type="button" id="authClose" aria-label="Close account dialog">x</button>
+                <h2 id="authTitle">Sign In</h2>
+                <p id="authIntro">Save your rankings to your account and use them across browsers.</p>
+                <div class="auth-tabs" role="tablist" aria-label="Account mode">
+                    <button class="auth-tab active" type="button" id="authModeSignIn">Sign In</button>
+                    <button class="auth-tab" type="button" id="authModeCreate">Create Account</button>
+                </div>
+                <div class="auth-form">
+                    <input class="auth-input" id="authEmail" type="email" placeholder="Email address" autocomplete="email">
+                    <input class="auth-input" id="authUsername" type="text" placeholder="Username" autocomplete="username" hidden>
+                    <input class="auth-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
+                    <button class="auth-btn primary" type="submit" id="authSubmit">Sign In</button>
+                    <button class="auth-btn secondary" type="button" id="authUseLocal">Import Current Local Rankings</button>
+                    <span class="auth-status" id="authStatus">Sign in to save rankings to your account.</span>
+                </div>
+            </form>
+        </div>
 
         <section class="draft-panel" aria-label="Draft sync">
             <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or copied Underdog board text" aria-label="Sleeper draft URL or copied Underdog board text" autocomplete="off">
@@ -1670,6 +1959,7 @@
                     <label class="lab-field">
                         <span>Add table metric</span>
                         <select class="lab-select" id="metricSelect">
+                            <option value="" selected>Select Metric</option>
                             <option value="age">Age</option>
                             <option value="finish">Pos finish</option>
                             <option value="ppg">PPG</option>
@@ -1697,6 +1987,9 @@
                             <option value="propRecTd">Prop rec TD</option>
                             <option value="propRushYds">Prop rush yards</option>
                             <option value="propRushTd">Prop rush TD</option>
+                            <option value="targetShare">Target share</option>
+                            <option value="redZoneShare">Redzone target share</option>
+                            <option value="endZoneShare">Endzone target share</option>
                         </select>
                     </label>
                     <button class="lab-btn" type="button" id="metricAdd">Add column</button>
@@ -1779,7 +2072,11 @@
             const POSITIONS = ["QB", "RB", "WR", "TE"];
             const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
             const REMOTE_APP_ORIGIN = "https://2026-fantasy-rankings.vercel.app";
-            const apiPath = (path) => window.location.protocol === "file:" ? `${REMOTE_APP_ORIGIN}${path}` : path;
+            const isLocalOrigin = ["file:", "http:"].includes(window.location.protocol)
+                && ["", "localhost", "127.0.0.1"].includes(window.location.hostname);
+            const apiPath = (path) => isLocalOrigin ? `${REMOTE_APP_ORIGIN}${path}` : path;
+            const remoteApiPath = (url) => String(url || "").startsWith("/api/") ? `${REMOTE_APP_ORIGIN}${url}` : url;
+            const initialPlayerParam = new URLSearchParams(window.location.search).get("player") || "";
             const FLOCK_PROXY_URL = apiPath("/api/flock-rankings");
             const FLOCK_DIRECT_URL = "https://api.flockfantasy.com/rankings?format=BEST_BALL&pickType=general";
             const SLEEPER_PLAYERS_PROXY_URL = apiPath("/api/sleeper-players");
@@ -1804,6 +2101,8 @@
                 items: [],
                 flockRanks: {},
                 flockDetails: {},
+                flockRanksByNamePos: {},
+                flockDetailsByNamePos: {},
                 playerPerformance: {},
                 playerYearlyStats: {},
                 bettingProps: { loading: false, byKey: {}, byNamePos: {}, updatedAt: "", source: "", error: "" },
@@ -1833,6 +2132,7 @@
                     loading: false,
                     ready: false,
                     message: "",
+                    mode: "signIn",
                 },
                 draft: {
                     provider: "sleeper",
@@ -1884,16 +2184,23 @@
                 playerDrawerBackdrop: document.getElementById("playerDrawerBackdrop"),
                 playerDrawerClose: document.getElementById("playerDrawerClose"),
                 playerDrawerContent: document.getElementById("playerDrawerContent"),
+                accountAvatar: document.getElementById("accountAvatar"),
+                accountName: document.getElementById("accountName"),
+                accountMeta: document.getElementById("accountMeta"),
+                authOpen: document.getElementById("authOpen"),
+                authClose: document.getElementById("authClose"),
+                authModal: document.getElementById("authModal"),
                 authForm: document.getElementById("authForm"),
-                authSignedOut: document.getElementById("authSignedOut"),
-                authSignedIn: document.getElementById("authSignedIn"),
                 authEmail: document.getElementById("authEmail"),
+                authUsername: document.getElementById("authUsername"),
                 authPassword: document.getElementById("authPassword"),
-                authSignIn: document.getElementById("authSignIn"),
-                authSignUp: document.getElementById("authSignUp"),
+                authSubmit: document.getElementById("authSubmit"),
+                authTitle: document.getElementById("authTitle"),
+                authIntro: document.getElementById("authIntro"),
+                authModeSignIn: document.getElementById("authModeSignIn"),
+                authModeCreate: document.getElementById("authModeCreate"),
                 authSignOut: document.getElementById("authSignOut"),
                 authUseLocal: document.getElementById("authUseLocal"),
-                authUser: document.getElementById("authUser"),
                 authStatus: document.getElementById("authStatus"),
             };
             let draftTimer = null;
@@ -2024,6 +2331,8 @@
 
             const accountStorageKey = () => state.auth.user?.id ? `${STORAGE_KEY}:${state.auth.user.id}` : STORAGE_KEY;
 
+            const accountBoardId = () => state.auth.user?.id ? `user:${state.auth.user.id}` : "";
+
             const loadScript = (src) => new Promise((resolve, reject) => {
                 const existing = document.querySelector(`script[src="${src}"]`);
                 if (existing) {
@@ -2062,7 +2371,7 @@
                 const { data, error } = await client
                     .from(syncConfig.tableName)
                     .select("state")
-                    .eq("user_id", state.auth.user.id)
+                    .eq("board_id", accountBoardId())
                     .maybeSingle();
                 if (error) {
                     throw error;
@@ -2079,7 +2388,6 @@
                     .from(syncConfig.tableName)
                     .select("state")
                     .eq("board_id", syncConfig.boardId)
-                    .is("user_id", null)
                     .maybeSingle();
                 if (error) {
                     throw error;
@@ -2098,16 +2406,25 @@
                 if (!client || !state.auth.user) {
                     return;
                 }
-                const { error } = await client
+                const baseRow = {
+                    board_id: accountBoardId(),
+                    state: payload,
+                    updated_at: new Date().toISOString(),
+                };
+                const publicAttempt = await client
+                    .from(syncConfig.tableName)
+                    .upsert(baseRow, { onConflict: "board_id" });
+                if (!publicAttempt.error) {
+                    return;
+                }
+                const accountAttempt = await client
                     .from(syncConfig.tableName)
                     .upsert({
-                        board_id: `user:${state.auth.user.id}`,
+                        ...baseRow,
                         user_id: state.auth.user.id,
-                        state: payload,
-                        updated_at: new Date().toISOString(),
-                    }, { onConflict: "user_id" });
-                if (error) {
-                    throw error;
+                    }, { onConflict: "board_id" });
+                if (accountAttempt.error) {
+                    throw accountAttempt.error;
                 }
             };
 
@@ -2200,22 +2517,72 @@
                 loadDataLabStats();
             };
 
+            const userDisplayName = () => state.auth.user?.user_metadata?.username
+                || state.auth.user?.user_metadata?.name
+                || state.auth.user?.email?.split("@")[0]
+                || "Account";
+
+            const userInitials = () => initialsFor(userDisplayName()).slice(0, 2) || "AC";
+
+            const appRedirectUrl = () => {
+                if (window.location.protocol === "file:") {
+                    return REMOTE_APP_ORIGIN;
+                }
+                return `${window.location.origin}${window.location.pathname}`;
+            };
+
+            const setAuthMode = (mode) => {
+                state.auth.mode = mode;
+                const creating = mode === "signUp";
+                elements.authTitle.textContent = creating ? "Create Account" : "Sign In";
+                elements.authIntro.textContent = creating
+                    ? "Create a ranking profile you can use from any browser."
+                    : "Sign in to load and save your personal ranking board.";
+                elements.authSubmit.textContent = creating ? "Create Account" : "Sign In";
+                elements.authUsername.hidden = !creating;
+                elements.authPassword.autocomplete = creating ? "new-password" : "current-password";
+                elements.authModeSignIn.classList.toggle("active", !creating);
+                elements.authModeCreate.classList.toggle("active", creating);
+            };
+
+            const openAuthModal = (mode = "signIn") => {
+                setAuthMode(mode);
+                elements.authModal.hidden = false;
+                elements.authStatus.textContent = mode === "signUp"
+                    ? "Email, username, and password create your account."
+                    : "Sign in to load your saved rankings.";
+                requestAnimationFrame(() => elements.authEmail.focus());
+            };
+
+            const closeAuthModal = () => {
+                elements.authModal.hidden = true;
+            };
+
             const updateAuthUi = (message = "") => {
                 const signedIn = Boolean(state.auth.user);
-                elements.authSignedOut.hidden = signedIn;
-                elements.authSignedIn.hidden = !signedIn;
-                elements.authUser.textContent = signedIn ? state.auth.user.email : "Signed out";
+                elements.accountAvatar.textContent = signedIn ? userInitials() : "--";
+                elements.accountName.textContent = signedIn ? userDisplayName() : "Signed out";
+                elements.accountMeta.textContent = signedIn ? state.auth.user.email : "Local rankings";
+                elements.authOpen.textContent = signedIn ? "Account" : "Sign In";
+                elements.authSignOut.hidden = !signedIn;
                 elements.authStatus.textContent = message || (signedIn
                     ? "Signed in. Rankings save to your account."
                     : "Sign in to save rankings to your account.");
-                elements.authSignIn.disabled = state.auth.loading;
-                elements.authSignUp.disabled = state.auth.loading;
+                elements.authOpen.disabled = state.auth.loading;
+                elements.authSubmit.disabled = state.auth.loading;
                 elements.authSignOut.disabled = state.auth.loading;
                 elements.authUseLocal.disabled = state.auth.loading || !signedIn;
             };
 
             const reloadSavedBoard = async () => {
                 const saved = await loadSavedState();
+                const hasSavedBoard = Boolean(saved.items || saved.order);
+                if (state.auth.user && !hasSavedBoard && state.items.length) {
+                    elements.saveState.textContent = "Saving";
+                    savePlayers();
+                    updateAuthUi("No remote rankings found, so your current board was kept and saved to this account.");
+                    return { ...saved, source: "Account" };
+                }
                 applySavedStateToBoard(saved);
                 if (saved.source === "Legacy" && state.auth.user) {
                     savePlayers();
@@ -2250,26 +2617,38 @@
 
             const authCredentials = () => ({
                 email: elements.authEmail.value.trim(),
+                username: elements.authUsername.value.trim(),
                 password: elements.authPassword.value,
             });
 
-            const handleAuthAction = async (action) => {
+            const handleAuthAction = async (action = state.auth.mode) => {
                 const client = await supabaseClient();
                 const credentials = authCredentials();
+                const creating = action === "signUp";
                 if (!client?.auth) {
                     updateAuthUi("Account sync is not configured.");
                     return;
                 }
-                if (!credentials.email || !credentials.password) {
-                    updateAuthUi("Enter an email and password.");
+                if (!credentials.email || !credentials.password || (creating && !credentials.username)) {
+                    updateAuthUi(creating ? "Enter an email, username, and password." : "Enter an email and password.");
                     return;
                 }
                 state.auth.loading = true;
-                updateAuthUi(action === "signUp" ? "Creating account..." : "Signing in...");
+                updateAuthUi(creating ? "Creating account..." : "Signing in...");
                 try {
-                    const result = action === "signUp"
-                        ? await client.auth.signUp(credentials)
-                        : await client.auth.signInWithPassword(credentials);
+                    const result = creating
+                        ? await client.auth.signUp({
+                            email: credentials.email,
+                            password: credentials.password,
+                            options: {
+                                emailRedirectTo: appRedirectUrl(),
+                                data: { username: credentials.username },
+                            },
+                        })
+                        : await client.auth.signInWithPassword({
+                            email: credentials.email,
+                            password: credentials.password,
+                        });
                     if (result.error) {
                         throw result.error;
                     }
@@ -2277,10 +2656,11 @@
                     const sessionUser = result.data?.session?.user || null;
                     if (sessionUser) {
                         state.auth.user = sessionUser;
-                        updateAuthUi(action === "signUp" ? "Account created and signed in." : "Signed in.");
+                        closeAuthModal();
+                        updateAuthUi(creating ? "Account created and signed in." : "Signed in.");
                         await reloadSavedBoard();
                     } else {
-                        updateAuthUi("Account created. Check your email to confirm, then sign in.");
+                        updateAuthUi("Account created. Check your email to confirm, then return here.");
                     }
                 } catch (error) {
                     console.warn("Auth action failed.", error);
@@ -2322,7 +2702,8 @@
                     }
                 })();
                 if (!local.items && !local.order) {
-                    updateAuthUi("No local rankings found to import.");
+                    savePlayers();
+                    updateAuthUi("Current board saved to your account.");
                     return;
                 }
                 applySavedStateToBoard({ ...local, source: "Local" });
@@ -2343,6 +2724,7 @@
                         .catch((error) => {
                             console.warn("Cloud rankings could not be saved.", error);
                             elements.saveState.textContent = "Local";
+                            updateAuthUi("Account save failed. Keeping the current board locally.");
                         });
                 }
             };
@@ -2394,6 +2776,22 @@
             };
 
             const playerMarketKey = (player) => `${nameKey(player.name)}|${marketTeam(player.team)}|${player.pos}`;
+            const playerNamePosKey = (player) => `${nameKey(player.name)}|${player.pos}`;
+
+            const flockRankForPlayer = (player) => {
+                const exact = state.flockRanks[playerMarketKey(player)];
+                if (Number.isFinite(exact)) {
+                    return exact;
+                }
+                const fallback = state.flockRanksByNamePos[playerNamePosKey(player)];
+                return Number.isFinite(fallback) ? fallback : undefined;
+            };
+
+            const flockDetailForPlayer = (player) => (
+                state.flockDetails[playerMarketKey(player)]
+                || state.flockDetailsByNamePos[playerNamePosKey(player)]
+                || null
+            );
 
             const pickLabelFromAdp = (adp) => {
                 const pick = Math.max(1, Math.round(Number(adp)));
@@ -2408,6 +2806,25 @@
                 }
                 const base = Number.isInteger(adp) ? String(adp) : adp.toFixed(1);
                 return pickLabel ? `${base} (${pickLabel})` : base;
+            };
+
+            const effectiveSleeperMarket = (player) => {
+                if (Number.isFinite(player.sleeperAdp) && player.sleeperAdp !== 999) {
+                    return { adp: player.sleeperAdp, pick: player.sleeperPick || pickLabelFromAdp(player.sleeperAdp), source: "Sleeper" };
+                }
+                const flockRank = flockRankForPlayer(player);
+                if (Number.isFinite(flockRank)) {
+                    return { adp: flockRank, pick: pickLabelFromAdp(flockRank), source: "Flock fallback" };
+                }
+                if (Number.isFinite(player.udAdp) && player.udAdp !== 999) {
+                    return { adp: player.udAdp, pick: player.udPick || pickLabelFromAdp(player.udAdp), source: "Underdog fallback" };
+                }
+                return { adp: 999, pick: "", source: "" };
+            };
+
+            const formatSleeperMarket = (player) => {
+                const market = effectiveSleeperMarket(player);
+                return formatAdp(market.adp, market.pick);
             };
 
             const formatAmericanOdds = (value) => {
@@ -2432,6 +2849,22 @@
                 }
                 const fallback = state.bettingProps.byNamePos[`${nameKey(player.name)}|${player.pos}`];
                 return fallback?.props || [];
+            };
+
+            const targetShareRows = () => Array.isArray(window.targetShareRows) ? window.targetShareRows : [];
+
+            const targetShareKey = (row) => `${nameKey(row.name)}|${marketTeam(row.team)}|${String(row.pos || "").toUpperCase()}`;
+
+            const playerTargetShare = (player) => {
+                const exactKey = playerMarketKey(player);
+                const exact = targetShareRows().find((row) => targetShareKey(row) === exactKey);
+                if (exact) {
+                    return exact;
+                }
+                return targetShareRows().find((row) => (
+                    nameKey(row.name) === nameKey(player.name)
+                    && String(row.pos || "").toUpperCase() === player.pos
+                )) || null;
             };
 
             const applyLivePlayerMeta = () => {
@@ -2553,6 +2986,146 @@
                 return { rank: sorted.findIndex((row) => row.key === targetKey) + 1, total: sorted.length };
             };
 
+            const targetShareRank = (player, metricKey) => {
+                const targetRow = playerTargetShare(player);
+                const targetKey = targetRow ? targetShareKey(targetRow) : playerMarketKey(player);
+                const rows = targetShareRows()
+                    .map((row) => ({ key: targetShareKey(row), value: Number(row[metricKey]) }))
+                    .filter((row) => Number.isFinite(row.value));
+                if (!rows.some((row) => row.key === targetKey)) {
+                    return null;
+                }
+                const sorted = rows.slice().sort((a, b) => b.value - a.value);
+                return { rank: sorted.findIndex((row) => row.key === targetKey) + 1, total: sorted.length };
+            };
+
+            const attachPreview = (card, previewFactory) => {
+                if (!previewFactory) {
+                    return card;
+                }
+                card.classList.add("preview-enabled");
+                card.tabIndex = 0;
+                card.addEventListener("click", () => openContextPreview(previewFactory()));
+                card.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openContextPreview(previewFactory());
+                    }
+                });
+                return card;
+            };
+
+            const openContextPreview = ({ title, subtitle = "", rows = [], currentKey = "", valueLabel = "" }) => {
+                const existing = elements.playerDrawerContent.querySelector(".context-preview-backdrop");
+                existing?.remove();
+                const backdrop = document.createElement("div");
+                const panel = document.createElement("div");
+                const head = document.createElement("div");
+                const titleWrap = document.createElement("div");
+                const titleNode = document.createElement("h4");
+                const subtitleNode = document.createElement("span");
+                const close = document.createElement("button");
+                const list = document.createElement("div");
+                backdrop.className = "context-preview-backdrop";
+                panel.className = "context-preview";
+                head.className = "context-preview-head";
+                list.className = "context-preview-list";
+                titleNode.textContent = title || "Preview";
+                subtitleNode.textContent = subtitle || valueLabel || "Sorted high to low";
+                close.type = "button";
+                close.textContent = "Close";
+                close.addEventListener("click", () => backdrop.remove());
+                titleWrap.append(titleNode, subtitleNode);
+                head.append(titleWrap, close);
+                rows.forEach((row, index) => {
+                    const line = document.createElement("div");
+                    const rank = document.createElement("span");
+                    const name = document.createElement("span");
+                    const value = document.createElement("span");
+                    const strongName = document.createElement("strong");
+                    const meta = document.createElement("span");
+                    const strongValue = document.createElement("strong");
+                    const detail = document.createElement("span");
+                    line.className = `context-preview-row${row.key && row.key === currentKey ? " current" : ""}`;
+                    rank.className = "context-preview-rank";
+                    name.className = "context-preview-name";
+                    value.className = "context-preview-value";
+                    rank.textContent = String(index + 1);
+                    strongName.textContent = row.name;
+                    meta.textContent = row.meta || "";
+                    strongValue.textContent = row.value;
+                    detail.textContent = row.detail || "";
+                    name.append(strongName, meta);
+                    value.append(strongValue, detail);
+                    line.append(rank, name, value);
+                    list.appendChild(line);
+                });
+                if (rows.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.className = "context-preview-row";
+                    empty.textContent = "No matching data available.";
+                    list.appendChild(empty);
+                }
+                backdrop.addEventListener("click", (event) => {
+                    if (event.target === backdrop) {
+                        backdrop.remove();
+                    }
+                });
+                panel.append(head, list);
+                backdrop.appendChild(panel);
+                elements.playerDrawerContent.appendChild(backdrop);
+            };
+
+            const teamPreviewRows = (valueForTeam, formatter = formatWhole) => (window.clayTeamProjections || [])
+                .map((projection) => ({
+                    key: clayTeam(projection.team),
+                    name: projection.team,
+                    valueRaw: Number(valueForTeam(projection)),
+                    detail: "Mike Clay projection",
+                }))
+                .filter((row) => Number.isFinite(row.valueRaw))
+                .sort((a, b) => b.valueRaw - a.valueRaw)
+                .map((row) => ({ ...row, value: formatter(row.valueRaw), meta: "NFL team" }));
+
+            const teamFuturesPreviewRows = () => Object.values(state.teamFutures.byTeam)
+                .map((future) => ({
+                    key: marketTeam(future.team),
+                    name: displayTeam(future.team),
+                    valueRaw: Number(future.line),
+                    value: bettingLineLabel(future),
+                    meta: "BettingPros wins",
+                    detail: `O ${formatAmericanOdds(future.overCost)} / U ${formatAmericanOdds(future.underCost)}`,
+                }))
+                .filter((row) => Number.isFinite(row.valueRaw))
+                .sort((a, b) => b.valueRaw - a.valueRaw);
+
+            const propPreviewRows = (propKey) => Object.values(state.bettingProps.byKey)
+                .map((row) => {
+                    const prop = (row.props || []).find((item) => item.key === propKey);
+                    return {
+                        key: `${nameKey(row.name)}|${marketTeam(row.team)}|${String(row.pos || "").toUpperCase()}`,
+                        name: row.name,
+                        meta: `${String(row.pos || "").toUpperCase()} / ${displayTeam(row.team)}`,
+                        valueRaw: Number(prop?.line),
+                        value: bettingLineLabel(prop),
+                        detail: prop ? `O ${formatAmericanOdds(prop.overCost)} / U ${formatAmericanOdds(prop.underCost)}` : "",
+                    };
+                })
+                .filter((row) => Number.isFinite(row.valueRaw))
+                .sort((a, b) => b.valueRaw - a.valueRaw);
+
+            const targetPreviewRows = (metricKey, totalKey, label) => targetShareRows()
+                .map((row) => ({
+                    key: targetShareKey(row),
+                    name: row.name,
+                    meta: `${String(row.pos || "").toUpperCase()} / ${displayTeam(row.team)}`,
+                    valueRaw: Number(row[metricKey]),
+                    value: formatPercent(row[metricKey]),
+                    detail: `${formatWhole(row[totalKey])} ${label}`,
+                }))
+                .filter((row) => Number.isFinite(row.valueRaw))
+                .sort((a, b) => b.valueRaw - a.valueRaw);
+
             const varianceClass = (variance) => {
                 if (variance > 0) {
                     return "positive";
@@ -2613,13 +3186,23 @@
                 return element ? element.closest(selector) : null;
             };
 
-            const attachDragEvents = (row, handle, itemId) => {
+            const canReorderBoard = () => (
+                !state.sort.key
+                && state.selectedPositions.size === 0
+                && state.activeTeam === "ALL"
+                && !state.searchQuery.trim()
+                && !state.availableOnly
+                && !hasLabCriteria()
+            );
+
+            const attachDragEvents = (row, handle, itemId, itemType) => {
                 row.draggable = false;
                 row.dataset.itemId = itemId;
-                handle.draggable = !state.sort.key;
+                row.dataset.itemType = itemType;
+                handle.draggable = canReorderBoard();
 
                 handle.addEventListener("dragstart", (event) => {
-                    if (state.sort.key) {
+                    if (!canReorderBoard()) {
                         event.preventDefault();
                         return;
                     }
@@ -2636,6 +3219,9 @@
                 });
 
                 row.addEventListener("dragover", (event) => {
+                    if (!canReorderBoard() || !state.draggedItemId) {
+                        return;
+                    }
                     event.preventDefault();
                     event.dataTransfer.dropEffect = "move";
                     row.classList.add("drop-target");
@@ -2646,13 +3232,16 @@
                 });
 
                 row.addEventListener("drop", (event) => {
+                    if (!canReorderBoard()) {
+                        return;
+                    }
                     event.preventDefault();
                     row.classList.remove("drop-target");
-                    handleDrop(itemId);
+                    handleDrop(itemId, itemType);
                 });
             };
 
-            const handleDrop = (targetItemId) => {
+            const handleDrop = (targetItemId, targetItemType) => {
                 if (!state.draggedItemId || state.draggedItemId === targetItemId) {
                     return;
                 }
@@ -2669,15 +3258,25 @@
                 if (fromIndex < 0 || toIndex < 0) {
                     return;
                 }
+                const draggedItem = state.items[fromIndex];
+                const targetItem = state.items[toIndex];
+                if (draggedItem.type !== targetItem.type || targetItem.type !== targetItemType) {
+                    return;
+                }
 
                 const [movedItem] = state.items.splice(fromIndex, 1);
                 state.items.splice(toIndex, 0, movedItem);
                 savePlayers();
                 render();
-                requestAnimationFrame(() => {
+                const restore = () => {
                     scrollArea.scrollLeft = restoreScroll.tableLeft;
                     scrollArea.scrollTop = restoreScroll.tableTop;
                     window.scrollTo(restoreScroll.windowX, restoreScroll.windowY);
+                };
+                restore();
+                requestAnimationFrame(() => {
+                    restore();
+                    requestAnimationFrame(restore);
                 });
             };
 
@@ -2689,7 +3288,7 @@
                 handle.className = "handle";
                 handle.textContent = "::";
                 handle.setAttribute("aria-hidden", "true");
-                attachDragEvents(row, handle, item.id);
+                attachDragEvents(row, handle, item.id, item.type);
 
                 const label = document.createElement("div");
                 label.className = "tier-label";
@@ -2708,15 +3307,16 @@
                 row.tabIndex = 0;
                 const myRank = globalIndex + 1;
                 const underdogVariance = formatVariance(player.udAdp, myRank);
-                const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
+                const sleeperMarket = effectiveSleeperMarket(player);
+                const sleeperVariance = formatVariance(sleeperMarket.adp, myRank);
                 const playerKey = playerMarketKey(player);
-                const flockRank = state.flockRanks[playerKey];
+                const flockRank = flockRankForPlayer(player);
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const handle = document.createElement("span");
                 handle.className = "handle";
                 handle.textContent = "::";
                 handle.setAttribute("aria-hidden", "true");
-                attachDragEvents(row, handle, item.id);
+                attachDragEvents(row, handle, item.id, item.type);
 
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
                 const isBestAvailable = state.draft.bestAvailableKey === playerKey;
@@ -2787,7 +3387,7 @@
                     ...state.lab.metrics.map((metricKey) => createCell("num", metricDisplayValue(player, globalIndex, metricKey))),
                     createCell("num", formatAdp(player.udAdp, player.udPick)),
                     createCell(`variance num ${underdogVariance.className}`, underdogVariance.label),
-                    createCell("num", formatAdp(player.sleeperAdp, player.sleeperPick)),
+                    createCell("num", formatAdp(sleeperMarket.adp, sleeperMarket.pick)),
                     createCell(`variance num ${sleeperVariance.className}`, sleeperVariance.label),
                     createCell("num", formatMarketRank(flockRank)),
                     createCell(`variance num ${flockVariance.className}`, flockVariance.label),
@@ -2869,6 +3469,9 @@
                 propRecTd: { label: "Prop Rec TD", direction: "desc", source: "prop", propKey: "recTd", highWins: true },
                 propRushYds: { label: "Prop Rush Yds", direction: "desc", source: "prop", propKey: "rushYds", highWins: true },
                 propRushTd: { label: "Prop Rush TD", direction: "desc", source: "prop", propKey: "rushTd", highWins: true },
+                targetShare: { label: "Target Share", direction: "desc", source: "target", metricKey: "targetShare", suffix: "%", highWins: true },
+                redZoneShare: { label: "RZ Target Share", direction: "desc", source: "target", metricKey: "redZoneShare", suffix: "%", highWins: true },
+                endZoneShare: { label: "EZ Target Share", direction: "desc", source: "target", metricKey: "endZoneShare", suffix: "%", highWins: true },
             };
 
             const numericOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
@@ -2929,7 +3532,7 @@
             };
 
             const finishValueForPlayer = (player, year = state.profileYear) => {
-                const detail = state.flockDetails[playerMarketKey(player)];
+                const detail = flockDetailForPlayer(player);
                 const yearly = yearlyForPlayer(player, detail);
                 const officialFinish = seasonStatValue(yearly, `FantasyPointsRank${player.pos}`, { year });
                 if (officialFinish !== null) {
@@ -2939,13 +3542,13 @@
                     return null;
                 }
                 return positionRankForValue(player, (candidate) => {
-                    const candidateDetail = state.flockDetails[playerMarketKey(candidate)];
+                    const candidateDetail = flockDetailForPlayer(candidate);
                     return seasonTotalPoints(performanceForPlayer(candidate, candidateDetail, year));
                 }, true);
             };
 
             const metricValueForPlayer = (player, globalIndex, metricKey) => {
-                const flockDetail = state.flockDetails[playerMarketKey(player)];
+                const flockDetail = flockDetailForPlayer(player);
                 const performance = performanceForPlayer(player, flockDetail);
                 const yearly = yearlyForPlayer(player, flockDetail);
                 const metric = LAB_METRICS[metricKey];
@@ -2973,6 +3576,10 @@
                 if (metric.source === "prop") {
                     return propMetricValue(player, metric);
                 }
+                if (metric.source === "target") {
+                    const row = playerTargetShare(player);
+                    return numericOrNull(row?.[metric.metricKey]);
+                }
                 if (metric.perGame) {
                     const direct = seasonStatValue(yearly, metric.serialIds, { perGame: true });
                     if (direct !== null) {
@@ -2991,13 +3598,14 @@
                 }
                 const player = entry.player;
                 const myRank = entry.globalIndex + 1;
-                const flockRank = state.flockRanks[playerMarketKey(player)];
+                const flockRank = flockRankForPlayer(player);
+                const sleeperMarket = effectiveSleeperMarket(player);
                 const values = {
                     myRank,
                     udAdp: player.udAdp,
                     udVar: player.udAdp === 999 ? Number.POSITIVE_INFINITY : player.udAdp - myRank,
-                    sleeperAdp: player.sleeperAdp,
-                    sleeperVar: player.sleeperAdp === 999 ? Number.POSITIVE_INFINITY : player.sleeperAdp - myRank,
+                    sleeperAdp: sleeperMarket.adp,
+                    sleeperVar: sleeperMarket.adp === 999 ? Number.POSITIVE_INFINITY : sleeperMarket.adp - myRank,
                     flockRank: Number.isFinite(flockRank) ? flockRank : Number.POSITIVE_INFINITY,
                     flockVar: Number.isFinite(flockRank) ? flockRank - myRank : Number.POSITIVE_INFINITY,
                 };
@@ -3009,8 +3617,8 @@
             };
 
             const hasConsensusMarketCoverage = (player) => {
-                const flockRank = state.flockRanks[playerMarketKey(player)];
-                return player.udAdp !== 999 && player.sleeperAdp !== 999 && Number.isFinite(flockRank);
+                const flockRank = flockRankForPlayer(player);
+                return player.udAdp !== 999 && effectiveSleeperMarket(player).adp !== 999 && Number.isFinite(flockRank);
             };
 
             const sortedVisibleItems = (visibleItems, posRanks) => {
@@ -3115,7 +3723,7 @@
                 if (!Number.isFinite(number)) {
                     return "N/A";
                 }
-                return `${Math.round(number)}%`;
+                return `${Number.isInteger(number) ? Math.round(number) : number.toFixed(1)}%`;
             };
 
             const decimalAge = (dob, fallbackAge) => {
@@ -3348,6 +3956,13 @@
                         value.textContent = bettingLineLabel(prop);
                         odds.textContent = `O ${formatAmericanOdds(prop.overCost)} / U ${formatAmericanOdds(prop.underCost)}`;
                         card.append(label, value, odds);
+                        attachPreview(card, () => ({
+                            title: prop.label,
+                            subtitle: "Betting lines sorted high to low",
+                            rows: propPreviewRows(prop.key),
+                            currentKey: playerMarketKey(player),
+                            valueLabel: prop.label,
+                        }));
                         grid.appendChild(card);
                     });
                 }
@@ -3368,7 +3983,7 @@
                 heading.textContent = `${player.team} Team Context`;
                 grid.className = "betting-props-grid";
 
-                const card = (label, value, detail = "", rank = null) => {
+                const card = (label, value, detail = "", rank = null, previewFactory = null) => {
                     const node = document.createElement("div");
                     const labelNode = document.createElement("span");
                     const valueNode = document.createElement("strong");
@@ -3384,6 +3999,7 @@
                         node.appendChild(rankNode);
                     }
                     node.append(labelNode, valueNode, detailNode);
+                    attachPreview(node, previewFactory);
                     return node;
                 };
 
@@ -3394,7 +4010,13 @@
                         "BettingPros Wins",
                         bettingLineLabel(future),
                         `O ${formatAmericanOdds(future.overCost)} / U ${formatAmericanOdds(future.underCost)}`,
-                        rankAmongFutures(player.team)
+                        rankAmongFutures(player.team),
+                        () => ({
+                            title: "BettingPros Wins",
+                            subtitle: "Team win totals sorted high to low",
+                            rows: teamFuturesPreviewRows(),
+                            currentKey: marketTeam(player.team),
+                        })
                     ));
                 } else {
                     grid.appendChild(card("BettingPros Wins", "N/A", state.teamFutures.error || "No win total available"));
@@ -3414,7 +4036,13 @@
                             `${player.pos} Target Share`,
                             formatPercent(share),
                             `${formatWhole(posTargets)} targets / ${formatWhole(positions[player.pos]?.ppr)} PPR`,
-                            rankAmongTeams(player.team, (projection) => teamPositionShare(projection, player.pos))
+                            rankAmongTeams(player.team, (projection) => teamPositionShare(projection, player.pos)),
+                            () => ({
+                                title: `${player.pos} Target Share`,
+                                subtitle: "Team positional target share sorted high to low",
+                                rows: teamPreviewRows((projection) => teamPositionShare(projection, player.pos), formatPercent),
+                                currentKey: clayTeam(player.team),
+                            })
                         );
                     })()
                     : null;
@@ -3425,14 +4053,74 @@
                         "Clay Passing",
                         formatWhole(offense.passYds),
                         `${formatWhole(offense.passAtt)} att / ${formatWhole(offense.passTd)} TD`,
-                        rankAmongTeams(player.team, (projection) => projection.offense?.passYds)
+                        rankAmongTeams(player.team, (projection) => projection.offense?.passYds),
+                        () => ({
+                            title: "Clay Passing",
+                            subtitle: "Team passing yards sorted high to low",
+                            rows: teamPreviewRows((projection) => projection.offense?.passYds, formatWhole),
+                            currentKey: clayTeam(player.team),
+                        })
                     ),
                     card(
                         "Clay Rushing",
                         formatWhole(offense.rushYds),
                         `${formatWhole(offense.rushAtt)} att / ${formatWhole(offense.rushTd)} TD`,
-                        rankAmongTeams(player.team, (projection) => projection.offense?.rushYds)
+                        rankAmongTeams(player.team, (projection) => projection.offense?.rushYds),
+                        () => ({
+                            title: "Clay Rushing",
+                            subtitle: "Team rushing yards sorted high to low",
+                            rows: teamPreviewRows((projection) => projection.offense?.rushYds, formatWhole),
+                            currentKey: clayTeam(player.team),
+                        })
                     )
+                );
+                section.append(heading, grid);
+                return section;
+            };
+
+            const targetSharesSection = (player) => {
+                const section = document.createElement("section");
+                const heading = document.createElement("h3");
+                const grid = document.createElement("div");
+                const targetRow = playerTargetShare(player);
+                section.className = "drawer-section";
+                heading.textContent = "Target Shares";
+                grid.className = "betting-props-grid";
+
+                const card = (label, metricKey, totalKey, averageKey, detailLabel) => {
+                    const rank = targetShareRank(player, metricKey);
+                    const node = document.createElement("div");
+                    const labelNode = document.createElement("span");
+                    const valueNode = document.createElement("strong");
+                    const detailNode = document.createElement("small");
+                    node.className = `betting-prop-card prop-context-card target-context-card ${rankClass(rank?.rank, rank?.total)}`;
+                    if (rank?.rank && rank?.total) {
+                        const rankNode = document.createElement("b");
+                        rankNode.className = "rank-chip";
+                        rankNode.textContent = `${rank.rank}/${rank.total}`;
+                        node.appendChild(rankNode);
+                    }
+                    labelNode.textContent = label;
+                    valueNode.textContent = formatPercent(targetRow?.[metricKey]);
+                    detailNode.textContent = targetRow
+                        ? `${formatWhole(targetRow[totalKey])} ${detailLabel} / ${formatDecimal(targetRow[averageKey])} per game`
+                        : "Not in imported top-50 target-share table.";
+                    node.append(labelNode, valueNode, detailNode);
+                    if (targetRow) {
+                        attachPreview(node, () => ({
+                            title: label,
+                            subtitle: "Hashtag Football target shares sorted high to low",
+                            rows: targetPreviewRows(metricKey, totalKey, detailLabel),
+                            currentKey: targetShareKey(targetRow),
+                        }));
+                    }
+                    return node;
+                };
+
+                grid.append(
+                    card("Targets", "targetShare", "targets", "targetAvg", "targets"),
+                    card("Redzone Targets", "redZoneShare", "redZoneTargets", "redZoneAvg", "red-zone targets"),
+                    card("Endzone Targets", "endZoneShare", "endZoneTargets", "endZoneAvg", "end-zone targets")
                 );
                 section.append(heading, grid);
                 return section;
@@ -3547,9 +4235,9 @@
                         const week = document.createElement("span");
                         track.className = "bar-track";
                         stack.className = "bar-stack";
-                        stack.style.height = `${Math.max(4, (row.points / maxPoints) * 100)}%`;
-                        label.className = "bar-value";
-                        label.textContent = row.hasData ? formatDecimal(row.points) : "0";
+                        stack.style.height = `${Math.max(row.hasData ? 6 : 3, (row.points / maxPoints) * 100)}%`;
+                        label.className = `bar-value${!row.hasData || row.points < 2 ? " tiny" : ""}`;
+                        label.textContent = row.hasData ? formatDecimal(row.points) : "";
                         fill.className = row.hasData
                             ? `bar-fill${row.points < 10 ? " low" : row.points < 20 ? " mid" : ""}`
                             : "bar-fill inactive";
@@ -3604,8 +4292,8 @@
                 const myRank = globalIndex + 1;
                 const posRanks = getPositionRanks();
                 const playerKey = playerMarketKey(player);
-                const flockRank = state.flockRanks[playerKey];
-                const flockDetail = state.flockDetails[playerKey];
+                const flockRank = flockRankForPlayer(player);
+                const flockDetail = flockDetailForPlayer(player);
                 if (shouldRefresh) {
                     refreshPlayerPerformance(player, flockDetail, year);
                     refreshYearlyStats(player, flockDetail);
@@ -3613,7 +4301,8 @@
                 const performance = performanceForPlayer(player, flockDetail, year);
                 const yearly = yearlyForPlayer(player, flockDetail);
                 const betProps = playerBettingProps(player);
-                return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly, year, betProps };
+                const targetShare = playerTargetShare(player);
+                return { player, myRank, posRank: posRanks[player.id] || "N/A", flockDetail, flockRank, performance, yearly, year, betProps, targetShare };
             };
 
             const posRankNumber = (rank) => {
@@ -3626,6 +4315,41 @@
                 const bettingStats = [];
                 const seen = new Set();
                 const seenBetting = new Set();
+                const targetStats = [
+                    {
+                        category: "Target Shares",
+                        label: "Targets",
+                        highWins: true,
+                        rankable: false,
+                        value: (entry) => numericOrNull(entry.targetShare?.targetShare),
+                        display: (entry) => entry.targetShare
+                            ? `${formatPercent(entry.targetShare.targetShare)} / ${formatWhole(entry.targetShare.targets)}`
+                            : "Outside top 50",
+                        detail: (entry) => entry.targetShare ? `${formatDecimal(entry.targetShare.targetAvg)} per game` : "Imported target-share table",
+                    },
+                    {
+                        category: "Target Shares",
+                        label: "Redzone Targets",
+                        highWins: true,
+                        rankable: false,
+                        value: (entry) => numericOrNull(entry.targetShare?.redZoneShare),
+                        display: (entry) => entry.targetShare
+                            ? `${formatPercent(entry.targetShare.redZoneShare)} / ${formatWhole(entry.targetShare.redZoneTargets)}`
+                            : "Outside top 50",
+                        detail: (entry) => entry.targetShare ? `${formatDecimal(entry.targetShare.redZoneAvg)} per game` : "Imported target-share table",
+                    },
+                    {
+                        category: "Target Shares",
+                        label: "Endzone Targets",
+                        highWins: true,
+                        rankable: false,
+                        value: (entry) => numericOrNull(entry.targetShare?.endZoneShare),
+                        display: (entry) => entry.targetShare
+                            ? `${formatPercent(entry.targetShare.endZoneShare)} / ${formatWhole(entry.targetShare.endZoneTargets)}`
+                            : "Outside top 50",
+                        detail: (entry) => entry.targetShare ? `${formatDecimal(entry.targetShare.endZoneAvg)} per game` : "Imported target-share table",
+                    },
+                ];
                 const teamStats = [
                     {
                         category: "Team Context",
@@ -3733,7 +4457,11 @@
                             },
                             display: (candidate) => {
                                 const match = candidate.betProps.find((item) => item.key === prop.key);
-                                return match ? `${bettingLineLabel(match)} O ${formatAmericanOdds(match.overCost)}` : "N/A";
+                                return match ? bettingLineLabel(match) : "N/A";
+                            },
+                            detail: (candidate) => {
+                                const match = candidate.betProps.find((item) => item.key === prop.key);
+                                return match ? `O ${formatAmericanOdds(match.overCost)} / U ${formatAmericanOdds(match.underCost)}` : "";
                             },
                         });
                     });
@@ -3744,6 +4472,7 @@
                     { category: "Markets", label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
                     ...bettingStats,
                     ...teamStats,
+                    ...targetStats,
                     { category: "Production", label: "Finish", highWins: false, rankable: false, requiresYearly: true, loading: (entry) => entry.yearly?.loading, value: (entry) => finishValueForPlayer(entry.player, entry.year), display: (entry) => {
                         if (entry.yearly?.loading) {
                             return "Loading";
@@ -3780,7 +4509,7 @@
             const positionRankDataPending = (pos, year) => orderedPlayers()
                 .filter((player) => player.pos === pos)
                 .some((player) => {
-                    const detail = state.flockDetails[playerMarketKey(player)];
+                    const detail = flockDetailForPlayer(player);
                     const playerId = performancePlayerId(player, detail);
                     if (!playerId) {
                         return false;
@@ -3792,7 +4521,7 @@
             const positionPerformanceDataPending = (pos, year) => orderedPlayers()
                 .filter((player) => player.pos === pos)
                 .some((player) => {
-                    const detail = state.flockDetails[playerMarketKey(player)];
+                    const detail = flockDetailForPlayer(player);
                     const playerId = performancePlayerId(player, detail);
                     if (!playerId) {
                         return false;
@@ -3812,7 +4541,7 @@
                     .filter((positionYear) => positionYear.startsWith(`${player.pos}|`))
                     .map((positionYear) => () => {
                         const year = Number(positionYear.split("|")[1]);
-                        const detail = state.flockDetails[playerMarketKey(player)];
+                        const detail = flockDetailForPlayer(player);
                         return Promise.all([
                             refreshYearlyStats(player, detail, { silent: true }),
                             refreshPlayerPerformance(player, detail, year, { silent: true }),
@@ -3844,7 +4573,17 @@
                 const value = metric.value(entry);
                 cell.className = "comparison-cell";
                 const rank = comparisonPositionRank(entry, metric);
-                cell.textContent = `${metric.display(entry)}${rank ? ` (${rank})` : ""}`;
+                const main = document.createElement("span");
+                main.textContent = `${metric.display(entry)}${rank ? ` (${rank})` : ""}`;
+                cell.appendChild(main);
+                if (metric.detail) {
+                    const detailText = metric.detail(entry);
+                    if (detailText) {
+                        const detail = document.createElement("small");
+                        detail.textContent = detailText;
+                        cell.appendChild(detail);
+                    }
+                }
                 if (!Number.isFinite(value)) {
                     cell.classList.add("missing");
                 }
@@ -3943,10 +4682,11 @@
                 const myRank = globalIndex + 1;
                 const posRanks = getPositionRanks();
                 const playerKey = playerMarketKey(player);
-                const flockRank = state.flockRanks[playerKey];
-                const flockDetail = state.flockDetails[playerKey];
+                const flockRank = flockRankForPlayer(player);
+                const flockDetail = flockDetailForPlayer(player);
                 const underdogVariance = formatVariance(player.udAdp, myRank);
-                const sleeperVariance = formatVariance(player.sleeperAdp, myRank);
+                const sleeperMarket = effectiveSleeperMarket(player);
+                const sleeperVariance = formatVariance(sleeperMarket.adp, myRank);
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
 
@@ -3973,7 +4713,7 @@
                     detailCard("My Pos Rank", posRanks[player.id] || "N/A"),
                     detailCard("Underdog ADP", formatAdp(player.udAdp, player.udPick)),
                     detailCard("UD Var", underdogVariance.label, underdogVariance.className),
-                    detailCard("Sleeper ADP", formatAdp(player.sleeperAdp, player.sleeperPick)),
+                    detailCard("Sleeper ADP", formatAdp(sleeperMarket.adp, sleeperMarket.pick)),
                     detailCard("Sleeper Var", sleeperVariance.label, sleeperVariance.className),
                     detailCard("Flock Rank", formatMarketRank(flockRank)),
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
@@ -3992,7 +4732,13 @@
                 try {
                     const performance = performanceForPlayer(player, flockDetail);
                     const yearly = yearlyForPlayer(player, flockDetail);
-                    elements.playerDrawerContent.append(positionStatsGrid(player, yearly), teamContextSection(player), bettingPropsSection(player), performanceChart(performance));
+                    elements.playerDrawerContent.append(
+                        positionStatsGrid(player, yearly),
+                        teamContextSection(player),
+                        bettingPropsSection(player),
+                        targetSharesSection(player),
+                        performanceChart(performance)
+                    );
                     refreshPlayerPerformance(player, flockDetail);
                     refreshYearlyStats(player, flockDetail);
                 } catch (error) {
@@ -4296,19 +5042,38 @@
                         return result;
                     }
                     const key = `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`;
+                    const namePosKey = `${nameKey(name)}|${String(pos).toUpperCase()}`;
                     const rank = index + 1;
+                    const detail = { ...row, listRank: rank };
                     result.ranks[key] = rank;
-                    result.details[key] = { ...row, listRank: rank };
+                    result.details[key] = detail;
+                    if (Object.prototype.hasOwnProperty.call(result.ranksByNamePos, namePosKey)) {
+                        result.ranksByNamePos[namePosKey] = undefined;
+                        result.detailsByNamePos[namePosKey] = null;
+                    } else {
+                        result.ranksByNamePos[namePosKey] = rank;
+                        result.detailsByNamePos[namePosKey] = detail;
+                    }
                     return result;
-                }, { ranks: {}, details: {} });
+                }, { ranks: {}, details: {}, ranksByNamePos: {}, detailsByNamePos: {} });
             };
 
             const fetchJson = async (url) => {
-                const response = await fetch(url, { cache: "no-store" });
-                if (!response.ok) {
-                    throw new Error(`Request failed: ${response.status}`);
+                const request = async (target) => {
+                    const response = await fetch(target, { cache: "no-store" });
+                    if (!response.ok) {
+                        throw new Error(`Request failed: ${response.status}`);
+                    }
+                    return response.json();
+                };
+                try {
+                    return await request(url);
+                } catch (error) {
+                    if (isLocalOrigin && String(url || "").startsWith("/api/")) {
+                        return request(remoteApiPath(url));
+                    }
+                    throw error;
                 }
-                return response.json();
             };
 
             const refreshFantasyProsAdp = async () => {
@@ -4439,6 +5204,8 @@
                     const flockData = normalizeFlockRankings(payload);
                     state.flockRanks = flockData.ranks;
                     state.flockDetails = flockData.details;
+                    state.flockRanksByNamePos = flockData.ranksByNamePos;
+                    state.flockDetailsByNamePos = flockData.detailsByNamePos;
                     render();
                     if (state.selectedPlayerId && !elements.playerDrawerBackdrop.hidden) {
                         openPlayerDetails(state.selectedPlayerId);
@@ -4808,7 +5575,7 @@
 
                 const entries = getVisibleItems().filter(({ player }) => player);
                 const tasks = entries.flatMap(({ player }) => {
-                    const flockDetail = state.flockDetails[playerMarketKey(player)];
+                    const flockDetail = flockDetailForPlayer(player);
                     const jobs = [];
                     if (needsPerformance) {
                         jobs.push(() => refreshPlayerPerformance(player, flockDetail));
@@ -5009,10 +5776,17 @@
 
                 elements.authForm.addEventListener("submit", (event) => {
                     event.preventDefault();
-                    handleAuthAction("signIn");
+                    handleAuthAction();
                 });
-                elements.authSignIn.addEventListener("click", () => handleAuthAction("signIn"));
-                elements.authSignUp.addEventListener("click", () => handleAuthAction("signUp"));
+                elements.authOpen.addEventListener("click", () => openAuthModal(state.auth.user ? "signIn" : "signIn"));
+                elements.authClose.addEventListener("click", closeAuthModal);
+                elements.authModal.addEventListener("click", (event) => {
+                    if (event.target === elements.authModal) {
+                        closeAuthModal();
+                    }
+                });
+                elements.authModeSignIn.addEventListener("click", () => setAuthMode("signIn"));
+                elements.authModeCreate.addEventListener("click", () => setAuthMode("signUp"));
                 elements.authSignOut.addEventListener("click", signOut);
                 elements.authUseLocal.addEventListener("click", importLocalRankings);
 
@@ -5023,6 +5797,10 @@
                     }
                 });
                 document.addEventListener("keydown", (event) => {
+                    if (event.key === "Escape" && !elements.authModal.hidden) {
+                        closeAuthModal();
+                        return;
+                    }
                     if (elements.playerDrawerBackdrop.hidden) {
                         return;
                     }
@@ -5062,6 +5840,12 @@
                 const saved = await loadSavedState();
                 bindEvents();
                 applySavedStateToBoard(saved);
+                if (initialPlayerParam) {
+                    const target = orderedPlayers().find((player) => normalizeSearch(player.name) === normalizeSearch(initialPlayerParam));
+                    if (target) {
+                        openPlayerDetails(target.id);
+                    }
+                }
                 if (marketTimer) {
                     clearInterval(marketTimer);
                 }

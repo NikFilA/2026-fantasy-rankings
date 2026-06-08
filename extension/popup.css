@@ -36,17 +36,13 @@ h1 {
   text-transform: uppercase;
 }
 
-button,
-textarea {
+button {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
   color: var(--text);
   font: inherit;
-}
-
-button {
   min-height: 40px;
   cursor: pointer;
   font-weight: 900;
@@ -56,12 +52,6 @@ button {
 
 button:first-of-type {
   border-color: var(--accent);
-}
-
-textarea {
-  min-height: 150px;
-  padding: 10px;
-  resize: vertical;
 }
 
 p {

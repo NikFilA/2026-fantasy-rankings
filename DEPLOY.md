@@ -9,10 +9,14 @@ Public hosting alone does not sync rankings between Chrome and Safari. To suppor
 1. Create a Supabase project.
 2. Open the Supabase SQL editor and run `supabase-schema.sql`.
 3. In Authentication > Providers, keep Email enabled. Decide whether you want email confirmation required.
-4. Go to Project Settings > API and copy:
+4. In Authentication > URL Configuration:
+   - Set Site URL to your deployed rankings URL.
+   - Add your deployed rankings URL to Redirect URLs.
+   - Add local dev URLs only when you are actively running that local server.
+5. Go to Project Settings > API and copy:
    - Project URL
    - anon public key
-5. Edit `sync-config.js`:
+6. Edit `sync-config.js`:
 
 ```js
 window.SYNC_CONFIG = {
@@ -24,7 +28,7 @@ window.SYNC_CONFIG = {
 };
 ```
 
-6. Deploy the folder.
+7. Deploy the folder.
 
 Signed-in users save their ranking order and tier rows to their own Supabase Auth account. The configured `boardId` is still used as a legacy seed: if a signed-in user has no personal rankings yet, the app can load the old shared board once and then save it to that user's account.
 

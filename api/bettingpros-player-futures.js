@@ -27,17 +27,23 @@ const normalizeTeam = (team = "") => {
 
 const playerKey = (name, team, pos) => `${normalizeName(name)}|${normalizeTeam(team)}|${String(pos || "").toUpperCase()}`;
 
-const bestLine = (selection, preferredBookId = 0) => {
-    const books = Array.isArray(selection?.books) ? selection.books : [];
-    const preferred = books.find((book) => Number(book.id) === preferredBookId);
-    const preferredLine = preferred?.lines?.find((line) => line?.active && !line?.is_off);
-    if (preferredLine) {
-        return { ...preferredLine, bookId: preferredBookId };
+const pairedLines = (over, under, preferredBookId = 0) => {
+    const activeByBook = (selection) => new Map((selection?.books || []).flatMap((book) => {
+        const line = (book.lines || []).find((candidate) => candidate?.active && !candidate?.is_off);
+        return line ? [[Number(book.id), { ...line, bookId: Number(book.id) }]] : [];
+    }));
+    const overByBook = activeByBook(over);
+    const underByBook = activeByBook(under);
+    const commonBookIds = [...overByBook.keys()].filter((bookId) => underByBook.has(bookId));
+    const orderedBookIds = [preferredBookId, ...commonBookIds.filter((bookId) => bookId !== preferredBookId)];
+    for (const bookId of orderedBookIds) {
+        const overLine = overByBook.get(bookId);
+        const underLine = underByBook.get(bookId);
+        if (overLine && underLine && Number(overLine.line) === Number(underLine.line)) {
+            return { overLine, underLine };
+        }
     }
-    const activeLines = books.flatMap((book) => (book.lines || [])
-        .filter((line) => line?.active && !line?.is_off)
-        .map((line) => ({ ...line, bookId: book.id })));
-    return activeLines.find((line) => line.best) || activeLines[0] || null;
+    return null;
 };
 
 const readOfferProp = (offer, market) => {
@@ -51,8 +57,9 @@ const readOfferProp = (offer, market) => {
     const selections = Array.isArray(offer?.selections) ? offer.selections : [];
     const over = selections.find((selection) => selection.selection === "over");
     const under = selections.find((selection) => selection.selection === "under");
-    const overLine = bestLine(over);
-    const underLine = bestLine(under);
+    const pair = pairedLines(over, under);
+    const overLine = pair?.overLine;
+    const underLine = pair?.underLine;
     const line = Number(overLine?.line ?? underLine?.line);
     if (!Number.isFinite(line)) {
         return null;
@@ -121,10 +128,14 @@ export default async function handler(request, response) {
         response.status(204).end();
         return;
     }
-    response.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate=3600");
+    response.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=120");
 
     try {
         const results = await Promise.allSettled(FANTASY_MARKETS.map(fetchMarketOffers));
+        const failures = results.filter((result) => result.status === "rejected");
+        if (failures.length) {
+            throw new Error(`${failures.length} BettingPros markets failed`);
+        }
         const props = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
         const players = new Map();
         props.forEach((prop) => {

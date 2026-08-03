@@ -2,7 +2,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
 
     try {
-        const flockResponse = await fetch("https://api.flockfantasy.com/rankings?format=BEST_BALL&pickType=general", {
+        const flockResponse = await fetch("https://api.flockfantasy.com/rankings?format=YEAR&pickType=general", {
             headers: {
                 "accept": "application/json",
                 "user-agent": "Mozilla/5.0 Fantasy Draft Board"

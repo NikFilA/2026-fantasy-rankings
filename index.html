@@ -442,6 +442,78 @@
             min-width: 0;
         }
 
+        .market-picker {
+            position: relative;
+        }
+
+        .market-picker summary {
+            align-items: center;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            cursor: pointer;
+            display: inline-flex;
+            font-size: 0.78rem;
+            font-weight: 800;
+            min-height: 38px;
+            padding: 0 12px;
+        }
+
+        .market-options {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+            display: grid;
+            gap: 8px;
+            left: 0;
+            min-width: 240px;
+            padding: 12px;
+            position: absolute;
+            top: calc(100% + 6px);
+            z-index: 30;
+        }
+
+        .market-option {
+            align-items: center;
+            cursor: pointer;
+            display: grid;
+            gap: 10px;
+            grid-template-columns: auto 1fr auto;
+        }
+
+        .market-option .market-order-controls {
+            display: inline-flex;
+            gap: 4px;
+        }
+
+        .market-order-controls button {
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            color: var(--text);
+            cursor: pointer;
+            height: 26px;
+            width: 26px;
+        }
+
+        .market-order-controls button:disabled {
+            cursor: default;
+            opacity: 0.3;
+        }
+
+        .market-option span {
+            display: grid;
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+
+        .market-option small {
+            color: var(--muted);
+            font-size: 0.68rem;
+            font-weight: 600;
+        }
+
         .lab-field {
             display: grid;
             gap: 5px;
@@ -1122,6 +1194,7 @@
         .tier-label {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             width: 100%;
             min-height: 30px;
             border-radius: 8px;
@@ -1132,6 +1205,38 @@
             letter-spacing: 0.06em;
             padding: 0 14px;
             text-transform: uppercase;
+        }
+
+        .tier-delete,
+        .tier-insert {
+            border: 1px solid currentColor;
+            border-radius: 7px;
+            background: rgba(8, 12, 16, 0.24);
+            color: inherit;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            line-height: 1;
+            padding: 5px 7px;
+            text-transform: uppercase;
+        }
+
+        .tier-delete:hover,
+        .tier-insert:hover {
+            background: rgba(8, 12, 16, 0.46);
+        }
+
+        .tier-insert {
+            flex: 0 0 auto;
+            margin-left: 8px;
+            color: var(--muted);
+            opacity: 0.42;
+        }
+
+        tr:hover .tier-insert,
+        .tier-insert:focus-visible {
+            opacity: 1;
         }
 
         .player-card {
@@ -1955,6 +2060,10 @@
 
         <section class="data-lab" aria-label="Data lab">
             <div class="lab-row">
+                <details class="market-picker">
+                    <summary id="marketSummary">ADP columns</summary>
+                    <div class="market-options" id="marketOptions" aria-label="Visible ADP platforms"></div>
+                </details>
                 <div class="metric-tools">
                     <label class="lab-field">
                         <span>Add table metric</span>
@@ -2037,12 +2146,8 @@
                             <th scope="col">Pos</th>
                             <th scope="col">Team</th>
                             <th scope="col">My Pos Rank</th>
-                            <th scope="col" data-metric-anchor><button class="sort-btn" type="button" data-sort="udAdp">Underdog ADP</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="udVar">UD Var</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="sleeperAdp">Sleeper ADP</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="sleeperVar">Sleeper Var</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="flockRank">Flock Rank</button></th>
-                            <th scope="col"><button class="sort-btn" type="button" data-sort="flockVar">Flock Var</button></th>
+                            <th data-metric-anchor hidden></th>
+                            <th data-market-anchor hidden></th>
                         </tr>
                     </thead>
                     <tbody id="rankingsBody"></tbody>
@@ -2068,7 +2173,7 @@
             const DRAFT_STORAGE_KEY = "sleeperDraftId";
             const MY_SLOT_STORAGE_KEY = "sleeperMyRosterId";
             const DRAFT_REFRESH_MS = 1000;
-            const MARKET_REFRESH_MS = 15 * 60 * 1000;
+            const MARKET_REFRESH_MS = 5 * 60 * 1000;
             const POSITIONS = ["QB", "RB", "WR", "TE"];
             const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
             const REMOTE_APP_ORIGIN = "https://2026-fantasy-rankings.vercel.app";
@@ -2078,14 +2183,19 @@
             const remoteApiPath = (url) => String(url || "").startsWith("/api/") ? `${REMOTE_APP_ORIGIN}${url}` : url;
             const initialPlayerParam = new URLSearchParams(window.location.search).get("player") || "";
             const FLOCK_PROXY_URL = apiPath("/api/flock-rankings");
-            const FLOCK_DIRECT_URL = "https://api.flockfantasy.com/rankings?format=BEST_BALL&pickType=general";
+            const FLOCK_DIRECT_URL = "https://api.flockfantasy.com/rankings?format=YEAR&pickType=general";
             const SLEEPER_PLAYERS_PROXY_URL = apiPath("/api/sleeper-players");
             const SLEEPER_PLAYERS_DIRECT_URL = "https://api.sleeper.app/v1/players/nfl";
             const SLEEPER_DRAFT_BASE_URL = "https://api.sleeper.app/v1/draft";
             const FLOCK_PERFORMANCE_PROXY_URL = apiPath("/api/flock-player-performance");
             const FLOCK_YEARLY_PROXY_URL = apiPath("/api/flock-player-yearly");
             const FLOCK_PERFORMANCE_DIRECT_URL = "https://api.flockfantasy.com/players/card-stats";
-            const FANTASYPROS_ADP_PROXY_URL = apiPath("/api/fantasypros-adp");
+            const SLEEPER_ADP_PROXY_URL = apiPath("/api/sleeper-adp");
+            const ESPN_ADP_PROXY_URL = apiPath("/api/espn-adp");
+            const ESPN_ADP_DIRECT_URL = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026/segments/0/leaguedefaults/3?view=kona_player_info";
+            const ESPN_POSITION_BY_ID = { 1: "QB", 2: "RB", 3: "WR", 4: "TE" };
+            const ESPN_TEAM_BY_ID = { 1: "ATL", 2: "BUF", 3: "CHI", 4: "CIN", 5: "CLE", 6: "DAL", 7: "DEN", 8: "DET", 9: "GB", 10: "TEN", 11: "IND", 12: "KC", 13: "LV", 14: "LAR", 15: "MIA", 16: "MIN", 17: "NE", 18: "NO", 19: "NYG", 20: "NYJ", 21: "PHI", 22: "ARI", 23: "PIT", 24: "LAC", 25: "SF", 26: "SEA", 27: "TB", 28: "WSH", 29: "CAR", 30: "JAC", 33: "BAL", 34: "HOU" };
+            const SLEEPER_ADP_DIRECT_URL = "https://api.sleeper.com/projections/nfl/2026?season_type=regular&order_by=adp_ppr&position%5B%5D=QB&position%5B%5D=RB&position%5B%5D=WR&position%5B%5D=TE";
             const BETTING_PROPS_PROXY_URL = apiPath("/api/bettingpros-player-futures");
             const TEAM_FUTURES_PROXY_URL = apiPath("/api/bettingpros-team-futures");
             const PLAYER_PROFILE_SEASON = 2025;
@@ -2096,6 +2206,12 @@
                 boardId: "main",
                 tableName: "draft_board_states",
             };
+            const MARKET_COLUMNS = {
+                sleeper: { label: "Sleeper", shortLabel: "Sleeper", valueLabel: "ADP" },
+                espn: { label: "ESPN", shortLabel: "ESPN", valueLabel: "ADP" },
+                flock: { label: "Flock", shortLabel: "Flock", valueLabel: "Rank" },
+            };
+            const DEFAULT_MARKET_COLUMNS = Object.keys(MARKET_COLUMNS);
             const syncConfig = { ...DEFAULT_SYNC_CONFIG, ...(window.SYNC_CONFIG || {}) };
             const state = {
                 items: [],
@@ -2111,6 +2227,10 @@
                 profileYear: PLAYER_PROFILE_SEASON,
                 playerAssets: {},
                 sleeperKeyById: {},
+                sleeperAdp: { byKey: {}, byNamePos: {}, updatedAt: "", source: "" },
+                espnAdp: { byKey: {}, byNamePos: {}, updatedAt: "", source: "" },
+                visibleMarkets: DEFAULT_MARKET_COLUMNS.slice(),
+                useSleeperDefaultOrder: false,
                 selectedPositions: new Set(),
                 activeTeam: "ALL",
                 searchQuery: "",
@@ -2175,6 +2295,8 @@
                 metricAdd: document.getElementById("metricAdd"),
                 metricChips: document.getElementById("metricChips"),
                 metricReset: document.getElementById("metricReset"),
+                marketOptions: document.getElementById("marketOptions"),
+                marketSummary: document.getElementById("marketSummary"),
                 labStatus: document.getElementById("labStatus"),
                 comparePanel: document.getElementById("comparePanel"),
                 compareGrid: document.getElementById("compareGrid"),
@@ -2270,16 +2392,12 @@
             };
 
             const buildDefaultItems = (players) => {
-                const items = [];
+                const items = [{
+                    id: "tier-1",
+                    label: tierLabel(0),
+                    type: "tier",
+                }];
                 players.forEach((player, index) => {
-                    if (index % 6 === 0) {
-                        const tierIndex = index / 6;
-                        items.push({
-                            id: `tier-${tierIndex + 1}`,
-                            label: tierLabel(tierIndex),
-                            type: "tier",
-                        });
-                    }
                     items.push({
                         id: `player-${player.id}`,
                         playerId: player.id,
@@ -2289,6 +2407,44 @@
                 return items;
             };
 
+            const renumberTiers = () => {
+                let tierNumber = 0;
+                state.items.forEach((item) => {
+                    if (item.type === "tier") {
+                        tierNumber += 1;
+                        item.label = `Tier ${tierNumber}`;
+                    }
+                });
+            };
+
+            const insertTierAfter = (playerItemId) => {
+                const playerIndex = state.items.findIndex((item) => item.id === playerItemId && item.type === "player");
+                if (playerIndex < 0 || state.items[playerIndex + 1]?.type === "tier") {
+                    return;
+                }
+                state.items.splice(playerIndex + 1, 0, {
+                    id: `tier-custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    label: "",
+                    type: "tier",
+                });
+                state.useSleeperDefaultOrder = false;
+                renumberTiers();
+                savePlayers();
+                render();
+            };
+
+            const deleteTier = (tierItemId) => {
+                const tiers = state.items.filter((item) => item.type === "tier");
+                if (tiers[0]?.id === tierItemId) {
+                    return;
+                }
+                state.useSleeperDefaultOrder = false;
+                state.items = state.items.filter((item) => item.id !== tierItemId);
+                renumberTiers();
+                savePlayers();
+                render();
+            };
+
             const playerItems = () => state.items.filter((item) => item.type === "player");
 
             const parseSavedState = (saved) => {
@@ -2296,21 +2452,36 @@
                     return {
                         items: saved.items,
                         order: null,
+                        visibleMarkets: Array.isArray(saved.visibleMarkets) ? saved.visibleMarkets : null,
+                        rankingMode: saved.rankingMode || "",
+                        savedVersion: Number(saved.version) || 0,
                     };
                 }
                 if (saved && Array.isArray(saved.order) && saved.order.length > 0) {
                     return {
                         items: null,
                         order: saved.order.map(String),
+                        visibleMarkets: Array.isArray(saved.visibleMarkets) ? saved.visibleMarkets : null,
+                        rankingMode: saved.rankingMode || "",
+                        savedVersion: Number(saved.version) || 0,
                     };
                 }
                 if (Array.isArray(saved) && saved.length > 0) {
                     return {
                         items: null,
                         order: saved.map((player) => String(player.id)),
+                        visibleMarkets: null,
+                        rankingMode: "",
+                        savedVersion: 0,
                     };
                 }
-                return { items: null, order: null };
+                return {
+                    items: null,
+                    order: null,
+                    visibleMarkets: saved && Array.isArray(saved.visibleMarkets) ? saved.visibleMarkets : null,
+                    rankingMode: saved?.rankingMode || "",
+                    savedVersion: Number(saved?.version) || 0,
+                };
             };
 
             const localSavedState = () => {
@@ -2333,21 +2504,27 @@
 
             const accountBoardId = () => state.auth.user?.id ? `user:${state.auth.user.id}` : "";
 
-            const loadScript = (src) => new Promise((resolve, reject) => {
+            const loadScript = (src, timeoutMs = 8000) => new Promise((resolve, reject) => {
                 const existing = document.querySelector(`script[src="${src}"]`);
                 if (existing) {
-                    existing.addEventListener("load", resolve, { once: true });
-                    existing.addEventListener("error", reject, { once: true });
                     if (window.supabase) {
                         resolve();
+                        return;
                     }
+                    existing.addEventListener("load", resolve, { once: true });
+                    existing.addEventListener("error", () => reject(new Error("Account service failed to load.")), { once: true });
                     return;
                 }
                 const script = document.createElement("script");
                 script.src = src;
                 script.onload = resolve;
-                script.onerror = reject;
+                script.onerror = () => reject(new Error("Account service failed to load."));
                 document.head.appendChild(script);
+                window.setTimeout(() => {
+                    if (!window.supabase) {
+                        reject(new Error("Account service timed out while loading."));
+                    }
+                }, timeoutMs);
             });
 
             const supabaseClient = async () => {
@@ -2358,7 +2535,11 @@
                     supabaseClientPromise = (async () => {
                         await loadScript(SUPABASE_CDN);
                         return window.supabase.createClient(syncConfig.supabaseUrl, syncConfig.supabaseAnonKey);
-                    })();
+                    })().catch((error) => {
+                        supabaseClientPromise = null;
+                        console.warn("Account service could not be initialized.", error);
+                        return null;
+                    });
                 }
                 return supabaseClientPromise;
             };
@@ -2371,7 +2552,7 @@
                 const { data, error } = await client
                     .from(syncConfig.tableName)
                     .select("state")
-                    .eq("board_id", accountBoardId())
+                    .eq("user_id", state.auth.user.id)
                     .maybeSingle();
                 if (error) {
                     throw error;
@@ -2396,8 +2577,10 @@
             };
 
             const currentPayload = () => ({
-                version: 4,
+                version: 9,
                 items: state.items,
+                visibleMarkets: state.visibleMarkets,
+                rankingMode: state.useSleeperDefaultOrder ? "sleeper" : "custom",
                 updatedAt: new Date().toISOString(),
             });
 
@@ -2411,12 +2594,6 @@
                     state: payload,
                     updated_at: new Date().toISOString(),
                 };
-                const publicAttempt = await client
-                    .from(syncConfig.tableName)
-                    .upsert(baseRow, { onConflict: "board_id" });
-                if (!publicAttempt.error) {
-                    return;
-                }
                 const accountAttempt = await client
                     .from(syncConfig.tableName)
                     .upsert({
@@ -2437,8 +2614,10 @@
                     const remoteState = await remoteSavedState();
                     if (remoteState && (remoteState.items || remoteState.order)) {
                         localStorage.setItem(accountStorageKey(), JSON.stringify({
-                            version: 4,
+                            version: 9,
                             items: remoteState.items,
+                            visibleMarkets: remoteState.visibleMarkets,
+                            rankingMode: remoteState.rankingMode || "custom",
                             updatedAt: new Date().toISOString(),
                         }));
                         return { ...remoteState, source: "Account" };
@@ -2502,8 +2681,44 @@
                 return hydrated.length > 0 ? hydrated : buildDefaultItems(players);
             };
 
+            const isUntouchedLegacyBoard = (saved, players) => {
+                const baseOrder = players.map((player) => player.id);
+                if (saved.items) {
+                    const tiers = saved.items.filter((item) => item.type === "tier");
+                    const order = saved.items.filter((item) => item.type === "player").map((item) => String(item.playerId));
+                    return tiers.length === 1
+                        && order.length === baseOrder.length
+                        && order.every((id, index) => id === baseOrder[index]);
+                }
+                if (saved.order) {
+                    return saved.order.length === baseOrder.length
+                        && saved.order.every((id, index) => String(id) === baseOrder[index]);
+                }
+                return !saved.items && !saved.order;
+            };
+
             const applySavedStateToBoard = (saved) => {
                 const players = basePlayers();
+                state.useSleeperDefaultOrder = saved.rankingMode === "sleeper"
+                    || (!saved.rankingMode && isUntouchedLegacyBoard(saved, players));
+                const needsMarketMigration = saved.savedVersion === 5
+                    && Array.isArray(saved.visibleMarkets)
+                    && !saved.visibleMarkets.includes("flock");
+                const needsEspnMigration = saved.savedVersion < 7
+                    && Array.isArray(saved.visibleMarkets)
+                    && !saved.visibleMarkets.includes("espn");
+                if (Array.isArray(saved.visibleMarkets)) {
+                    state.visibleMarkets = saved.visibleMarkets.filter((market) => MARKET_COLUMNS[market]);
+                    if (needsMarketMigration) {
+                        state.visibleMarkets.push("flock");
+                    }
+                    if (needsEspnMigration) {
+                        state.visibleMarkets.push("espn");
+                    }
+                    if (saved.savedVersion < 8) {
+                        state.visibleMarkets = DEFAULT_MARKET_COLUMNS.filter((market) => state.visibleMarkets.includes(market));
+                    }
+                }
                 if (saved.items) {
                     state.items = hydrateSavedItems(players, saved.items);
                 } else if (saved.order) {
@@ -2511,9 +2726,13 @@
                 } else {
                     state.items = buildDefaultItems(players);
                 }
+                renumberTiers();
                 elements.saveState.textContent = saved.source;
                 populateTeamFilter();
                 render();
+                if (needsMarketMigration) {
+                    savePlayers();
+                }
                 loadDataLabStats();
             };
 
@@ -2591,28 +2810,34 @@
             };
 
             const restoreAuthSession = async () => {
-                const client = await supabaseClient();
-                if (!client?.auth) {
-                    updateAuthUi("Account sync is not configured.");
-                    state.auth.ready = true;
-                    return;
-                }
-                const { data, error } = await client.auth.getSession();
-                if (error) {
-                    console.warn("Auth session could not be loaded.", error);
-                }
-                state.auth.user = data?.session?.user || null;
-                updateAuthUi();
-                client.auth.onAuthStateChange(async (_event, session) => {
-                    const nextUser = session?.user || null;
-                    const changedUser = (state.auth.user?.id || "") !== (nextUser?.id || "");
-                    state.auth.user = nextUser;
-                    updateAuthUi();
-                    if (state.auth.ready && changedUser) {
-                        await reloadSavedBoard();
+                try {
+                    const client = await supabaseClient();
+                    if (!client?.auth) {
+                        updateAuthUi("Account service is unavailable. Your local rankings are still available.");
+                        return;
                     }
-                });
-                state.auth.ready = true;
+                    const { data, error } = await client.auth.getSession();
+                    if (error) {
+                        throw error;
+                    }
+                    state.auth.user = data?.session?.user || null;
+                    updateAuthUi();
+                    client.auth.onAuthStateChange(async (_event, session) => {
+                        const nextUser = session?.user || null;
+                        const changedUser = (state.auth.user?.id || "") !== (nextUser?.id || "");
+                        state.auth.user = nextUser;
+                        updateAuthUi();
+                        if (state.auth.ready && changedUser) {
+                            await reloadSavedBoard();
+                        }
+                    });
+                } catch (error) {
+                    state.auth.user = null;
+                    console.warn("Auth session could not be loaded; continuing with local rankings.", error);
+                    updateAuthUi("Account service is offline. Using rankings saved in this browser.");
+                } finally {
+                    state.auth.ready = true;
+                }
             };
 
             const authCredentials = () => ({
@@ -2676,7 +2901,13 @@
                 state.auth.loading = true;
                 updateAuthUi("Signing out...");
                 try {
-                    await client?.auth?.signOut();
+                    if (!client?.auth) {
+                        throw new Error("Account service is unavailable.");
+                    }
+                    const { error } = await client.auth.signOut();
+                    if (error) {
+                        throw error;
+                    }
                     state.auth.user = null;
                     await reloadSavedBoard();
                     updateAuthUi("Signed out. Using local rankings.");
@@ -2797,34 +3028,55 @@
                 const pick = Math.max(1, Math.round(Number(adp)));
                 const round = Math.floor((pick - 1) / 12) + 1;
                 const slot = ((pick - 1) % 12) + 1;
-                return `${round}.${slot}`;
+                return `${round}.${String(slot).padStart(2, "0")}`;
             };
 
-            const formatAdp = (adp, pickLabel) => {
+            const formatAdp = (adp, pickLabel, wholeNumber = false) => {
                 if (adp === 999) {
                     return "N/A";
                 }
-                const base = Number.isInteger(adp) ? String(adp) : adp.toFixed(1);
-                return pickLabel ? `${base} (${pickLabel})` : base;
+                const displayAdp = wholeNumber ? Math.round(adp) : adp;
+                const base = Number.isInteger(displayAdp) ? String(displayAdp) : displayAdp.toFixed(1);
+                const normalizedPick = pickLabelFromAdp(displayAdp);
+                return normalizedPick ? `${base} (${normalizedPick})` : base;
             };
 
             const effectiveSleeperMarket = (player) => {
-                if (Number.isFinite(player.sleeperAdp) && player.sleeperAdp !== 999) {
-                    return { adp: player.sleeperAdp, pick: player.sleeperPick || pickLabelFromAdp(player.sleeperAdp), source: "Sleeper" };
-                }
-                const flockRank = flockRankForPlayer(player);
-                if (Number.isFinite(flockRank)) {
-                    return { adp: flockRank, pick: pickLabelFromAdp(flockRank), source: "Flock fallback" };
-                }
-                if (Number.isFinite(player.udAdp) && player.udAdp !== 999) {
-                    return { adp: player.udAdp, pick: player.udPick || pickLabelFromAdp(player.udAdp), source: "Underdog fallback" };
+                const live = state.sleeperAdp.byKey[playerMarketKey(player)]
+                    || state.sleeperAdp.byNamePos[playerNamePosKey(player)];
+                if (live && Number.isFinite(live.adp) && live.adp !== 999) {
+                    return { adp: live.adp, pick: live.pick || pickLabelFromAdp(live.adp), source: "Sleeper live" };
                 }
                 return { adp: 999, pick: "", source: "" };
             };
 
+            const effectiveEspnMarket = (player) => {
+                const live = state.espnAdp.byKey[playerMarketKey(player)]
+                    || state.espnAdp.byNamePos[playerNamePosKey(player)];
+                if (live && Number.isFinite(live.adp) && live.adp !== 999) {
+                    return { adp: live.adp, pick: live.pick || pickLabelFromAdp(live.adp), source: "ESPN live" };
+                }
+                return { adp: 999, pick: "", source: "" };
+            };
+
+            const marketValueForPlayer = (player, marketId) => {
+                if (marketId === "sleeper") {
+                    const sleeper = effectiveSleeperMarket(player);
+                    return { rank: sleeper.adp, pick: sleeper.pick };
+                }
+                if (marketId === "espn") {
+                    const espn = effectiveEspnMarket(player);
+                    return { rank: espn.adp, pick: espn.pick };
+                }
+                if (marketId === "flock") {
+                    return { rank: flockRankForPlayer(player), pick: "" };
+                }
+                return { rank: undefined, pick: "" };
+            };
+
             const formatSleeperMarket = (player) => {
                 const market = effectiveSleeperMarket(player);
-                return formatAdp(market.adp, market.pick);
+                return formatAdp(market.adp, market.pick, true);
             };
 
             const formatAmericanOdds = (value) => {
@@ -3266,6 +3518,8 @@
 
                 const [movedItem] = state.items.splice(fromIndex, 1);
                 state.items.splice(toIndex, 0, movedItem);
+                state.useSleeperDefaultOrder = false;
+                renumberTiers();
                 savePlayers();
                 render();
                 const restore = () => {
@@ -3291,12 +3545,27 @@
                 attachDragEvents(row, handle, item.id, item.type);
 
                 const label = document.createElement("div");
+                const labelText = document.createElement("span");
                 label.className = "tier-label";
-                label.textContent = item.label;
+                labelText.textContent = item.label;
+                label.appendChild(labelText);
+                const firstTierId = state.items.find((candidate) => candidate.type === "tier")?.id;
+                if (item.id !== firstTierId) {
+                    const remove = document.createElement("button");
+                    remove.className = "tier-delete";
+                    remove.type = "button";
+                    remove.textContent = "Delete";
+                    remove.title = `Delete ${item.label}`;
+                    remove.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                        deleteTier(item.id);
+                    });
+                    label.appendChild(remove);
+                }
                 applyTierColor(label, item.label);
 
                 const labelCell = createCell("", label);
-                labelCell.colSpan = 11 + state.lab.metrics.length;
+                labelCell.colSpan = 5 + state.lab.metrics.length + (state.visibleMarkets.length * 2);
                 row.append(createCell("drag-cell", handle), labelCell);
                 return row;
             };
@@ -3306,12 +3575,7 @@
                 row.dataset.id = player.id;
                 row.tabIndex = 0;
                 const myRank = globalIndex + 1;
-                const underdogVariance = formatVariance(player.udAdp, myRank);
-                const sleeperMarket = effectiveSleeperMarket(player);
-                const sleeperVariance = formatVariance(sleeperMarket.adp, myRank);
                 const playerKey = playerMarketKey(player);
-                const flockRank = flockRankForPlayer(player);
-                const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const handle = document.createElement("span");
                 handle.className = "handle";
                 handle.textContent = "::";
@@ -3375,8 +3639,29 @@
                 });
                 compareCheckbox.addEventListener("change", () => toggleComparePlayer(player.id));
                 compareButton.appendChild(compareCheckbox);
-                playerCell.append(playerMedia, playerText, compareButton);
+                const insertTier = document.createElement("button");
+                insertTier.className = "tier-insert";
+                insertTier.type = "button";
+                insertTier.textContent = "+ Tier";
+                insertTier.title = `Insert a tier break after ${player.name}`;
+                insertTier.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    insertTierAfter(item.id);
+                });
+                playerCell.append(playerMedia, playerText, insertTier, compareButton);
 
+                const marketCells = state.visibleMarkets.flatMap((marketId) => {
+                    const market = marketValueForPlayer(player, marketId);
+                    const rank = Number.isFinite(market.rank) ? market.rank : 999;
+                    const variance = formatVariance(rank, myRank);
+                    const rankLabel = marketId === "flock"
+                        ? formatMarketRank(market.rank)
+                        : formatAdp(rank, market.pick, marketId === "sleeper" || marketId === "espn");
+                    return [
+                        createCell("num", rankLabel),
+                        createCell(`variance num ${variance.className}`, variance.label),
+                    ];
+                });
                 const rowCells = [
                     createCell("drag-cell", handle),
                     createCell("rank num", String(myRank)),
@@ -3385,12 +3670,7 @@
                     createCell("", player.team),
                     createCell("pos-rank", posRanks[player.id]),
                     ...state.lab.metrics.map((metricKey) => createCell("num", metricDisplayValue(player, globalIndex, metricKey))),
-                    createCell("num", formatAdp(player.udAdp, player.udPick)),
-                    createCell(`variance num ${underdogVariance.className}`, underdogVariance.label),
-                    createCell("num", formatAdp(sleeperMarket.adp, sleeperMarket.pick)),
-                    createCell(`variance num ${sleeperVariance.className}`, sleeperVariance.label),
-                    createCell("num", formatMarketRank(flockRank)),
-                    createCell(`variance num ${flockVariance.className}`, flockVariance.label),
+                    ...marketCells,
                 ];
                 row.append(...rowCells);
 
@@ -3598,27 +3878,30 @@
                 }
                 const player = entry.player;
                 const myRank = entry.globalIndex + 1;
-                const flockRank = flockRankForPlayer(player);
-                const sleeperMarket = effectiveSleeperMarket(player);
                 const values = {
                     myRank,
-                    udAdp: player.udAdp,
-                    udVar: player.udAdp === 999 ? Number.POSITIVE_INFINITY : player.udAdp - myRank,
-                    sleeperAdp: sleeperMarket.adp,
-                    sleeperVar: sleeperMarket.adp === 999 ? Number.POSITIVE_INFINITY : sleeperMarket.adp - myRank,
-                    flockRank: Number.isFinite(flockRank) ? flockRank : Number.POSITIVE_INFINITY,
-                    flockVar: Number.isFinite(flockRank) ? flockRank - myRank : Number.POSITIVE_INFINITY,
                 };
-                const value = state.sort.key?.startsWith("metric:")
-                    ? metricValueForPlayer(player, entry.globalIndex, state.sort.key.replace("metric:", ""))
-                    : values[state.sort.key];
+                let value;
+                if (state.sort.key?.startsWith("metric:")) {
+                    value = metricValueForPlayer(player, entry.globalIndex, state.sort.key.replace("metric:", ""));
+                } else if (state.sort.key?.startsWith("market:")) {
+                    const [, marketId, field] = state.sort.key.split(":");
+                    const rank = marketValueForPlayer(player, marketId).rank;
+                    value = Number.isFinite(rank) && rank !== 999
+                        ? (field === "variance" ? rank - myRank : rank)
+                        : Number.POSITIVE_INFINITY;
+                } else {
+                    value = values[state.sort.key];
+                }
                 const missing = value === null || value === Number.POSITIVE_INFINITY || value === undefined || Number.isNaN(value);
                 return { value, missing };
             };
 
             const hasConsensusMarketCoverage = (player) => {
                 const flockRank = flockRankForPlayer(player);
-                return player.udAdp !== 999 && effectiveSleeperMarket(player).adp !== 999 && Number.isFinite(flockRank);
+                return effectiveSleeperMarket(player).adp !== 999
+                    && effectiveEspnMarket(player).adp !== 999
+                    && Number.isFinite(flockRank);
             };
 
             const sortedVisibleItems = (visibleItems, posRanks) => {
@@ -3628,7 +3911,6 @@
                 const direction = state.sort.direction === "desc" ? -1 : 1;
                 return visibleItems
                     .filter(({ player }) => player)
-                    .filter(({ player }) => state.sort.key !== "udVar" || hasConsensusMarketCoverage(player))
                     .slice()
                     .sort((a, b) => {
                         const left = sortValue(a, posRanks);
@@ -4469,7 +4751,6 @@
                 return [
                     { category: "My Board", label: "My Rank", highWins: false, value: (entry) => entry.myRank, display: (entry) => String(entry.myRank) },
                     { category: "My Board", label: "My Pos Rank", highWins: false, value: (entry) => posRankNumber(entry.posRank), display: (entry) => entry.posRank },
-                    { category: "Markets", label: "Underdog ADP", highWins: false, value: (entry) => entry.player.udAdp === 999 ? null : entry.player.udAdp, display: (entry) => formatAdp(entry.player.udAdp, entry.player.udPick) },
                     ...bettingStats,
                     ...teamStats,
                     ...targetStats,
@@ -4684,9 +4965,10 @@
                 const playerKey = playerMarketKey(player);
                 const flockRank = flockRankForPlayer(player);
                 const flockDetail = flockDetailForPlayer(player);
-                const underdogVariance = formatVariance(player.udAdp, myRank);
                 const sleeperMarket = effectiveSleeperMarket(player);
                 const sleeperVariance = formatVariance(sleeperMarket.adp, myRank);
+                const espnMarket = effectiveEspnMarket(player);
+                const espnVariance = formatVariance(espnMarket.adp, myRank);
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
 
@@ -4711,10 +4993,10 @@
                 myGrid.append(
                     detailCard("My Rank", String(myRank)),
                     detailCard("My Pos Rank", posRanks[player.id] || "N/A"),
-                    detailCard("Underdog ADP", formatAdp(player.udAdp, player.udPick)),
-                    detailCard("UD Var", underdogVariance.label, underdogVariance.className),
-                    detailCard("Sleeper ADP", formatAdp(sleeperMarket.adp, sleeperMarket.pick)),
+                    detailCard("Sleeper ADP", formatAdp(sleeperMarket.adp, sleeperMarket.pick, true)),
                     detailCard("Sleeper Var", sleeperVariance.label, sleeperVariance.className),
+                    detailCard("ESPN ADP", formatAdp(espnMarket.adp, espnMarket.pick, true)),
+                    detailCard("ESPN Var", espnVariance.label, espnVariance.className),
                     detailCard("Flock Rank", formatMarketRank(flockRank)),
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
                 );
@@ -4855,6 +5137,93 @@
                     state.sort = { key: "", direction: "" };
                 }
                 render();
+            };
+
+            const toggleMarketColumn = (marketId, visible) => {
+                if (visible && !state.visibleMarkets.includes(marketId)) {
+                    state.visibleMarkets.push(marketId);
+                } else if (!visible) {
+                    state.visibleMarkets = state.visibleMarkets.filter((item) => item !== marketId);
+                    if (state.sort.key?.startsWith(`market:${marketId}:`)) {
+                        state.sort = { key: "", direction: "" };
+                    }
+                }
+                savePlayers();
+                render();
+            };
+
+            const moveMarketColumn = (marketId, direction) => {
+                const index = state.visibleMarkets.indexOf(marketId);
+                const target = index + direction;
+                if (index < 0 || target < 0 || target >= state.visibleMarkets.length) {
+                    return;
+                }
+                [state.visibleMarkets[index], state.visibleMarkets[target]] = [state.visibleMarkets[target], state.visibleMarkets[index]];
+                savePlayers();
+                render();
+            };
+
+            const renderMarketOptions = () => {
+                elements.marketOptions.replaceChildren();
+                Object.entries(MARKET_COLUMNS).forEach(([marketId, market]) => {
+                    const option = document.createElement("label");
+                    const checkbox = document.createElement("input");
+                    const copy = document.createElement("span");
+                    const note = document.createElement("small");
+                    const controls = document.createElement("span");
+                    option.className = "market-option";
+                    checkbox.type = "checkbox";
+                    checkbox.checked = state.visibleMarkets.includes(marketId);
+                    copy.textContent = market.label;
+                    note.textContent = `${market.valueLabel} + variance vs. My Rank`;
+                    copy.appendChild(note);
+                    checkbox.addEventListener("change", () => toggleMarketColumn(marketId, checkbox.checked));
+                    copy.addEventListener("click", () => {
+                        checkbox.checked = !checkbox.checked;
+                        toggleMarketColumn(marketId, checkbox.checked);
+                    });
+                    controls.className = "market-order-controls";
+                    const visibleIndex = state.visibleMarkets.indexOf(marketId);
+                    [
+                        { label: "Move left", glyph: "←", direction: -1, disabled: visibleIndex <= 0 },
+                        { label: "Move right", glyph: "→", direction: 1, disabled: visibleIndex < 0 || visibleIndex >= state.visibleMarkets.length - 1 },
+                    ].forEach(({ label, glyph, direction, disabled }) => {
+                        const button = document.createElement("button");
+                        button.type = "button";
+                        button.textContent = glyph;
+                        button.title = label;
+                        button.setAttribute("aria-label", `${label}: ${market.label}`);
+                        button.disabled = disabled;
+                        button.addEventListener("click", () => moveMarketColumn(marketId, direction));
+                        controls.appendChild(button);
+                    });
+                    option.append(checkbox, copy, controls);
+                    elements.marketOptions.appendChild(option);
+                });
+                elements.marketSummary.textContent = `ADP columns (${state.visibleMarkets.length})`;
+            };
+
+            const renderMarketHeaders = () => {
+                elements.rankingsHeadRow.querySelectorAll(".market-col").forEach((column) => column.remove());
+                const anchor = elements.rankingsHeadRow.querySelector("[data-market-anchor]");
+                state.visibleMarkets.forEach((marketId) => {
+                    const market = MARKET_COLUMNS[marketId];
+                    [
+                        { field: "rank", label: `${market.label} ${market.valueLabel}` },
+                        { field: "variance", label: `${market.shortLabel} Var` },
+                    ].forEach(({ field, label }) => {
+                        const header = document.createElement("th");
+                        const button = document.createElement("button");
+                        header.className = "market-col";
+                        button.className = "sort-btn";
+                        button.type = "button";
+                        button.dataset.sort = `market:${marketId}:${field}`;
+                        button.textContent = label;
+                        button.addEventListener("click", () => cycleSort(button.dataset.sort));
+                        header.appendChild(button);
+                        anchor.before(header);
+                    });
+                });
             };
 
             const renderMetricHeaders = () => {
@@ -5026,7 +5395,9 @@
                     button.setAttribute("aria-pressed", String(pressed));
                 });
                 elements.teamFilter.value = state.activeTeam;
+                renderMarketHeaders();
                 renderMetricHeaders();
+                renderMarketOptions();
                 renderMetricChips();
                 updateLabStatus(visiblePlayerCount);
                 renderComparePanel();
@@ -5043,7 +5414,8 @@
                     }
                     const key = `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`;
                     const namePosKey = `${nameKey(name)}|${String(pos).toUpperCase()}`;
-                    const rank = index + 1;
+                    const reportedRank = Number(row.overallAverageRank ?? row.averageRank);
+                    const rank = Number.isFinite(reportedRank) ? reportedRank : index + 1;
                     const detail = { ...row, listRank: rank };
                     result.ranks[key] = rank;
                     result.details[key] = detail;
@@ -5076,48 +5448,139 @@
                 }
             };
 
-            const refreshFantasyProsAdp = async () => {
+            const refreshSleeperAdp = async () => {
                 try {
-                    const payload = await fetchJson(FANTASYPROS_ADP_PROXY_URL);
-                    const adpRows = Array.isArray(payload?.players) ? payload.players : [];
-                    const adpByKey = new Map(adpRows.map((row) => [
-                        `${nameKey(row.name)}|${marketTeam(row.team)}|${String(row.pos || "").toUpperCase()}`,
-                        row,
-                    ]));
-                    const adpByNamePos = new Map();
-                    adpRows.forEach((row) => {
-                        const key = `${nameKey(row.name)}|${String(row.pos || "").toUpperCase()}`;
-                        if (adpByNamePos.has(key)) {
-                            adpByNamePos.set(key, null);
-                            return;
-                        }
-                        adpByNamePos.set(key, row);
-                    });
-                    let updated = 0;
-                    sourcePlayers().forEach((player) => {
-                        const row = adpByKey.get(playerMarketKey(player)) || adpByNamePos.get(`${nameKey(player.name)}|${player.pos}`);
-                        const adp = Number(row?.underdogAdp);
-                        if (!Number.isFinite(adp)) {
-                            return;
-                        }
-                        if (row.team) {
-                            state.livePlayerMeta[`${nameKey(player.name)}|${player.pos}`] = {
-                                ...(state.livePlayerMeta[`${nameKey(player.name)}|${player.pos}`] || {}),
-                                team: row.team,
-                                pos: player.pos,
-                            };
-                        }
-                        player.udAdp = adp;
-                        player.udPick = row.underdogPick || pickLabelFromAdp(adp);
-                        updated += 1;
-                    });
-                    if (updated) {
-                        applyLivePlayerMeta();
-                        populateTeamFilter();
-                        render();
+                    let payload;
+                    try {
+                        payload = await fetchJson(SLEEPER_ADP_PROXY_URL);
+                    } catch (proxyError) {
+                        payload = await fetchJson(SLEEPER_ADP_DIRECT_URL);
                     }
+                    const players = Array.isArray(payload)
+                        ? payload.map((row) => {
+                            const adp = Number(row.stats?.adp_ppr);
+                            return {
+                                id: String(row.player_id || ""),
+                                name: `${row.player?.first_name || ""} ${row.player?.last_name || ""}`.trim(),
+                                team: String(row.player?.team || row.team || "").toUpperCase(),
+                                pos: String(row.player?.position || "").toUpperCase(),
+                                adp,
+                                pick: pickLabelFromAdp(adp),
+                            };
+                        })
+                        : (payload?.players || []);
+                    const byKey = {};
+                    const byNamePos = {};
+                    players.forEach((player) => {
+                        const row = {
+                            ...player,
+                            adp: Number(player.adp),
+                            pick: player.pick || pickLabelFromAdp(Number(player.adp)),
+                        };
+                        if (!Number.isFinite(row.adp) || row.adp === 999) {
+                            return;
+                        }
+                        const exactKey = `${nameKey(row.name)}|${marketTeam(row.team)}|${String(row.pos || "").toUpperCase()}`;
+                        const fallbackKey = `${nameKey(row.name)}|${String(row.pos || "").toUpperCase()}`;
+                        byKey[exactKey] = row;
+                        if (Object.prototype.hasOwnProperty.call(byNamePos, fallbackKey)) {
+                            byNamePos[fallbackKey] = null;
+                        } else {
+                            byNamePos[fallbackKey] = row;
+                        }
+                    });
+                    state.sleeperAdp = {
+                        byKey,
+                        byNamePos,
+                        updatedAt: payload?.updatedAt || new Date().toISOString(),
+                        source: payload?.source || SLEEPER_ADP_DIRECT_URL,
+                    };
+                    if (state.useSleeperDefaultOrder) {
+                        const sleeperOrderedPlayers = basePlayers().sort((a, b) => {
+                            const adpA = effectiveSleeperMarket(a).adp;
+                            const adpB = effectiveSleeperMarket(b).adp;
+                            return adpA - adpB || a.name.localeCompare(b.name);
+                        });
+                        state.items = buildDefaultItems(sleeperOrderedPlayers);
+                    }
+                    render();
                 } catch (error) {
-                    console.warn("FantasyPros Underdog ADP could not be loaded.", error);
+                    console.warn("Live Sleeper PPR ADP could not be loaded.", error);
+                }
+            };
+
+            const refreshEspnAdp = async () => {
+                try {
+                    let payload;
+                    try {
+                        payload = await fetchJson(ESPN_ADP_PROXY_URL);
+                    } catch (proxyError) {
+                        const filter = {
+                            players: {
+                                filterSlotIds: { value: [0, 2, 4, 6, 16, 17, 23] },
+                                limit: 500,
+                                offset: 0,
+                                sortDraftRanks: { sortPriority: 1, sortAsc: true, value: "PPR" },
+                                filterRanksForScoringPeriodIds: { value: [1] },
+                                filterRanksForRankTypes: { value: ["PPR"] },
+                                filterRanksForSlotIds: { value: [0, 2, 4, 6, 16, 17] },
+                            },
+                        };
+                        const directResponse = await fetch(ESPN_ADP_DIRECT_URL, {
+                            cache: "no-store",
+                            headers: { "x-fantasy-filter": JSON.stringify(filter) },
+                        });
+                        if (!directResponse.ok) {
+                            throw new Error(`ESPN request failed: ${directResponse.status}`);
+                        }
+                        const directPayload = await directResponse.json();
+                        payload = {
+                            source: ESPN_ADP_DIRECT_URL,
+                            updatedAt: new Date().toISOString(),
+                            players: (directPayload.players || []).map((entry) => {
+                                const player = entry.player || {};
+                                const adp = Number(player.ownership?.averageDraftPosition);
+                                return {
+                                    id: String(player.id || entry.id || ""),
+                                    name: player.fullName || `${player.firstName || ""} ${player.lastName || ""}`.trim(),
+                                    team: ESPN_TEAM_BY_ID[player.proTeamId] || "",
+                                    pos: ESPN_POSITION_BY_ID[player.defaultPositionId] || "",
+                                    adp,
+                                    pick: pickLabelFromAdp(adp),
+                                    updatedAt: player.ownership?.date || null,
+                                };
+                            }),
+                        };
+                    }
+                    const byKey = {};
+                    const byNamePos = {};
+                    (payload?.players || []).forEach((player) => {
+                        const row = {
+                            ...player,
+                            adp: Number(player.adp),
+                            pick: player.pick || pickLabelFromAdp(Number(player.adp)),
+                        };
+                        if (!Number.isFinite(row.adp) || row.adp <= 0 || row.adp === 999) {
+                            return;
+                        }
+                        const exactKey = `${nameKey(row.name)}|${marketTeam(row.team)}|${String(row.pos || "").toUpperCase()}`;
+                        const fallbackKey = `${nameKey(row.name)}|${String(row.pos || "").toUpperCase()}`;
+                        byKey[exactKey] = row;
+                        if (Object.prototype.hasOwnProperty.call(byNamePos, fallbackKey)) {
+                            byNamePos[fallbackKey] = null;
+                        } else {
+                            byNamePos[fallbackKey] = row;
+                        }
+                    });
+                    state.espnAdp = {
+                        byKey,
+                        byNamePos,
+                        updatedAt: payload?.updatedAt || new Date().toISOString(),
+                        source: payload?.source || "ESPN",
+                    };
+                    render();
+                } catch (error) {
+                    console.warn("Live ESPN PPR ADP could not be loaded.", error);
                 }
             };
 
@@ -5269,7 +5732,7 @@
             };
 
             const refreshMarketData = async () => {
-                await Promise.allSettled([refreshFantasyProsAdp(), refreshSleeperPlayers()]);
+                await Promise.allSettled([refreshSleeperAdp(), refreshEspnAdp(), refreshSleeperPlayers()]);
                 await Promise.allSettled([refreshFlockRanks(), refreshBettingProps(), refreshTeamFutures()]);
             };
 
@@ -5860,7 +6323,15 @@
                 });
             };
 
-            init();
+            init().catch((error) => {
+                console.error("The rankings app could not finish starting.", error);
+                const saved = localSavedState();
+                applySavedStateToBoard({
+                    ...saved,
+                    source: saved.items || saved.order ? "Local" : "Base",
+                });
+                updateAuthUi("Account features are offline. Rankings are available locally.");
+            });
         })();
     </script>
 </body>

@@ -11,6 +11,12 @@ const sendRuntimeMessage = (message) => new Promise((resolve) => {
   });
 });
 
+const loadAISettings = async () => {
+  await chrome.storage.local.remove("openAIApiKey");
+  const settings = await chrome.storage.local.get(["sleeperUserId"]);
+  document.getElementById("sleeperUserId").value = settings.sleeperUserId || "";
+};
+
 document.getElementById("openAssistant").addEventListener("click", async () => {
   const tab = await activeTab();
   const result = await sendRuntimeMessage({ type: "OPEN_ASSISTANT", tabId: tab?.id });
@@ -29,3 +35,13 @@ document.getElementById("openBoard").addEventListener("click", async () => {
   await sendRuntimeMessage({ type: "OPEN_BOARD" });
   statusNode.textContent = "Opened the full board.";
 });
+
+document.getElementById("saveAISettings").addEventListener("click", async () => {
+  const sleeperUserId = document.getElementById("sleeperUserId").value.trim();
+  await chrome.storage.local.set({ sleeperUserId });
+  statusNode.textContent = sleeperUserId
+    ? "Sleeper settings saved. AI advice will refresh after the next pick."
+    : "A Sleeper user ID is required for roster-aware AI advice.";
+});
+
+loadAISettings();

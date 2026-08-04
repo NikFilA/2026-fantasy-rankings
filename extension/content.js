@@ -4,6 +4,7 @@ const TEAM_PROJECTIONS_URL = `${APP_ORIGIN}/team-projections.js`;
 const PLAYER_PROPS_URL = `${APP_ORIGIN}/api/bettingpros-player-futures`;
 const TEAM_FUTURES_URL = `${APP_ORIGIN}/api/bettingpros-team-futures`;
 const ASSISTANT_ID = "ff-draft-assistant-root";
+const AI_ADVICE_ID = "ai-draft-advice-box";
 const STORAGE_KEY = "myCustomRankings";
 const POSITIONS = ["QB", "RB", "WR", "TE"];
 const APP_HOSTS = new Set(["2026-fantasy-rankings.vercel.app", "localhost", "127.0.0.1"]);
@@ -39,6 +40,27 @@ const assistantState = {
   teamProjections: [],
   teamFutures: {},
   bettingProps: {},
+  aiAdvice: "Waiting for the latest Sleeper pick...",
+  aiAdviceError: false,
+  aiLoading: false,
+  aiRequestId: 0,
+  lastAiPickSignature: "",
+  leagueSettings: null,
+};
+
+let aiModulesPromise = null;
+
+const loadAiModules = () => {
+  if (!aiModulesPromise) {
+    aiModulesPromise = Promise.all([
+      import(chrome.runtime.getURL("draftEngine.js")),
+      import(chrome.runtime.getURL("aiService.js")),
+    ]).then(([draftEngine, aiService]) => ({
+      generateDraftContextPayload: draftEngine.generateDraftContextPayload,
+      getAIRecommendation: aiService.getAIRecommendation,
+    }));
+  }
+  return aiModulesPromise;
 };
 
 const normalize = (value = "") => String(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -341,6 +363,111 @@ const loadStoredDraftPicks = async () => {
   }
 };
 
+const renderAIAdvice = () => {
+  if (!isSleeperDraft) return;
+  let box = document.getElementById(AI_ADVICE_ID);
+  if (!box) {
+    box = document.createElement("div");
+    box.id = AI_ADVICE_ID;
+    box.style.cssText = [
+      "position:fixed",
+      "top:16px",
+      "left:50%",
+      "transform:translateX(-50%)",
+      "z-index:2147483647",
+      "width:min(640px,calc(100vw - 32px))",
+      "padding:12px 16px",
+      "border:1px solid #38bdf8",
+      "border-radius:12px",
+      "background:rgba(17,20,22,.96)",
+      "box-shadow:0 14px 40px rgba(0,0,0,.45)",
+      "color:#eef2f6",
+      "font:600 14px/1.45 Inter,ui-sans-serif,system-ui,sans-serif",
+    ].join(";");
+    document.documentElement.appendChild(box);
+  }
+  box.style.borderColor = assistantState.aiAdviceError ? "#fb7185" : "#38bdf8";
+  box.replaceChildren();
+  const label = document.createElement("strong");
+  label.textContent = assistantState.aiLoading ? "AI Draft Advice · Thinking" : "AI Draft Advice";
+  label.style.cssText = "display:block;margin-bottom:4px;color:#facc15;font-size:11px;letter-spacing:.1em;text-transform:uppercase";
+  const advice = document.createElement("span");
+  advice.textContent = assistantState.aiAdvice;
+  box.append(label, advice);
+};
+
+const aiRankingPlayers = () => assistantState.players.map((player, index) => ({
+  player_id: String(player.id),
+  name: player.name,
+  position: player.pos,
+  tier: player.tierLabel || playerTier(player, index),
+}));
+
+const normalizedDraftPicks = (picks) => picks.map((pick) => ({
+  player_id: String(pick?.player_id || ""),
+  picked_by_user_id: String(pick?.picked_by_user_id || pick?.picked_by || ""),
+  round: Number(pick?.round) || 0,
+}));
+
+const pickSignature = (picks) => picks
+  .map((pick) => `${pick?.pick_no || ""}:${pick?.player_id || ""}:${pick?.picked_by || pick?.picked_by_user_id || ""}`)
+  .join("|");
+
+const loadSleeperLeagueSettings = async () => {
+  if (assistantState.leagueSettings) return assistantState.leagueSettings;
+  const response = await chrome.runtime.sendMessage({
+    type: "FETCH_SLEEPER_DRAFT_CONTEXT",
+    draftId: sleeperDraftId(),
+  });
+  if (!response?.ok || !response.league) {
+    throw new Error(response?.error || "Sleeper league settings unavailable.");
+  }
+  assistantState.leagueSettings = response.league;
+  return assistantState.leagueSettings;
+};
+
+const refreshAIRecommendation = async (rawPicks) => {
+  const signature = pickSignature(rawPicks);
+  if (!signature || signature === assistantState.lastAiPickSignature) return;
+  assistantState.lastAiPickSignature = signature;
+
+  const requestId = ++assistantState.aiRequestId;
+  assistantState.aiLoading = true;
+  assistantState.aiAdviceError = false;
+  assistantState.aiAdvice = "Analyzing the new pick against your rankings and league settings...";
+  renderAIAdvice();
+
+  try {
+    const [{ sleeperUserId }, leagueSettings, modules] = await Promise.all([
+      chrome.storage.local.get(["sleeperUserId"]),
+      loadSleeperLeagueSettings(),
+      loadAiModules(),
+    ]);
+    if (!sleeperUserId) {
+      throw new Error("Add sleeperUserId to extension storage so roster strategy can be calculated.");
+    }
+
+    const contextPayload = modules.generateDraftContextPayload(
+      { picks: normalizedDraftPicks(rawPicks) },
+      aiRankingPlayers(),
+      sleeperUserId,
+      leagueSettings,
+    );
+    const recommendation = await modules.getAIRecommendation(contextPayload);
+    if (requestId !== assistantState.aiRequestId) return;
+    assistantState.aiAdvice = recommendation;
+  } catch (error) {
+    if (requestId !== assistantState.aiRequestId) return;
+    assistantState.aiAdvice = error.message || "AI recommendation unavailable.";
+    assistantState.aiAdviceError = true;
+  } finally {
+    if (requestId === assistantState.aiRequestId) {
+      assistantState.aiLoading = false;
+      renderAIAdvice();
+    }
+  }
+};
+
 const refreshSleeperDraftPicks = async () => {
   const draftId = sleeperDraftId();
   if (!draftId || assistantState.draftPicksLoading) {
@@ -371,6 +498,7 @@ const refreshSleeperDraftPicks = async () => {
     assistantState.draftPicksError = "";
     await chrome.storage.local.set({ [sleeperDraftStorageKey()]: payload });
     renderAssistant();
+    refreshAIRecommendation(response.picks);
   } catch (error) {
     assistantState.draftPicksError = error.message || "Sleeper picks unavailable.";
   } finally {
@@ -1166,6 +1294,7 @@ const observeDraftPage = () => {
 const initSleeperAssistant = async () => {
   await loadOverlayPrefs();
   renderAssistant();
+  renderAIAdvice();
   await loadStoredDraftPicks();
   await loadRankings();
   await syncRankingsFromBoardTab({ silent: true });

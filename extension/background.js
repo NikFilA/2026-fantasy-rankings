@@ -106,6 +106,31 @@ const fetchSleeperDraftPicks = async (draftId) => {
   }
 };
 
+const fetchSleeperDraftContext = async (draftId) => {
+  const id = String(draftId || "").trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+    return { ok: false, error: "Invalid Sleeper draft id." };
+  }
+  try {
+    const draftResponse = await fetch(`https://api.sleeper.app/v1/draft/${id}`, { cache: "no-store" });
+    if (!draftResponse.ok) {
+      return { ok: false, error: `${draftResponse.status} ${draftResponse.statusText}` };
+    }
+    const draft = await draftResponse.json();
+    const leagueId = String(draft?.league_id || "").trim();
+    if (!leagueId) {
+      return { ok: false, error: "This Sleeper draft is not attached to a league." };
+    }
+    const leagueResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`, { cache: "no-store" });
+    if (!leagueResponse.ok) {
+      return { ok: false, error: `${leagueResponse.status} ${leagueResponse.statusText}` };
+    }
+    return { ok: true, draft, league: await leagueResponse.json() };
+  } catch (error) {
+    return { ok: false, error: error.message || "Sleeper league settings fetch failed." };
+  }
+};
+
 const syncRankingsFromBoard = async () => {
   const tabs = await findRankingsTabs();
   for (const tab of tabs) {
@@ -148,6 +173,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "FETCH_SLEEPER_DRAFT_PICKS") {
     fetchSleeperDraftPicks(message.draftId).then(sendResponse);
+    return true;
+  }
+
+  if (message?.type === "FETCH_SLEEPER_DRAFT_CONTEXT") {
+    fetchSleeperDraftContext(message.draftId).then(sendResponse);
     return true;
   }
 

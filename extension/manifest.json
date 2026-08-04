@@ -45,5 +45,11 @@
     "https://fantasy.espn.com/*",
     "https://*.espn.com/*"
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["draftEngine.js", "aiService.js"],
+      "matches": ["https://sleeper.com/*", "https://*.sleeper.com/*"]
+    }
+  ],
   "permissions": ["activeTab", "scripting", "storage", "tabs"]
 }

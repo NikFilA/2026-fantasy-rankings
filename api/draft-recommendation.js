@@ -1,41 +1,79 @@
-export default async function handler(req, res) {
-  // Allow Chrome Extension CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+const SYSTEM_PROMPT = "You are an elite fantasy football draft consultant. Analyze the user's draft context payload and league rules. Provide a concise, 2-sentence actionable recommendation on who to target next based on roster needs and tier cliffs.";
 
-  const { contextPayload } = req.body;
-  if (!contextPayload) return res.status(400).json({ error: 'Missing contextPayload' });
+const setCorsHeaders = (response) => {
+    response.setHeader("Access-Control-Allow-Origin", "*");
+    response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+};
 
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an elite fantasy football draft consultant. Analyze the user's draft context payload and league rules.
-Provide a concise, 2-sentence actionable recommendation on who to target next based on roster needs and tier cliffs.
-Tailor your advice strictly to their league settings (e.g., full PPR demands WR depth, Superflex demands early QB).`
-          },
-          { role: 'user', content: JSON.stringify(contextPayload) }
-        ],
-        temperature: 0.7
-      })
-    });
+export default async function handler(request, response) {
+    setCorsHeaders(response);
 
-    const data = await response.json();
-    return res.status(200).json({ recommendation: data.choices[0].message.content });
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to generate recommendation' });
-  }
+    if (request.method === "OPTIONS") {
+        response.status(200).end();
+        return;
+    }
+
+    if (request.method !== "POST") {
+        response.setHeader("Allow", "POST, OPTIONS");
+        response.status(405).json({ error: "Method not allowed" });
+        return;
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+        response.status(500).json({ error: "OpenAI API key is not configured" });
+        return;
+    }
+
+    const body = typeof request.body === "string"
+        ? (() => {
+            try {
+                return JSON.parse(request.body);
+            } catch {
+                return null;
+            }
+        })()
+        : request.body;
+    const contextPayload = body?.contextPayload;
+    if (!contextPayload || typeof contextPayload !== "object" || Array.isArray(contextPayload)) {
+        response.status(400).json({ error: "contextPayload must be an object" });
+        return;
+    }
+
+    try {
+        const openAIResponse = await fetch(OPENAI_URL, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [
+                    { role: "system", content: SYSTEM_PROMPT },
+                    { role: "user", content: JSON.stringify(contextPayload) },
+                ],
+            }),
+        });
+
+        const data = await openAIResponse.json();
+        if (!openAIResponse.ok) {
+            response.status(openAIResponse.status).json({
+                error: data?.error?.message || "OpenAI request failed",
+            });
+            return;
+        }
+
+        const recommendation = data?.choices?.[0]?.message?.content?.trim();
+        if (!recommendation) {
+            response.status(502).json({ error: "OpenAI returned an empty recommendation" });
+            return;
+        }
+
+        response.status(200).json({ recommendation });
+    } catch (error) {
+        response.status(502).json({ error: "Unable to generate a draft recommendation" });
+    }
 }

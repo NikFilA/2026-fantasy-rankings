@@ -8,6 +8,18 @@ create table if not exists public.draft_board_states (
 alter table public.draft_board_states
 add column if not exists user_id uuid references auth.users(id) on delete cascade;
 
+-- Claim account rows created before user_id existed. The board id already
+-- contains the owning auth user id, so this preserves those saved rankings.
+update public.draft_board_states d
+set user_id = substring(d.board_id from 6)::uuid
+where d.user_id is null
+  and d.board_id ~ '^user:[0-9a-fA-F-]{36}$'
+  and exists (
+      select 1
+      from auth.users u
+      where u.id = substring(d.board_id from 6)::uuid
+  );
+
 do $$
 begin
     if not exists (

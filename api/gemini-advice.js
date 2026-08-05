@@ -1,4 +1,5 @@
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
 
 const SYSTEM_INSTRUCTION = `You are an elite Fantasy Football Draft Strategist. Evaluate the draft board, roster limits, and turn survival probabilities. Apply Game Theory: prioritize position needs and high snipe risk (low survival %) over high-survival players who can wait until the return turn. Return exactly 3 concise bullet points with HTML formatting (🎯 RECOMMENDED, • Strategy, • Turn Risk / Context).
 
@@ -30,7 +31,8 @@ export default async function handler(request, response) {
     return response.status(405).json({ error: "Method not allowed" });
   }
   if (!process.env.GEMINI_API_KEY) {
-    return response.status(500).json({ error: "GEMINI_API_KEY is not configured" });
+    console.error("[gemini-advice] GEMINI_API_KEY is missing on server");
+    return response.status(500).json({ error: "GEMINI_API_KEY is missing on server" });
   }
 
   const contextPayload = parseBody(request.body)?.contextPayload;
@@ -38,42 +40,84 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "contextPayload must be an object" });
   }
 
+  const requestBody = JSON.stringify({
+    systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+    contents: [{
+      role: "user",
+      parts: [{ text: JSON.stringify(contextPayload) }],
+    }],
+    generationConfig: {
+      temperature: 0.25,
+      maxOutputTokens: 300,
+    },
+  });
+
   try {
-    const geminiResponse = await fetch(
-      `${GEMINI_URL}?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-          contents: [{
-            role: "user",
-            parts: [{ text: JSON.stringify(contextPayload) }],
-          }],
-          generationConfig: {
-            temperature: 0.25,
-            maxOutputTokens: 300,
-          },
-        }),
-      },
-    );
-    const data = await geminiResponse.json().catch(() => null);
-    if (!geminiResponse.ok) {
-      const limited = geminiResponse.status === 429 || data?.error?.status === "RESOURCE_EXHAUSTED";
-      return response.status(limited ? 429 : 502).json({
-        error: limited
-          ? "Gemini usage limit reached. Local draft advice remains available."
-          : data?.error?.message || "Gemini request failed",
-      });
+    for (let index = 0; index < GEMINI_MODELS.length; index += 1) {
+      const model = GEMINI_MODELS[index];
+      const googleUrl = `${GEMINI_API_BASE}/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+      let googleResponse;
+      try {
+        googleResponse = await fetch(googleUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+        });
+      } catch (error) {
+        console.error(`[gemini-advice] Network failure calling ${model}:`, error);
+        return response.status(500).json({
+          error: "Gemini API call failed",
+          details: error?.message || "Network request to Gemini failed",
+        });
+      }
+
+      const rawBody = await googleResponse.text();
+      let data = null;
+      try {
+        data = rawBody ? JSON.parse(rawBody) : null;
+      } catch {
+        // Preserve the raw Google response below for diagnosis.
+      }
+
+      if (!googleResponse.ok) {
+        console.error(`[gemini-advice] ${model} returned ${googleResponse.status}:`, rawBody);
+        const errorMessage = String(data?.error?.message || rawBody || "");
+        const modelNotFound = googleResponse.status === 404
+          || /model.+not found|not found.+model|not supported for generatecontent/i.test(errorMessage);
+        const hasFallback = index < GEMINI_MODELS.length - 1;
+        if (modelNotFound && hasFallback) {
+          console.warn(`[gemini-advice] Falling back from ${model} to ${GEMINI_MODELS[index + 1]}`);
+          continue;
+        }
+        return response.status(500).json({
+          error: "Gemini API call failed",
+          details: rawBody || `Google returned HTTP ${googleResponse.status}`,
+          model,
+          upstreamStatus: googleResponse.status,
+        });
+      }
+
+      const adviceHtml = data?.candidates?.[0]?.content?.parts
+        ?.map((part) => part?.text || "").join("").trim();
+      if (!adviceHtml) {
+        console.error(`[gemini-advice] ${model} returned no candidate text:`, rawBody);
+        return response.status(500).json({
+          error: "Gemini API call failed",
+          details: rawBody || "Gemini returned an empty response",
+          model,
+        });
+      }
+      return response.status(200).json({ adviceHtml, recommendation: adviceHtml, model });
     }
-    const adviceHtml = data?.candidates?.[0]?.content?.parts
-      ?.map((part) => part?.text || "").join("").trim();
-    if (!adviceHtml) {
-      return response.status(502).json({ error: "Gemini returned empty advice" });
-    }
-    return response.status(200).json({ adviceHtml, recommendation: adviceHtml });
+    return response.status(500).json({
+      error: "Gemini API call failed",
+      details: "No compatible Gemini model was available",
+    });
   } catch (error) {
-    console.error("[gemini-advice] Gemini request failed", error);
-    return response.status(502).json({ error: "Unable to generate Gemini draft advice" });
+    console.error("[gemini-advice] Unexpected handler failure:", error);
+    return response.status(500).json({
+      error: "Gemini API call failed",
+      details: error?.message || "Unexpected Gemini server error",
+    });
   }
 }

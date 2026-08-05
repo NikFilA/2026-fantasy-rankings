@@ -32,7 +32,9 @@ export async function getAIRecommendation(contextPayload) {
     throw new Error(result?.error || `Draft recommendation request failed with status ${response.status}.`);
   }
 
-  const recommendation = String(result?.adviceHtml || result?.recommendation || "").trim();
+  const recommendation = String(
+    result?.analysis || result?.adviceHtml || result?.recommendation || "",
+  ).trim();
   if (!recommendation) {
     throw new Error("The draft recommendation service returned an empty recommendation.");
   }

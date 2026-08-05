@@ -1,12 +1,17 @@
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
 
-const SYSTEM_INSTRUCTION = `You are an elite Fantasy Football Draft Strategist. Evaluate the draft board, roster limits, and turn survival probabilities. Apply Game Theory: prioritize position needs and high snipe risk (low survival %) over high-survival players who can wait until the return turn. Return exactly 3 concise bullet points with HTML formatting (🎯 RECOMMENDED, • Strategy, • Turn Risk / Context).
+const SYSTEM_INSTRUCTION = `You are an elite, high-stakes Fantasy Football Game Theorist. Evaluate the user's live board, custom tiers, roster construction, league limits, positional scarcity, opponent demand, ADP, and turn-survival probabilities. Apply game theory: prioritize scarce positions and high snipe risk over attractive players likely to survive the turn, while recognizing coherent builds such as Hero-RB, Zero-RB, Robust-RB, or WR-WR starts.
+
+Return exactly 3 short, punchy, high-impact HTML bullet lines. Use the supplied numbers explicitly; never invent a metric. The three lines must cover:
+1. Recommended Target & Tier.
+2. Turn Risk / positional drop-off, including the most decision-relevant survival percentage.
+3. Roster Synergy & Draft Strategy, tied to the user's current construction.
 
 Return only safe HTML with exactly this structure and no Markdown or code fences:
 <div><strong>🎯 RECOMMENDED: Player Name (POS - Tier N)</strong></div>
-<div>• <strong>Strategy:</strong> concise reason</div>
-<div>• <strong>Turn Risk / Context:</strong> concise survival, opponent, and roster context</div>`;
+<div>• <strong>Turn Risk / Drop-off:</strong> concise metric-driven risk</div>
+<div>• <strong>Roster Synergy / Strategy:</strong> concise construction advice</div>`;
 
 const setCors = (response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
@@ -107,7 +112,12 @@ export default async function handler(request, response) {
           model,
         });
       }
-      return response.status(200).json({ adviceHtml, recommendation: adviceHtml, model });
+      return response.status(200).json({
+        analysis: adviceHtml,
+        adviceHtml,
+        recommendation: adviceHtml,
+        model,
+      });
     }
     return response.status(500).json({
       error: "Gemini API call failed",

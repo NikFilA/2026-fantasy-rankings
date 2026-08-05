@@ -831,9 +831,13 @@ const renderAIAdvice = () => {
     `resize:${assistantState.adviceCollapsed ? "none" : "both"}`,
   ].join(";");
   const label = box.querySelector(".advice-label");
+  const hasLiveGeminiAnalysis = assistantState.aiAdviceSource === "Gemini"
+    && Boolean(assistantState.aiAdviceHtml);
   label.textContent = assistantState.aiLoading
-    ? "AI Draft Advice · Thinking"
-    : `${assistantState.aiAdviceSource} Draft Advice`;
+    ? "⚡ GEMINI STRATEGIST · ANALYZING"
+    : hasLiveGeminiAnalysis
+      ? "⚡ GEMINI STRATEGIST"
+      : `${assistantState.aiAdviceSource} Draft Advice`;
   const minimize = box.querySelector(".advice-minimize");
   minimize.textContent = assistantState.adviceCollapsed ? "+" : "−";
   minimize.setAttribute("aria-label", assistantState.adviceCollapsed ? "Expand draft advice" : "Minimize draft advice");

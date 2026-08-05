@@ -58,6 +58,9 @@ const assistantState = {
   aiAdviceSource: "Local",
   aiRequestId: 0,
   lastRecommendationPickSignature: "",
+  lastGeminiFetchTime: 0,
+  wasUserOnTheClock: false,
+  currentAdviceCacheKey: "",
   leagueSettings: null,
   sleeperDraftDetails: null,
   tierCliffAlert: "",
@@ -68,6 +71,8 @@ const assistantState = {
 
 let aiModulesPromise = null;
 const geminiAdviceByPick = new Map();
+const GEMINI_COOLDOWN_MS = 12_000;
+const GEMINI_COOLDOWN_MESSAGE = "⏳ AI Cooldown: Showing top board value. (Gemini updates on your next pick).";
 
 const loadAiModules = () => {
   if (!aiModulesPromise) {
@@ -985,9 +990,13 @@ const updateAdviceOverlay = (availablePlayers, contextPayload) => {
       && !assistantState.draftedNames.has(normalizePlayerName(player.name)),
   );
   const currentPick = assistantState.draftedCount + 1;
-  const cachedAdvice = geminiAdviceByPick.get(`${sleeperDraftId() || "draft"}:${currentPick}`);
+  const cacheMatchesCurrentPick = assistantState.currentAdviceCacheKey.startsWith(`${currentPick}_`);
+  const cachedAdvice = cacheMatchesCurrentPick
+    ? geminiAdviceByPick.get(assistantState.currentAdviceCacheKey)
+    : null;
   if (cachedAdvice) {
     assistantState.aiAdviceSource = "Gemini";
+    assistantState.aiAdviceError = false;
     assistantState.aiAdviceHtml = cachedAdvice;
     assistantState.localAdviceDetails = null;
     assistantState.aiAdvice = "";
@@ -996,6 +1005,7 @@ const updateAdviceOverlay = (availablePlayers, contextPayload) => {
   }
   if (assistantState.aiLoading) return;
   assistantState.aiAdviceSource = "Local";
+  assistantState.aiAdviceError = false;
   assistantState.aiAdviceHtml = "";
   assistantState.localAdviceDetails = localRecommendation(contextPayload, purgedAvailablePlayers);
   assistantState.aiAdvice = assistantState.localAdviceDetails
@@ -1016,9 +1026,9 @@ const updateAdviceBubbleUI = (availablePlayers, _userRoster, _draftState, contex
     : contextPayload);
 };
 
-const refreshAIRecommendation = async (rawPicks) => {
+const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
   const signature = pickSignature(rawPicks);
-  if (signature === assistantState.lastRecommendationPickSignature) return;
+  if (!manual && signature === assistantState.lastRecommendationPickSignature) return;
   assistantState.lastRecommendationPickSignature = signature;
 
   const requestId = ++assistantState.aiRequestId;
@@ -1057,6 +1067,10 @@ const refreshAIRecommendation = async (rawPicks) => {
       },
     );
     fallbackAdvice = localRecommendation(contextPayload, contextPayload.undraftedPlayers);
+    const isOnClock = Boolean(resolvedUserId)
+      && modules.isUserOnTheClock(rawPicks, sleeperContext.draftDetails, resolvedUserId);
+    const cameOnClock = isOnClock && !assistantState.wasUserOnTheClock;
+    assistantState.wasUserOnTheClock = isOnClock;
 
     const geminiPayload = contextPayload.ai_advice_payload || {
       userRoster: contextPayload.user_roster_counts,
@@ -1064,14 +1078,32 @@ const refreshAIRecommendation = async (rawPicks) => {
       nextPick: contextPayload.next_pick_number,
       topAvailablePlayers: contextPayload.top_available_targets,
     };
-    const cacheKey = `${sleeperDraftId() || "draft"}:${geminiPayload.currentPick}`;
+    const userRosterCount = Object.values(geminiPayload.userRoster || {})
+      .reduce((total, count) => total + (Number(count) || 0), 0);
+    const cacheKey = `${geminiPayload.currentPick}_${userRosterCount}`;
+    assistantState.currentAdviceCacheKey = cacheKey;
     const cachedAdvice = geminiAdviceByPick.get(cacheKey);
     if (cachedAdvice) {
       if (requestId !== assistantState.aiRequestId) return;
       assistantState.aiAdviceSource = "Gemini";
+      assistantState.aiAdviceError = false;
       assistantState.localAdviceDetails = null;
       assistantState.aiAdviceHtml = cachedAdvice;
       assistantState.aiAdvice = "";
+      renderAIAdvice();
+      return;
+    }
+
+    if (!manual && !cameOnClock) return;
+
+    const cooldownRemaining = GEMINI_COOLDOWN_MS - (Date.now() - assistantState.lastGeminiFetchTime);
+    if (cooldownRemaining > 0) {
+      if (requestId !== assistantState.aiRequestId) return;
+      assistantState.aiAdviceSource = "Local";
+      assistantState.aiAdviceError = false;
+      assistantState.localAdviceDetails = null;
+      assistantState.aiAdviceHtml = "";
+      assistantState.aiAdvice = GEMINI_COOLDOWN_MESSAGE;
       renderAIAdvice();
       return;
     }
@@ -1082,6 +1114,7 @@ const refreshAIRecommendation = async (rawPicks) => {
     assistantState.aiAdviceHtml = "";
     assistantState.aiAdvice = "⚡ Gemini Strategist Analyzing Board...";
     renderAIAdvice();
+    assistantState.lastGeminiFetchTime = Date.now();
     const recommendation = await modules.getAIRecommendation(geminiPayload);
     if (requestId !== assistantState.aiRequestId) return;
     geminiAdviceByPick.set(cacheKey, recommendation);
@@ -1091,11 +1124,9 @@ const refreshAIRecommendation = async (rawPicks) => {
     if (requestId !== assistantState.aiRequestId) return;
     assistantState.aiAdviceSource = fallbackAdvice ? "Local Fallback" : "Local";
     assistantState.aiAdviceHtml = "";
-    assistantState.localAdviceDetails = fallbackAdvice;
-    assistantState.aiAdvice = fallbackAdvice
-      ? `Recommended: ${fallbackAdvice.name}`
-      : error.message || "Recommendation unavailable.";
-    assistantState.aiAdviceError = true;
+    assistantState.localAdviceDetails = null;
+    assistantState.aiAdvice = GEMINI_COOLDOWN_MESSAGE;
+    assistantState.aiAdviceError = false;
   } finally {
     if (requestId === assistantState.aiRequestId) {
       assistantState.aiLoading = false;
@@ -1140,7 +1171,7 @@ const purgeDraftedIdsFromUi = (draftedIds, draftedNames = assistantState.drafted
   });
 };
 
-const syncDraftPicks = async () => {
+const syncDraftPicks = async ({ manualAdvice = false } = {}) => {
   const draftId = sleeperDraftId();
   if (!draftId) throw new Error("Sleeper draft ID is missing from the URL");
   const livePicks = await fetchLiveSleeperPicks(draftId);
@@ -1165,7 +1196,7 @@ const syncDraftPicks = async () => {
   assistantState.draftPicksError = "";
   purgeDraftedIdsFromUi(completedIds, names);
   chrome.storage.local.set({ [sleeperDraftStorageKey()]: payload });
-  refreshAIRecommendation(completedPicks);
+  refreshAIRecommendation(completedPicks, { manual: manualAdvice });
 };
 
 const isPlayerDrafted = (player) => {
@@ -1959,7 +1990,7 @@ const bindAssistant = (shadowRoot) => {
     renderAssistant();
   });
   shadowRoot.querySelector("[data-action='refresh']")?.addEventListener("click", () => {
-    syncDraftPicks().catch((error) => {
+    syncDraftPicks({ manualAdvice: true }).catch((error) => {
       console.error("[DraftAssistant] Fetch error:", error);
     });
   });

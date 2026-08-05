@@ -6,6 +6,7 @@ const TEAM_FUTURES_URL = `${APP_ORIGIN}/api/bettingpros-team-futures`;
 const LIVE_SLEEPER_ADP_URL = `${APP_ORIGIN}/api/sleeper-adp`;
 const LIVE_ESPN_ADP_URL = `${APP_ORIGIN}/api/espn-adp`;
 const LIVE_SLEEPER_PLAYERS_URL = `${APP_ORIGIN}/api/sleeper-players`;
+const GEMINI_ADVICE_URL = `${APP_ORIGIN}/api/gemini-advice`;
 const ASSISTANT_ID = "ff-draft-assistant-root";
 const AI_ADVICE_ID = "local-draft-advice";
 const STORAGE_KEY = "myCustomRankings";
@@ -37,6 +38,7 @@ const assistantState = {
   draftPicksReady: false,
   draftPicksError: "",
   draftedCount: 0,
+  lastLiveSleeperPicks: [],
   selectedPlayerId: "",
   position: { x: null, y: null },
   size: { width: null, height: null },
@@ -76,18 +78,45 @@ const GEMINI_COOLDOWN_MESSAGE = "⏳ AI Cooldown: Showing top board value. (Gemi
 
 const loadAiModules = () => {
   if (!aiModulesPromise) {
-    aiModulesPromise = Promise.all([
-      import(chrome.runtime.getURL("draftEngine.js")),
-      import(chrome.runtime.getURL("aiService.js")),
-    ]).then(([draftEngine, aiService]) => ({
+    aiModulesPromise = import(chrome.runtime.getURL("draftEngine.js")).then((draftEngine) => ({
       createMockLeagueSettingsFromDraft: draftEngine.createMockLeagueSettingsFromDraft,
       generateDraftContextPayload: draftEngine.generateDraftContextPayload,
       onPickUpdate: draftEngine.onPickUpdate,
       isUserOnTheClock: draftEngine.isUserOnTheClock,
-      getAIRecommendation: aiService.getAIRecommendation,
     }));
   }
   return aiModulesPromise;
+};
+
+const fetchGeminiRecommendation = async (contextPayload) => {
+  console.log("[DraftAssistant] Initiating Gemini API fetch...");
+  let response;
+  let jsonPayload;
+  try {
+    response = await fetch(GEMINI_ADVICE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contextPayload }),
+    });
+    console.log("[DraftAssistant] API Status:", response.status);
+    jsonPayload = await response.json();
+    console.log("[DraftAssistant] Raw API Payload:", jsonPayload);
+  } catch (error) {
+    console.error("[DraftAssistant] Gemini payload invalid:", jsonPayload || error);
+    throw error;
+  }
+
+  const geminiText = jsonPayload?.analysis
+    || jsonPayload?.advice
+    || jsonPayload?.text
+    || jsonPayload?.adviceHtml
+    || jsonPayload?.recommendation
+    || jsonPayload?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!response.ok || !geminiText) {
+    console.error("[DraftAssistant] Gemini payload invalid:", jsonPayload);
+    throw new Error(jsonPayload?.error || `Gemini API returned status ${response.status}`);
+  }
+  return String(geminiText).trim();
 };
 
 const normalize = (value = "") => String(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -899,6 +928,17 @@ const renderAIAdvice = () => {
   assistantState.advicePosition = position;
 };
 
+window.testGeminiUI = (sampleText = "<div><strong>🎯 RECOMMENDED: Test Player (WR - Tier 2)</strong></div><div>• <strong>Turn Risk / Drop-off:</strong> Test survival analysis.</div><div>• <strong>Roster Synergy / Strategy:</strong> Test roster construction.</div>") => {
+  assistantState.aiLoading = false;
+  assistantState.aiAdviceError = false;
+  assistantState.aiAdviceSource = "Gemini";
+  assistantState.localAdviceDetails = null;
+  assistantState.aiAdvice = "";
+  assistantState.aiAdviceHtml = String(sampleText || "").trim();
+  renderAIAdvice();
+  console.log("[DraftAssistant] Successfully injected Gemini advice into DOM");
+};
+
 const aiRankingPlayers = () => customRankingPlayers();
 
 const normalizedDraftPicks = (picks) => picks.map((pick) => ({
@@ -1119,11 +1159,13 @@ const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
     assistantState.aiAdvice = "⚡ Gemini Strategist Analyzing Board...";
     renderAIAdvice();
     assistantState.lastGeminiFetchTime = Date.now();
-    const recommendation = await modules.getAIRecommendation(geminiPayload);
+    const recommendation = await fetchGeminiRecommendation(geminiPayload);
     if (requestId !== assistantState.aiRequestId) return;
     geminiAdviceByPick.set(cacheKey, recommendation);
     assistantState.aiAdviceHtml = recommendation;
     assistantState.aiAdvice = "";
+    renderAIAdvice();
+    console.log("[DraftAssistant] Successfully injected Gemini advice into DOM");
   } catch (error) {
     if (requestId !== assistantState.aiRequestId) return;
     assistantState.aiAdviceSource = fallbackAdvice ? "Local Fallback" : "Local";
@@ -1139,15 +1181,85 @@ const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
   }
 };
 
+const sleeperDomFallbackPicks = () => {
+  const board = document.querySelector([
+    ".draft-board",
+    ".picks-container",
+    "[data-testid*='draft-board']",
+    "[class*='DraftBoard']",
+    "[class*='draftBoard']",
+  ].join(","));
+  if (!board) return [];
+
+  const rankings = customRankingPlayers();
+  const byId = new Map(rankings.map((player) => [String(player.player_id), player]));
+  const byName = new Map(rankings.flatMap((player) => (
+    [normalizePlayerName(player.name), ...playerAliases(player)].map((alias) => [alias, player])
+  )));
+  const detected = [];
+  const detectedIds = new Set();
+  const addPlayer = (player) => {
+    const playerId = String(player?.player_id || "");
+    if (!playerId || detectedIds.has(playerId)) return;
+    detectedIds.add(playerId);
+    detected.push({
+      player_id: playerId,
+      pick_no: detected.length + 1,
+      round: 0,
+      position: player.position,
+      metadata: { player_name: player.name, position: player.position },
+    });
+  };
+
+  board.querySelectorAll("[data-player-id], [data-player_id], [data-playerid]").forEach((node) => {
+    const playerId = node.getAttribute("data-player-id")
+      || node.getAttribute("data-player_id")
+      || node.getAttribute("data-playerid");
+    addPlayer(byId.get(String(playerId)));
+  });
+
+  if (!detected.length) {
+    board.querySelectorAll("span, p, div").forEach((node) => {
+      if (node.children.length || node.closest(".extension-ui-element")) return;
+      const normalizedName = normalizePlayerName(node.textContent);
+      const compactName = normalize(node.textContent);
+      if (normalizedName || compactName) addPlayer(byName.get(normalizedName) || byName.get(compactName));
+    });
+  }
+  return detected;
+};
+
 const fetchLiveSleeperPicks = async (draftId) => {
-  const cacheBuster = Date.now();
-  const url = `https://api.sleeper.app/v1/draft/${encodeURIComponent(draftId)}/picks?_cb=${cacheBuster}`;
-  const response = await fetch(url);
-  if (response.status !== 200) throw new Error(`Sleeper picks failed: ${response.status}`);
-  const picks = await response.json();
-  if (!Array.isArray(picks)) throw new Error("Sleeper picks response was not an array");
-  console.log("[DraftAssistant] Polled picks count:", picks.length);
-  return picks;
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: "FETCH_SLEEPER_DRAFT_PICKS",
+      draftId: String(draftId),
+    });
+    if (!result?.ok || !Array.isArray(result.picks)) {
+      throw new Error(result?.error || "Background Sleeper picks response was invalid");
+    }
+    assistantState.lastLiveSleeperPicks = result.picks;
+    console.log("[DraftAssistant] Polled picks count:", result.picks.length);
+    return result.picks;
+  } catch (error) {
+    console.warn("[DraftAssistant] Sleeper picks unavailable; using DOM snapshot fallback:", error?.message || error);
+    const domPicks = sleeperDomFallbackPicks();
+    if (!domPicks.length) return assistantState.lastLiveSleeperPicks;
+
+    const merged = new Map(
+      assistantState.lastLiveSleeperPicks.map((pick) => [String(pick?.player_id || ""), pick]),
+    );
+    domPicks.forEach((pick) => {
+      if (!merged.has(String(pick.player_id))) merged.set(String(pick.player_id), pick);
+    });
+    const picks = [...merged.values()].map((pick, index) => ({
+      ...pick,
+      player_id: String(pick.player_id),
+      pick_no: Number(pick.pick_no) || index + 1,
+    }));
+    assistantState.lastLiveSleeperPicks = picks;
+    return picks;
+  }
 };
 
 const purgeDraftedIdsFromUi = (draftedIds, draftedNames = assistantState.draftedNames) => {

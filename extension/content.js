@@ -3,8 +3,11 @@ const DATA_URL = `${APP_ORIGIN}/data.js`;
 const TEAM_PROJECTIONS_URL = `${APP_ORIGIN}/team-projections.js`;
 const PLAYER_PROPS_URL = `${APP_ORIGIN}/api/bettingpros-player-futures`;
 const TEAM_FUTURES_URL = `${APP_ORIGIN}/api/bettingpros-team-futures`;
+const LIVE_SLEEPER_ADP_URL = `${APP_ORIGIN}/api/sleeper-adp`;
+const LIVE_ESPN_ADP_URL = `${APP_ORIGIN}/api/espn-adp`;
+const LIVE_SLEEPER_PLAYERS_URL = `${APP_ORIGIN}/api/sleeper-players`;
 const ASSISTANT_ID = "ff-draft-assistant-root";
-const AI_ADVICE_ID = "ai-draft-advice-box";
+const AI_ADVICE_ID = "local-draft-advice";
 const STORAGE_KEY = "myCustomRankings";
 const POSITIONS = ["QB", "RB", "WR", "TE"];
 const APP_HOSTS = new Set(["2026-fantasy-rankings.vercel.app", "localhost", "127.0.0.1"]);
@@ -15,10 +18,12 @@ const isRankingsHost = (hostname) => (
 );
 
 const isAppPage = isRankingsHost(window.location.hostname);
-const isSleeperDraft = /(^|\.)sleeper\.com$/.test(window.location.hostname) && window.location.pathname.includes("/draft/");
+const isSleeperDraft = /(^|\.)sleeper\.(com|app)$/.test(window.location.hostname)
+  && /\/draft\/nfl\//.test(window.location.pathname);
 
 const assistantState = {
   players: [],
+  customRankings: [],
   defaultPlayers: [],
   source: "Loading rankings",
   filters: [],
@@ -28,27 +33,41 @@ const assistantState = {
   error: "",
   draftedNames: new Set(),
   draftedKeys: new Set(),
-  visibleDraftedNames: new Set(),
+  draftedPlayerIds: new Set(),
   draftPicksReady: false,
-  draftPicksLoading: false,
   draftPicksError: "",
-  lastDraftPicksFetch: 0,
   draftedCount: 0,
   selectedPlayerId: "",
   position: { x: null, y: null },
+  size: { width: null, height: null },
   isDragging: false,
+  isResizing: false,
+  advicePosition: { x: null, y: null },
+  adviceSize: { width: null, height: null },
+  adviceCollapsed: false,
+  isAdviceDragging: false,
+  isAdviceResizing: false,
   teamProjections: [],
   teamFutures: {},
   bettingProps: {},
   aiAdvice: "Waiting for the latest Sleeper pick...",
+  aiAdviceHtml: "",
+  localAdviceDetails: null,
   aiAdviceError: false,
   aiLoading: false,
+  aiAdviceSource: "Local",
   aiRequestId: 0,
-  lastAiPickSignature: "",
+  lastRecommendationPickSignature: "",
   leagueSettings: null,
+  sleeperDraftDetails: null,
+  tierCliffAlert: "",
+  mustDraftAlert: "",
+  survivalByPlayerId: {},
+  undraftedPlayers: null,
 };
 
 let aiModulesPromise = null;
+const geminiAdviceByPick = new Map();
 
 const loadAiModules = () => {
   if (!aiModulesPromise) {
@@ -56,7 +75,10 @@ const loadAiModules = () => {
       import(chrome.runtime.getURL("draftEngine.js")),
       import(chrome.runtime.getURL("aiService.js")),
     ]).then(([draftEngine, aiService]) => ({
+      createMockLeagueSettingsFromDraft: draftEngine.createMockLeagueSettingsFromDraft,
       generateDraftContextPayload: draftEngine.generateDraftContextPayload,
+      onPickUpdate: draftEngine.onPickUpdate,
+      isUserOnTheClock: draftEngine.isUserOnTheClock,
       getAIRecommendation: aiService.getAIRecommendation,
     }));
   }
@@ -64,6 +86,149 @@ const loadAiModules = () => {
 };
 
 const normalize = (value = "") => String(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const FIRST_NAME_ALIASES = {
+  kenneth: "kenny",
+  kenny: "kenny",
+  mitchell: "mitch",
+  mitch: "mitch",
+  cameron: "cam",
+  cam: "cam",
+  gabriel: "gabe",
+  gabe: "gabe",
+  christopher: "chris",
+  chris: "chris",
+};
+
+const normalizePlayerName = (value = "") => {
+  const parts = String(value)
+    .replace(/[.,'’\-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((part) => !["jr", "sr", "ii", "iii", "iv", "v"].includes(part.toLowerCase()));
+  if (parts.length) parts[0] = FIRST_NAME_ALIASES[parts[0].toLowerCase()] || parts[0];
+  return normalize(parts.join(" "));
+};
+
+const CUSTOM_TIER_STYLE_ID = "ff-custom-tier-styles";
+const CUSTOM_TIER_BADGE_CLASS = "ff-custom-tier-badge";
+
+const ensureCustomTierStyles = () => {
+  if (document.getElementById(CUSTOM_TIER_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = CUSTOM_TIER_STYLE_ID;
+  style.textContent = `
+    .${CUSTOM_TIER_BADGE_CLASS} {
+      display:inline-flex!important;align-items:center!important;gap:4px!important;
+      margin-left:6px!important;padding:2px 7px!important;border:1px solid!important;
+      border-radius:999px!important;font:800 10px/1.4 Inter,system-ui,sans-serif!important;
+      letter-spacing:.02em!important;white-space:nowrap!important;vertical-align:middle!important;
+    }
+    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="1"] { color:#fde047!important;background:#713f12!important;border-color:#facc15!important; }
+    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="2"] { color:#e9d5ff!important;background:#581c87!important;border-color:#c084fc!important; }
+    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="3"] { color:#bfdbfe!important;background:#1e3a8a!important;border-color:#60a5fa!important; }
+    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="4"] { color:#bbf7d0!important;background:#14532d!important;border-color:#4ade80!important; }
+    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="other"] { color:#e2e8f0!important;background:#334155!important;border-color:#94a3b8!important; }
+  `;
+  document.documentElement.appendChild(style);
+};
+
+const normalizedTierNumber = (tier) => {
+  const match = String(tier ?? "").match(/\d+/);
+  return match ? match[0] : "other";
+};
+
+const loadCustomRankings = async () => {
+  const { userRankings } = await chrome.storage.local.get(["userRankings"]);
+  assistantState.customRankings = Array.isArray(userRankings)
+    ? userRankings.map((player, index) => ({
+      ...player,
+      player_id: String(player?.player_id || ""),
+      custom_rank: Number(player?.custom_rank) || index + 1,
+      position: String(player?.position || "").toUpperCase(),
+    })).filter((player) => player.player_id)
+      .sort((a, b) => a.custom_rank - b.custom_rank)
+    : [];
+};
+
+const customRankingPlayers = () => {
+  const assistantById = new Map(assistantState.players.map((player) => [String(player.id), player]));
+  if (!assistantState.customRankings.length) {
+    return assistantState.players.map((player, index) => ({
+      player_id: String(player.id),
+      name: player.name,
+      position: player.pos,
+      custom_rank: index + 1,
+      tier: player.tierLabel || playerTier(player, index),
+      sleeper_adp: player.sleeperAdp,
+      sleeper_var: player.sleeperVar,
+      espn_var: player.espnVar,
+      flock_var: player.flockVar,
+    }));
+  }
+  return assistantState.customRankings.map((ranking) => {
+    const player = assistantById.get(String(ranking.player_id));
+    return {
+      ...ranking,
+      name: ranking.name || player?.name || "Unknown Player",
+      position: ranking.position || player?.pos || "",
+      sleeper_adp: Number.isFinite(Number(ranking.sleeper_adp ?? ranking.sleeperAdp))
+        ? Number(ranking.sleeper_adp ?? ranking.sleeperAdp)
+        : Number(player?.sleeperAdp),
+      sleeper_var: ranking.sleeper_var ?? ranking.sleeperVar ?? player?.sleeperVar ?? null,
+      espn_var: ranking.espn_var ?? ranking.espnVar ?? player?.espnVar ?? null,
+      flock_var: ranking.flock_var ?? ranking.flockVar ?? player?.flockVar ?? null,
+    };
+  });
+};
+
+const upsertCustomTierBadge = (target, ranking) => {
+  if (!target || target.closest(`#${ASSISTANT_ID}`)) return;
+  let badge = target.querySelector(`:scope > .${CUSTOM_TIER_BADGE_CLASS}`);
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = `${CUSTOM_TIER_BADGE_CLASS} extension-ui-element`;
+    target.appendChild(badge);
+  }
+  const tier = normalizedTierNumber(ranking.tier);
+  badge.dataset.tier = ["1", "2", "3", "4"].includes(tier) ? tier : "other";
+  badge.dataset.playerId = ranking.player_id;
+  badge.textContent = `#${ranking.custom_rank} · Tier ${tier === "other" ? ranking.tier || "—" : tier}`;
+};
+
+const decorateSleeperPlayerCards = () => {
+  if (!isSleeperDraft) return;
+  if (!assistantState.customRankings.length) {
+    document.querySelectorAll(`.${CUSTOM_TIER_BADGE_CLASS}`).forEach((badge) => badge.remove());
+    return;
+  }
+  ensureCustomTierStyles();
+  const rankings = customRankingPlayers();
+  const rankingById = new Map(rankings.map((ranking) => [String(ranking.player_id), ranking]));
+  document.querySelectorAll("[data-player-id], [data-player_id], [data-playerid]").forEach((node) => {
+    const playerId = node.getAttribute("data-player-id")
+      || node.getAttribute("data-player_id")
+      || node.getAttribute("data-playerid");
+    const ranking = rankingById.get(String(playerId));
+    if (!ranking) return;
+    upsertCustomTierBadge(node, ranking);
+  });
+
+  const rankingByName = new Map(
+    rankings.filter((ranking) => ranking.name && ranking.name !== "Unknown Player")
+      .map((ranking) => [normalize(ranking.name), ranking]),
+  );
+  document.querySelectorAll("span, p").forEach((node) => {
+    if (node.children.length || node.closest(`#${ASSISTANT_ID}`)) return;
+    const ranking = rankingByName.get(normalize(node.textContent));
+    if (!ranking) return;
+    upsertCustomTierBadge(node.parentElement || node, ranking);
+  });
+
+  document.querySelectorAll(`.${CUSTOM_TIER_BADGE_CLASS}`).forEach((badge) => {
+    if (!rankingById.has(String(badge.dataset.playerId))) badge.remove();
+  });
+};
 
 const parseScriptArray = (source, variableName) => {
   const match = source.match(new RegExp(`(?:const|window\\.)\\s*${variableName}\\s*=\\s*(\\[[\\s\\S]*?\\]);`));
@@ -84,8 +249,8 @@ const parseJson = (value) => {
 const playerKey = (player) => `${normalize(player.name)}|${marketTeam(player.team)}|${String(player.pos || "").toUpperCase()}`;
 
 const sleeperDraftId = () => {
-  const match = window.location.pathname.match(/\/draft\/(?:nfl\/)?([^/?#]+)/);
-  return match?.[1] || "";
+  const match = window.location.pathname.match(/\/draft\/[^/]+\/([0-9]+)/);
+  return match ? match[1] : null;
 };
 
 const playerAliases = (player) => {
@@ -131,9 +296,56 @@ const clonePlayer = (player, index) => ({
   team: String(player.team || "FA").toUpperCase(),
   udAdp: Number.isFinite(Number(player.udAdp)) ? Number(player.udAdp) : 999,
   udPick: String(player.udPick || ""),
-  sleeperAdp: Number.isFinite(Number(player.sleeperAdp)) ? Number(player.sleeperAdp) : 999,
+  sleeperAdp: (() => {
+    const raw = player.sleeperPick || player.sleeperAdp;
+    if (typeof raw === "string" && /^\d+\.\d{1,2}$/.test(raw.trim())) {
+      const [round, pick] = raw.trim().split(".").map(Number);
+      return ((round - 1) * 12) + pick;
+    }
+    return Number.isFinite(Number(raw)) ? Number(raw) : 999;
+  })(),
   sleeperPick: String(player.sleeperPick || ""),
+  sleeperVar: Number.isFinite(Number(player.sleeperVar ?? player.sleeper_var))
+    ? Number(player.sleeperVar ?? player.sleeper_var)
+    : null,
+  espnAdp: Number.isFinite(Number(player.espnAdp ?? player.espn_adp))
+    ? Number(player.espnAdp ?? player.espn_adp)
+    : 999,
+  espnPick: String(player.espnPick || player.espn_pick || ""),
+  espnVar: Number.isFinite(Number(player.espnVar ?? player.espn_var))
+    ? Number(player.espnVar ?? player.espn_var)
+    : null,
+  espnRank: Number.isFinite(Number(player.espnRank ?? player.espn_rank))
+    ? Number(player.espnRank ?? player.espn_rank)
+    : null,
+  flockRank: Number.isFinite(Number(player.flockRank ?? player.flock_rank))
+    ? Number(player.flockRank ?? player.flock_rank)
+    : null,
+  flockVar: Number.isFinite(Number(player.flockVar ?? player.flock_var))
+    ? Number(player.flockVar ?? player.flock_var)
+    : null,
+  teamContext: String(player.teamContext ?? player.team_context ?? ""),
+  teamWins: Number.isFinite(Number(player.teamWins ?? player.team_wins))
+    ? Number(player.teamWins ?? player.team_wins)
+    : null,
+  targetShare: Number.isFinite(Number(player.targetShare ?? player.target_share ?? player.wrShare ?? player.wr_share ?? player.rbTargetShare ?? player.rb_target_share))
+    ? Number(player.targetShare ?? player.target_share ?? player.wrShare ?? player.wr_share ?? player.rbTargetShare ?? player.rb_target_share)
+    : null,
+  passingYards: Number.isFinite(Number(player.passingYards ?? player.passing_yards ?? player.passYds))
+    ? Number(player.passingYards ?? player.passing_yards ?? player.passYds)
+    : null,
+  rushingYards: Number.isFinite(Number(player.rushingYards ?? player.rushing_yards ?? player.rushYds))
+    ? Number(player.rushingYards ?? player.rushing_yards ?? player.rushYds)
+    : null,
   tierLabel: String(player.tierLabel || player.tier || ""),
+  headshotUrl: String(
+    player.headshotUrl
+      || player.headshot_url
+      || player.imageUrl
+      || player.avatar
+      || player.image
+      || "",
+  ),
 });
 
 const applySavedItems = (players, savedItems) => {
@@ -241,10 +453,87 @@ const fetchDefaultPlayers = async () => {
   if (assistantState.defaultPlayers.length) {
     return assistantState.defaultPlayers;
   }
-  const text = await fetchText(DATA_URL);
-  const players = parseScriptArray(text, "defaultPlayers").map(clonePlayer);
+  const liveUrl = `${DATA_URL}?_cb=${Date.now()}`;
+  let text;
+  try {
+    const response = await fetch(liveUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error(`${liveUrl} failed: ${response.status}`);
+    text = await response.text();
+  } catch {
+    text = await fetchText(liveUrl);
+  }
+  const basePlayers = parseScriptArray(text, "defaultPlayers").map(clonePlayer);
+  const players = await mergeLiveWebsiteMarkets(basePlayers);
   assistantState.defaultPlayers = players;
   return players;
+};
+
+const fetchFreshWebsiteJson = async (url) => {
+  const freshUrl = `${url}${url.includes("?") ? "&" : "?"}_cb=${Date.now()}`;
+  try {
+    const response = await fetch(freshUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error(`${freshUrl} failed: ${response.status}`);
+    return response.json();
+  } catch {
+    return fetchJson(freshUrl);
+  }
+};
+
+const liveMarketKey = (player) => `${normalizePlayerName(player?.name)}|${String(player?.pos || player?.position || "").toUpperCase()}`;
+
+const mergeLiveWebsiteMarkets = async (basePlayers) => {
+  const [sleeperResult, espnResult, playersResult] = await Promise.allSettled([
+    fetchFreshWebsiteJson(LIVE_SLEEPER_ADP_URL),
+    fetchFreshWebsiteJson(LIVE_ESPN_ADP_URL),
+    fetchFreshWebsiteJson(LIVE_SLEEPER_PLAYERS_URL),
+  ]);
+  const sleeperRows = sleeperResult.status === "fulfilled"
+    ? (sleeperResult.value?.players || sleeperResult.value || [])
+    : [];
+  const espnRows = espnResult.status === "fulfilled"
+    ? (espnResult.value?.players || espnResult.value || [])
+    : [];
+  const livePlayerRows = playersResult.status === "fulfilled"
+    ? (playersResult.value?.players || playersResult.value || [])
+    : [];
+  const sleeperByKey = new Map(sleeperRows.map((player) => [liveMarketKey(player), player]));
+  const espnByKey = new Map(espnRows.map((player) => [liveMarketKey(player), player]));
+  const playerByKey = new Map(livePlayerRows.map((player) => [liveMarketKey(player), player]));
+
+  return basePlayers.map((basePlayer, index) => {
+    const key = liveMarketKey(basePlayer);
+    const sleeper = sleeperByKey.get(key);
+    const espn = espnByKey.get(key);
+    const livePlayer = playerByKey.get(key);
+    return clonePlayer({
+      ...basePlayer,
+      sleeperAdp: Number.isFinite(Number(sleeper?.adp)) ? Number(sleeper.adp) : basePlayer.sleeperAdp,
+      sleeperPick: sleeper?.pick || basePlayer.sleeperPick,
+      espnAdp: Number.isFinite(Number(espn?.adp)) ? Number(espn.adp) : basePlayer.espnAdp,
+      espnPick: espn?.pick || basePlayer.espnPick,
+      espnRank: Number.isFinite(Number(espn?.pprRank)) ? Number(espn.pprRank) : basePlayer.espnRank,
+      headshotUrl: livePlayer?.headshotUrl
+        || livePlayer?.headshot_url
+        || livePlayer?.imageUrl
+        || livePlayer?.avatar
+        || livePlayer?.image
+        || basePlayer.headshotUrl,
+    }, index);
+  });
+};
+
+const mergeCachedOrderWithLivePlayers = (livePlayers, cachedPlayers) => {
+  const liveById = new Map(livePlayers.map((player) => [String(player.id), player]));
+  const liveByKey = new Map(livePlayers.map((player) => [playerKey(player), player]));
+  const used = new Set();
+  const ordered = [];
+  (cachedPlayers || []).forEach((cachedPlayer) => {
+    const livePlayer = liveById.get(String(cachedPlayer.id)) || liveByKey.get(playerKey(cachedPlayer));
+    if (!livePlayer || used.has(livePlayer.id)) return;
+    ordered.push({ ...livePlayer, tierLabel: cachedPlayer.tierLabel || livePlayer.tierLabel });
+    used.add(livePlayer.id);
+  });
+  return ordered.concat(livePlayers.filter((player) => !used.has(player.id)));
 };
 
 const fetchTeamProjections = async () => {
@@ -270,15 +559,32 @@ const saveOverlayPrefs = () => chrome.storage.local.set({
   assistantFilters: assistantState.filters,
   assistantExpanded: assistantState.expanded,
   assistantPosition: assistantState.position,
+  assistantSize: assistantState.size,
+  assistantAdvicePosition: assistantState.advicePosition,
+  assistantAdviceSize: assistantState.adviceSize,
+  assistantAdviceCollapsed: assistantState.adviceCollapsed,
 });
 
 const loadOverlayPrefs = async () => {
-  const prefs = await chrome.storage.local.get(["assistantFilter", "assistantFilters", "assistantExpanded", "assistantPosition"]);
+  const prefs = await chrome.storage.local.get([
+    "assistantFilter",
+    "assistantFilters",
+    "assistantExpanded",
+    "assistantPosition",
+    "assistantSize",
+    "assistantAdvicePosition",
+    "assistantAdviceSize",
+    "assistantAdviceCollapsed",
+  ]);
   assistantState.filters = Array.isArray(prefs.assistantFilters)
     ? prefs.assistantFilters.filter((pos) => POSITIONS.includes(pos))
     : (POSITIONS.includes(prefs.assistantFilter) ? [prefs.assistantFilter] : []);
   assistantState.expanded = prefs.assistantExpanded !== false;
   assistantState.position = prefs.assistantPosition || { x: null, y: null };
+  assistantState.size = prefs.assistantSize || { width: null, height: null };
+  assistantState.advicePosition = prefs.assistantAdvicePosition || { x: null, y: null };
+  assistantState.adviceSize = prefs.assistantAdviceSize || { width: null, height: null };
+  assistantState.adviceCollapsed = prefs.assistantAdviceCollapsed === true;
 };
 
 const loadRankings = async ({ forceDefault = false } = {}) => {
@@ -286,21 +592,26 @@ const loadRankings = async ({ forceDefault = false } = {}) => {
   assistantState.error = "";
   renderAssistant();
   try {
-    const cached = await chrome.storage.local.get(["assistantRankings"]);
+    const [cached, livePlayers] = await Promise.all([
+      chrome.storage.local.get(["assistantRankings"]),
+      fetchDefaultPlayers(),
+    ]);
     if (!forceDefault && Array.isArray(cached.assistantRankings?.players) && cached.assistantRankings.players.length) {
-      assistantState.players = cached.assistantRankings.players.map(clonePlayer);
+      assistantState.players = mergeCachedOrderWithLivePlayers(
+        livePlayers,
+        cached.assistantRankings.players.map(clonePlayer),
+      );
       assistantState.source = cached.assistantRankings.source || "Logged-in account rankings";
       assistantState.loading = false;
       renderAssistant();
       return;
     }
-    const defaults = await fetchDefaultPlayers();
-    assistantState.players = defaults;
+    assistantState.players = livePlayers;
     assistantState.source = "Using default rankings";
     assistantState.loading = false;
     assistantState.error = "Open the rankings site and click Refresh Rankings to use account rankings.";
     await chrome.storage.local.set({
-      assistantRankings: { players: defaults, source: assistantState.source, exportedAt: new Date().toISOString() },
+      assistantRankings: { players: livePlayers, source: assistantState.source, exportedAt: new Date().toISOString() },
     });
     renderAssistant();
   } catch (error) {
@@ -343,9 +654,10 @@ const pickPlayer = (pick) => ({
   pos: pick?.metadata?.position || pick?.position || "",
 });
 
-const setDraftedFromPayload = ({ names = [], keys = [], count = 0 } = {}) => {
+const setDraftedFromPayload = ({ names = [], keys = [], playerIds = [], count = 0 } = {}) => {
   assistantState.draftedNames = new Set(names);
   assistantState.draftedKeys = new Set(keys);
+  assistantState.draftedPlayerIds = new Set(playerIds.map(String));
   assistantState.draftedCount = count || names.length || keys.length;
 };
 
@@ -363,102 +675,426 @@ const loadStoredDraftPicks = async () => {
   }
 };
 
+const boundedFloatingPosition = (x, y, width, height) => ({
+  x: Math.max(8, Math.min(x, Math.max(8, window.innerWidth - width - 8))),
+  y: Math.max(8, Math.min(y, Math.max(8, window.innerHeight - height - 8))),
+});
+
+const bindSmoothPointerDrag = ({ element, handle, onStart, onStop }) => {
+  let drag = null;
+  let frame = 0;
+  let latestPosition = null;
+
+  const applyFrame = () => {
+    frame = 0;
+    if (!drag || !latestPosition) return;
+    element.style.transform = `translate3d(${latestPosition.x - drag.startX}px, ${latestPosition.y - drag.startY}px, 0)`;
+  };
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("button, input, a")) return;
+    const rect = element.getBoundingClientRect();
+    drag = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      startX: rect.left,
+      startY: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+    latestPosition = { x: rect.left, y: rect.top };
+    element.style.left = `${rect.left}px`;
+    element.style.top = `${rect.top}px`;
+    element.style.right = "auto";
+    element.style.willChange = "transform";
+    handle.setPointerCapture(event.pointerId);
+    onStart?.();
+    event.preventDefault();
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    latestPosition = boundedFloatingPosition(
+      event.clientX - drag.offsetX,
+      event.clientY - drag.offsetY,
+      drag.width,
+      drag.height,
+    );
+    if (!frame) frame = requestAnimationFrame(applyFrame);
+  });
+  const finish = (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (frame) cancelAnimationFrame(frame);
+    const finalPosition = latestPosition || { x: drag.startX, y: drag.startY };
+    element.style.transform = "none";
+    element.style.left = `${finalPosition.x}px`;
+    element.style.top = `${finalPosition.y}px`;
+    element.style.willChange = "auto";
+    try {
+      handle.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture may already be released if the browser canceled the drag.
+    }
+    drag = null;
+    latestPosition = null;
+    onStop?.(finalPosition);
+  };
+  handle.addEventListener("pointerup", finish);
+  handle.addEventListener("pointercancel", finish);
+};
+
 const renderAIAdvice = () => {
   if (!isSleeperDraft) return;
   let box = document.getElementById(AI_ADVICE_ID);
+  if (box && (assistantState.isAdviceDragging || assistantState.isAdviceResizing)) return;
   if (!box) {
     box = document.createElement("div");
     box.id = AI_ADVICE_ID;
-    box.style.cssText = [
-      "position:fixed",
-      "top:16px",
-      "left:50%",
-      "transform:translateX(-50%)",
-      "z-index:2147483647",
-      "width:min(640px,calc(100vw - 32px))",
-      "padding:12px 16px",
-      "border:1px solid #38bdf8",
-      "border-radius:12px",
-      "background:rgba(17,20,22,.96)",
-      "box-shadow:0 14px 40px rgba(0,0,0,.45)",
-      "color:#eef2f6",
-      "font:600 14px/1.45 Inter,ui-sans-serif,system-ui,sans-serif",
-    ].join(";");
+    box.className = "extension-ui-element local-draft-advice-container";
+    const header = document.createElement("div");
+    header.className = "advice-header";
+    header.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:grab;touch-action:none;user-select:none";
+    const label = document.createElement("strong");
+    label.className = "advice-label";
+    label.style.cssText = "flex:1;color:#facc15;font-size:11px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap";
+    const minimize = document.createElement("button");
+    minimize.type = "button";
+    minimize.className = "advice-minimize";
+    minimize.style.cssText = "width:26px;height:26px;border:1px solid #33404b;border-radius:999px;background:#161b20;color:#eef2f6;cursor:pointer;font:900 16px/1 system-ui";
+    const advice = document.createElement("span");
+    advice.className = "advice-content";
+    advice.style.cssText = "display:block;padding:0 14px 12px;white-space:normal;overflow-wrap:anywhere";
+    header.append(label, minimize);
+    box.append(header, advice);
     document.documentElement.appendChild(box);
+
+    minimize.addEventListener("click", () => {
+      assistantState.adviceCollapsed = !assistantState.adviceCollapsed;
+      saveOverlayPrefs();
+      renderAIAdvice();
+    });
+    bindSmoothPointerDrag({
+      element: box,
+      handle: header,
+      onStart: () => { assistantState.isAdviceDragging = true; },
+      onStop: (nextPosition) => {
+        assistantState.isAdviceDragging = false;
+        assistantState.advicePosition = nextPosition;
+        saveOverlayPrefs();
+        renderAIAdvice();
+      },
+    });
+    const finishAdviceResize = () => {
+      if (!assistantState.isAdviceResizing) return;
+      assistantState.isAdviceResizing = false;
+      saveOverlayPrefs();
+    };
+    box.addEventListener("pointerdown", (event) => {
+      if (assistantState.adviceCollapsed) return;
+      const rect = box.getBoundingClientRect();
+      if (event.clientX >= rect.right - 22 && event.clientY >= rect.bottom - 22) {
+        assistantState.isAdviceResizing = true;
+        window.addEventListener("pointerup", finishAdviceResize, { once: true });
+      }
+    });
+    box.addEventListener("pointerup", finishAdviceResize);
+    box.addEventListener("pointercancel", finishAdviceResize);
+    const resizeObserver = new ResizeObserver(() => {
+      if (assistantState.adviceCollapsed) return;
+      const rect = box.getBoundingClientRect();
+      assistantState.adviceSize = { width: rect.width, height: rect.height };
+    });
+    resizeObserver.observe(box);
   }
-  box.style.borderColor = assistantState.aiAdviceError ? "#fb7185" : "#38bdf8";
-  box.replaceChildren();
-  const label = document.createElement("strong");
-  label.textContent = assistantState.aiLoading ? "AI Draft Advice · Thinking" : "AI Draft Advice";
-  label.style.cssText = "display:block;margin-bottom:4px;color:#facc15;font-size:11px;letter-spacing:.1em;text-transform:uppercase";
-  const advice = document.createElement("span");
-  advice.textContent = assistantState.aiAdvice;
-  box.append(label, advice);
+  box.style.cssText = [
+    "position:fixed",
+    "z-index:2147483647",
+    `width:${assistantState.adviceCollapsed ? "auto" : (assistantState.adviceSize.width ? `${assistantState.adviceSize.width}px` : "min(640px,calc(100vw - 32px))")}`,
+    "height:auto",
+    `min-width:${assistantState.adviceCollapsed ? "180px" : "320px"}`,
+    `min-height:${assistantState.adviceCollapsed ? "0" : "84px"}`,
+    "max-width:calc(100vw - 16px)",
+    `max-height:${assistantState.adviceCollapsed ? "48px" : "150px"}`,
+    "box-sizing:border-box",
+    "border:1px solid",
+    `border-color:${assistantState.aiAdviceError ? "#fb7185" : "#38bdf8"}`,
+    `border-radius:${assistantState.adviceCollapsed ? "999px" : "12px"}`,
+    "background:rgba(17,20,22,.96)",
+    "box-shadow:0 14px 40px rgba(0,0,0,.45)",
+    "color:#eef2f6",
+    "font:600 14px/1.45 Inter,ui-sans-serif,system-ui,sans-serif",
+    `overflow:${assistantState.adviceCollapsed ? "hidden" : "auto"}`,
+    `resize:${assistantState.adviceCollapsed ? "none" : "both"}`,
+  ].join(";");
+  const label = box.querySelector(".advice-label");
+  label.textContent = assistantState.aiLoading
+    ? "AI Draft Advice · Thinking"
+    : `${assistantState.aiAdviceSource} Draft Advice`;
+  const minimize = box.querySelector(".advice-minimize");
+  minimize.textContent = assistantState.adviceCollapsed ? "+" : "−";
+  minimize.setAttribute("aria-label", assistantState.adviceCollapsed ? "Expand draft advice" : "Minimize draft advice");
+  const advice = box.querySelector(".advice-content");
+  if (assistantState.aiAdviceHtml && !assistantState.aiLoading) {
+    const template = document.createElement("template");
+    template.innerHTML = assistantState.aiAdviceHtml
+      .replace(/^```(?:html)?/i, "")
+      .replace(/```$/i, "")
+      .trim();
+    const allowed = new Set(["DIV", "P", "UL", "LI", "STRONG", "EM", "BR", "SPAN"]);
+    [...template.content.querySelectorAll("*")].forEach((element) => {
+      if (["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "LINK", "META"].includes(element.tagName)) {
+        element.remove();
+        return;
+      }
+      if (!allowed.has(element.tagName)) {
+        element.replaceWith(...element.childNodes);
+        return;
+      }
+      [...element.attributes].forEach((attribute) => element.removeAttribute(attribute.name));
+    });
+    advice.replaceChildren(template.content.cloneNode(true));
+  } else if (assistantState.localAdviceDetails && !assistantState.aiLoading) {
+    const details = assistantState.localAdviceDetails;
+    const recommendation = document.createElement("div");
+    recommendation.className = "local-advice-recommendation";
+    recommendation.textContent = `🎯 RECOMMENDED: ${details.name} (${details.position} - Tier ${details.tier})`;
+    const list = document.createElement("ul");
+    list.className = "local-advice-bullets";
+    [
+      ["Strategy", details.strategy],
+      ["Turn Risk", details.turn_risk],
+      ["Roster Context", details.roster_context],
+    ].forEach(([heading, value]) => {
+      const item = document.createElement("li");
+      const strong = document.createElement("strong");
+      strong.textContent = `${heading}: `;
+      item.append(strong, document.createTextNode(value || "Unavailable."));
+      list.appendChild(item);
+    });
+    advice.replaceChildren(recommendation, list);
+  } else {
+    advice.textContent = assistantState.aiAdvice;
+  }
+  advice.hidden = assistantState.adviceCollapsed;
+
+  const rect = box.getBoundingClientRect();
+  const requestedX = Number.isFinite(assistantState.advicePosition.x)
+    ? assistantState.advicePosition.x
+    : (window.innerWidth - rect.width) / 2;
+  const requestedY = Number.isFinite(assistantState.advicePosition.y)
+    ? assistantState.advicePosition.y
+    : 16;
+  const position = boundedFloatingPosition(requestedX, requestedY, rect.width, rect.height);
+  box.style.left = `${position.x}px`;
+  box.style.top = `${position.y}px`;
+  box.style.right = "auto";
+  assistantState.advicePosition = position;
 };
 
-const aiRankingPlayers = () => assistantState.players.map((player, index) => ({
-  player_id: String(player.id),
-  name: player.name,
-  position: player.pos,
-  tier: player.tierLabel || playerTier(player, index),
-}));
+const aiRankingPlayers = () => customRankingPlayers();
 
 const normalizedDraftPicks = (picks) => picks.map((pick) => ({
   player_id: String(pick?.player_id || ""),
   picked_by_user_id: String(pick?.picked_by_user_id || pick?.picked_by || ""),
   round: Number(pick?.round) || 0,
+  pick_no: Number(pick?.pick_no) || 0,
+  position: String(pick?.metadata?.position || pick?.position || "").toUpperCase(),
+  name: pickPlayerName(pick),
 }));
 
 const pickSignature = (picks) => picks
   .map((pick) => `${pick?.pick_no || ""}:${pick?.player_id || ""}:${pick?.picked_by || pick?.picked_by_user_id || ""}`)
-  .join("|");
+  .join("|") || "empty-draft";
 
-const loadSleeperLeagueSettings = async () => {
-  if (assistantState.leagueSettings) return assistantState.leagueSettings;
+const loadSleeperDraftContext = async () => {
+  if (assistantState.leagueSettings && assistantState.sleeperDraftDetails) {
+    return {
+      leagueSettings: assistantState.leagueSettings,
+      draftDetails: assistantState.sleeperDraftDetails,
+    };
+  }
   const response = await chrome.runtime.sendMessage({
     type: "FETCH_SLEEPER_DRAFT_CONTEXT",
     draftId: sleeperDraftId(),
   });
-  if (!response?.ok || !response.league) {
+  if (!response?.ok || !response.draft) {
     throw new Error(response?.error || "Sleeper league settings unavailable.");
   }
-  assistantState.leagueSettings = response.league;
-  return assistantState.leagueSettings;
+  const modules = await loadAiModules();
+  const liveDraftSettings = modules.createMockLeagueSettingsFromDraft(response.draft);
+  assistantState.leagueSettings = response.league
+    ? {
+      ...response.league,
+      total_rosters: liveDraftSettings.total_rosters,
+      draft_rounds: liveDraftSettings.draft_rounds,
+      draft_settings: liveDraftSettings.draft_settings,
+    }
+    : liveDraftSettings;
+  assistantState.sleeperDraftDetails = {
+    ...response.draft,
+    settings: {
+      ...response.draft.settings,
+      teams: Number(response.draft?.settings?.teams)
+        || Number(assistantState.leagueSettings.total_rosters)
+        || 12,
+    },
+  };
+  return {
+    leagueSettings: assistantState.leagueSettings,
+    draftDetails: assistantState.sleeperDraftDetails,
+  };
+};
+
+const localRecommendation = (contextPayload, availablePlayers = contextPayload.undraftedPlayers || []) => {
+  const top = availablePlayers[0];
+  const engineAdvice = contextPayload.local_draft_advice;
+  if (engineAdvice && (!top || String(engineAdvice.player_id) === String(top.player_id))) {
+    return engineAdvice;
+  }
+  if (!top) return null;
+  return {
+    player_id: top.player_id,
+    name: top.name,
+    position: top.position || "—",
+    tier: String(top.tier ?? top.user_tier ?? "—").replace(/^tier\s*/i, ""),
+    strategy: `Highest-ranked available player on your board (#${top.user_rank || "—"}).`,
+    turn_risk: Number.isFinite(Number(top.survivalProbability))
+      ? `${top.survivalProbability}% chance to return; opponent needs are recalculating.`
+      : "Return odds are recalculating.",
+    roster_context: contextPayload.strategic_guidance || "Continue balancing value against open starters.",
+  };
+};
+
+const updateMainPanelUI = (availablePlayers, contextPayload) => {
+  const purgedAvailablePlayers = availablePlayers.filter(
+    (player) => !assistantState.draftedPlayerIds.has(String(player.player_id))
+      && !assistantState.draftedNames.has(normalizePlayerName(player.name)),
+  );
+  const removedByLiveDetection = purgedAvailablePlayers.length !== availablePlayers.length;
+  assistantState.undraftedPlayers = purgedAvailablePlayers;
+  assistantState.tierCliffAlert = removedByLiveDetection ? "" : (contextPayload.tierCliffAlert || "");
+  assistantState.mustDraftAlert = removedByLiveDetection ? "" : (contextPayload.mustDraftAlert || "");
+  assistantState.survivalByPlayerId = Object.fromEntries(
+    purgedAvailablePlayers.map((player) => [String(player.player_id), player.survivalProbability]),
+  );
+  updatePanelStateUI();
+};
+
+const updateAdviceOverlay = (availablePlayers, contextPayload) => {
+  const purgedAvailablePlayers = availablePlayers.filter(
+    (player) => !assistantState.draftedPlayerIds.has(String(player.player_id))
+      && !assistantState.draftedNames.has(normalizePlayerName(player.name)),
+  );
+  const currentPick = assistantState.draftedCount + 1;
+  const cachedAdvice = geminiAdviceByPick.get(`${sleeperDraftId() || "draft"}:${currentPick}`);
+  if (cachedAdvice) {
+    assistantState.aiAdviceSource = "Gemini";
+    assistantState.aiAdviceHtml = cachedAdvice;
+    assistantState.localAdviceDetails = null;
+    assistantState.aiAdvice = "";
+    renderAIAdvice();
+    return;
+  }
+  if (assistantState.aiLoading) return;
+  assistantState.aiAdviceSource = "Local";
+  assistantState.aiAdviceHtml = "";
+  assistantState.localAdviceDetails = localRecommendation(contextPayload, purgedAvailablePlayers);
+  assistantState.aiAdvice = assistantState.localAdviceDetails
+    ? `Recommended: ${assistantState.localAdviceDetails.name}`
+    : "No available ranked players remain.";
+  renderAIAdvice();
+};
+
+const updateAdviceBubbleUI = (availablePlayers, _userRoster, _draftState, contextPayload) => {
+  const purgedAvailablePlayers = Array.isArray(assistantState.undraftedPlayers)
+    ? assistantState.undraftedPlayers
+    : availablePlayers.filter(
+      (player) => !assistantState.draftedPlayerIds.has(String(player.player_id)),
+    );
+  const removedByLiveDetection = purgedAvailablePlayers.length !== availablePlayers.length;
+  updateAdviceOverlay(purgedAvailablePlayers, removedByLiveDetection
+    ? { ...contextPayload, tierCliffAlert: "", tier_cliff_warning: "", mustDraftAlert: "" }
+    : contextPayload);
 };
 
 const refreshAIRecommendation = async (rawPicks) => {
   const signature = pickSignature(rawPicks);
-  if (!signature || signature === assistantState.lastAiPickSignature) return;
-  assistantState.lastAiPickSignature = signature;
+  if (signature === assistantState.lastRecommendationPickSignature) return;
+  assistantState.lastRecommendationPickSignature = signature;
 
   const requestId = ++assistantState.aiRequestId;
-  assistantState.aiLoading = true;
+  assistantState.aiLoading = false;
   assistantState.aiAdviceError = false;
-  assistantState.aiAdvice = "Analyzing the new pick against your rankings and league settings...";
+  assistantState.aiAdviceSource = "Local";
+  assistantState.aiAdvice = "";
+  assistantState.aiAdviceHtml = "";
+  assistantState.localAdviceDetails = null;
   renderAIAdvice();
 
+  let fallbackAdvice = null;
   try {
-    const [{ sleeperUserId }, leagueSettings, modules] = await Promise.all([
+    const [{ sleeperUserId }, sleeperContext, modules] = await Promise.all([
       chrome.storage.local.get(["sleeperUserId"]),
-      loadSleeperLeagueSettings(),
+      loadSleeperDraftContext(),
       loadAiModules(),
     ]);
-    if (!sleeperUserId) {
-      throw new Error("Add sleeperUserId to extension storage so roster strategy can be calculated.");
+    const resolvedUserId = String(sleeperUserId || "");
+
+    const draftState = {
+      picks: normalizedDraftPicks(rawPicks).map((pick, index) => ({
+        ...pick,
+        pick_no: pick.pick_no || index + 1,
+      })),
+      draftDetails: sleeperContext.draftDetails,
+    };
+    const contextPayload = modules.onPickUpdate(
+      draftState,
+      aiRankingPlayers(),
+      resolvedUserId,
+      sleeperContext.leagueSettings,
+      {
+        updateMainPanelUI,
+        updateAdviceBubbleUI,
+      },
+    );
+    fallbackAdvice = localRecommendation(contextPayload, contextPayload.undraftedPlayers);
+
+    const geminiPayload = contextPayload.ai_advice_payload || {
+      userRoster: contextPayload.user_roster_counts,
+      currentPick: contextPayload.next_pick_number - contextPayload.picks_until_user_turn,
+      nextPick: contextPayload.next_pick_number,
+      topAvailablePlayers: contextPayload.top_available_targets,
+    };
+    const cacheKey = `${sleeperDraftId() || "draft"}:${geminiPayload.currentPick}`;
+    const cachedAdvice = geminiAdviceByPick.get(cacheKey);
+    if (cachedAdvice) {
+      if (requestId !== assistantState.aiRequestId) return;
+      assistantState.aiAdviceSource = "Gemini";
+      assistantState.localAdviceDetails = null;
+      assistantState.aiAdviceHtml = cachedAdvice;
+      assistantState.aiAdvice = "";
+      renderAIAdvice();
+      return;
     }
 
-    const contextPayload = modules.generateDraftContextPayload(
-      { picks: normalizedDraftPicks(rawPicks) },
-      aiRankingPlayers(),
-      sleeperUserId,
-      leagueSettings,
-    );
-    const recommendation = await modules.getAIRecommendation(contextPayload);
+    assistantState.aiLoading = true;
+    assistantState.aiAdviceSource = "Gemini";
+    assistantState.localAdviceDetails = null;
+    assistantState.aiAdviceHtml = "";
+    assistantState.aiAdvice = "⚡ Gemini Strategist Analyzing Board...";
+    renderAIAdvice();
+    const recommendation = await modules.getAIRecommendation(geminiPayload);
     if (requestId !== assistantState.aiRequestId) return;
-    assistantState.aiAdvice = recommendation;
+    geminiAdviceByPick.set(cacheKey, recommendation);
+    assistantState.aiAdviceHtml = recommendation;
+    assistantState.aiAdvice = "";
   } catch (error) {
     if (requestId !== assistantState.aiRequestId) return;
-    assistantState.aiAdvice = error.message || "AI recommendation unavailable.";
+    assistantState.aiAdviceSource = fallbackAdvice ? "Local Fallback" : "Local";
+    assistantState.aiAdviceHtml = "";
+    assistantState.localAdviceDetails = fallbackAdvice;
+    assistantState.aiAdvice = fallbackAdvice
+      ? `Recommended: ${fallbackAdvice.name}`
+      : error.message || "Recommendation unavailable.";
     assistantState.aiAdviceError = true;
   } finally {
     if (requestId === assistantState.aiRequestId) {
@@ -468,164 +1104,87 @@ const refreshAIRecommendation = async (rawPicks) => {
   }
 };
 
-const refreshSleeperDraftPicks = async () => {
-  const draftId = sleeperDraftId();
-  if (!draftId || assistantState.draftPicksLoading) {
-    return;
-  }
-  assistantState.lastDraftPicksFetch = Date.now();
-  assistantState.draftPicksLoading = true;
-  try {
-    const response = await chrome.runtime.sendMessage({ type: "FETCH_SLEEPER_DRAFT_PICKS", draftId });
-    if (!response?.ok || !Array.isArray(response.picks)) {
-      throw new Error(response?.error || "Sleeper picks unavailable.");
-    }
-    const draftedPlayers = response.picks
-      .filter((pick) => pick?.player_id)
-      .map(pickPlayer)
-      .filter((player) => player.name);
-    const names = draftedPlayers.map((player) => normalize(player.name));
-    const keys = draftedPlayers.map(playerKey);
-    const payload = {
-      names,
-      keys,
-      count: draftedPlayers.length,
-      source: "sleeper-api",
-      updatedAt: new Date().toISOString(),
-    };
-    setDraftedFromPayload(payload);
-    assistantState.draftPicksReady = true;
-    assistantState.draftPicksError = "";
-    await chrome.storage.local.set({ [sleeperDraftStorageKey()]: payload });
-    renderAssistant();
-    refreshAIRecommendation(response.picks);
-  } catch (error) {
-    assistantState.draftPicksError = error.message || "Sleeper picks unavailable.";
-  } finally {
-    assistantState.draftPicksLoading = false;
-  }
+const fetchLiveSleeperPicks = async (draftId) => {
+  const cacheBuster = Date.now();
+  const url = `https://api.sleeper.app/v1/draft/${encodeURIComponent(draftId)}/picks?_cb=${cacheBuster}`;
+  const response = await fetch(url);
+  if (response.status !== 200) throw new Error(`Sleeper picks failed: ${response.status}`);
+  const picks = await response.json();
+  if (!Array.isArray(picks)) throw new Error("Sleeper picks response was not an array");
+  console.log("[DraftAssistant] Polled picks count:", picks.length);
+  return picks;
 };
 
-const requestFastDraftRefresh = () => {
-  if (!isSleeperDraft) {
-    return;
-  }
-  const now = Date.now();
-  if (now - assistantState.lastDraftPicksFetch < 650) {
-    return;
-  }
-  refreshSleeperDraftPicks();
-};
-
-const sleeperBoardBottom = () => {
-  const controlsTop = Array.from(document.body.querySelectorAll("div, span, button, input"))
-    .map((node) => {
-      const rect = node.getBoundingClientRect();
-      const text = normalize(node.getAttribute("placeholder") || node.innerText || node.textContent || "");
-      return { rect, text };
-    })
-    .filter(({ rect, text }) => (
-      rect.top > window.innerHeight * 0.35
-      && rect.top < window.innerHeight
-      && (
-        text.includes("findplayer")
-        || text.includes("watchlist")
-        || text.includes("showdrafted")
-        || text.includes("rookiesonly")
-        || text.includes("queue")
-        || text.includes("roster")
-        || text.includes("chat")
-      )
-    ))
-    .map(({ rect }) => rect.top);
-  if (controlsTop.length) {
-    return Math.max(260, Math.min(...controlsTop) - 8);
-  }
-  return Math.min(window.innerHeight * 0.58, 640);
-};
-
-const sleeperDraftedNames = () => {
-  const names = new Set();
-  if (!assistantState.players.length) {
-    return names;
-  }
-  const boardBottom = sleeperBoardBottom();
-  const ignoredAncestor = (node) => Boolean(node.closest(`#${ASSISTANT_ID}, input, textarea`));
-  const draftTileTexts = Array.from(document.body.querySelectorAll("div, span, button"))
-    .filter((node) => !ignoredAncestor(node))
-    .filter((node) => {
-      const rect = node.getBoundingClientRect();
-      const rawText = (node.innerText || node.textContent || "").trim().toLowerCase();
-      return rect.width >= 28
-        && rect.height >= 12
-        && rect.width <= 280
-        && rect.height <= 92
-        && rect.top >= 0
-        && rect.top < boardBottom
-        && rect.left >= 0
-        && rect.left < window.innerWidth
-        && /\b\d{1,2}\.\d{1,2}\b/.test(rawText)
-        && !rawText.includes("projected pick")
-        && !rawText.includes("find player")
-        && !rawText.includes("watchlist")
-        && !rawText.includes("show drafted");
-    })
-    .map((node) => normalize((node.innerText || node.textContent || "").trim()))
-    .filter((text) => text.length >= 3 && text.length <= 160);
-  assistantState.players.forEach((player) => {
-    const aliases = playerAliases(player);
-    const teams = teamAliases(player.team);
-    const pos = normalize(player.pos);
-    if (draftTileTexts.some((text) => (
-      aliases.some((alias) => text.includes(alias))
-      && text.includes(pos)
-      && teams.some((team) => text.includes(team))
-    ))) {
-      names.add(normalize(player.name));
-    }
+const purgeDraftedIdsFromUi = (draftedIds, draftedNames = assistantState.draftedNames) => {
+  const normalizedIds = new Set([...draftedIds].map(String));
+  const normalizedNames = new Set([...draftedNames].map(normalizePlayerName));
+  const currentUndrafted = customRankingPlayers();
+  assistantState.undraftedPlayers = currentUndrafted.filter(
+    (player) => !normalizedIds.has(String(player.player_id))
+      && !normalizedNames.has(normalizePlayerName(player.name)),
+  );
+  assistantState.survivalByPlayerId = Object.fromEntries(
+    Object.entries(assistantState.survivalByPlayerId)
+      .filter(([playerId]) => !normalizedIds.has(String(playerId))),
+  );
+  assistantState.draftedCount = assistantState.draftedPlayerIds.size;
+  assistantState.tierCliffAlert = "";
+  assistantState.mustDraftAlert = "";
+  updatePanelStateUI();
+  updateAdviceOverlay(assistantState.undraftedPlayers, {
+    undraftedPlayers: assistantState.undraftedPlayers,
+    top_available_targets: assistantState.undraftedPlayers.slice(0, 3),
+    tierCliffAlert: "",
+    tier_cliff_warning: "",
+    strategic_guidance: "Recalculating from the latest detected pick.",
   });
-  return names;
 };
 
-const refreshDrafted = () => {
-  if (!isSleeperDraft) {
-    assistantState.draftedNames = new Set();
-    assistantState.draftedKeys = new Set();
-    assistantState.visibleDraftedNames = new Set();
-    assistantState.draftedCount = 0;
-    return;
-  }
-  const visibleDraftedNames = sleeperDraftedNames();
-  assistantState.visibleDraftedNames = visibleDraftedNames;
-  if (!assistantState.draftPicksReady) {
-    assistantState.draftedNames = new Set(visibleDraftedNames);
-    assistantState.draftedKeys = new Set();
-    assistantState.draftedCount = visibleDraftedNames.size;
-    return;
-  }
-  if (assistantState.draftedCount === 0) {
-    visibleDraftedNames.forEach((name) => assistantState.draftedNames.add(name));
-    assistantState.draftedCount = assistantState.draftedNames.size;
-  }
+const syncDraftPicks = async () => {
+  const draftId = sleeperDraftId();
+  if (!draftId) throw new Error("Sleeper draft ID is missing from the URL");
+  const livePicks = await fetchLiveSleeperPicks(draftId);
+  const completedPicks = livePicks
+    .filter((pick) => pick?.player_id && Number(pick?.pick_no) > 0)
+    .map((pick) => ({ ...pick, player_id: String(pick.player_id) }))
+    .sort((a, b) => Number(a.pick_no) - Number(b.pick_no));
+  const completedIds = new Set(completedPicks.map((pick) => String(pick.player_id)));
+  const draftedPlayers = completedPicks.map(pickPlayer).filter((player) => player.name);
+  const names = draftedPlayers.map((player) => normalizePlayerName(player.name));
+  const keys = draftedPlayers.map(playerKey);
+  const payload = {
+    names,
+    keys,
+    playerIds: [...completedIds],
+    count: completedIds.size,
+    source: "sleeper-api",
+    updatedAt: new Date().toISOString(),
+  };
+  setDraftedFromPayload(payload);
+  assistantState.draftPicksReady = true;
+  assistantState.draftPicksError = "";
+  purgeDraftedIdsFromUi(completedIds, names);
+  chrome.storage.local.set({ [sleeperDraftStorageKey()]: payload });
+  refreshAIRecommendation(completedPicks);
 };
 
 const isPlayerDrafted = (player) => {
-  const visibleDrafted = assistantState.visibleDraftedNames.has(normalize(player.name));
-  if (assistantState.draftPicksReady) {
-    return visibleDrafted
-      || assistantState.draftedKeys.has(playerKey(player))
-      || playerAliases(player).some((alias) => assistantState.draftedNames.has(alias));
-  }
-  return visibleDrafted || assistantState.draftedNames.has(normalize(player.name));
+  return assistantState.draftedPlayerIds.has(String(player.id))
+    || assistantState.draftedKeys.has(playerKey(player))
+    || assistantState.draftedNames.has(normalizePlayerName(player.name))
+    || playerAliases(player).some((alias) => assistantState.draftedNames.has(alias));
 };
 
 const visiblePlayers = () => {
-  refreshDrafted();
   const search = normalize(assistantState.search);
+  const liveUndraftedIds = Array.isArray(assistantState.undraftedPlayers)
+    ? new Set(assistantState.undraftedPlayers.map((player) => String(player.player_id)))
+    : null;
   return assistantState.players
+    .filter((player) => !liveUndraftedIds || liveUndraftedIds.has(String(player.id)))
+    .filter((player) => !isPlayerDrafted(player))
     .filter((player) => assistantState.filters.length === 0 || assistantState.filters.includes(player.pos))
     .filter((player) => !search || normalize(player.name).includes(search))
-    .filter((player) => !isPlayerDrafted(player))
     .slice(0, 60);
 };
 
@@ -716,6 +1275,15 @@ const formatWhole = (value) => Number.isFinite(Number(value)) ? Math.round(Numbe
 
 const formatLine = (prop) => `${prop.label}: ${formatWhole(prop.line)}`;
 
+const formatAdpWithPick = (adp, pick) => {
+  const overall = Number.isFinite(Number(adp)) && Number(adp) !== 999 ? Math.round(Number(adp)) : null;
+  const match = String(pick || "").match(/^(\d+)\.(\d{1,2})$/);
+  const roundPick = match ? `${match[1]}.${match[2].padStart(2, "0")}` : "";
+  if (overall !== null && roundPick) return `${overall} (${roundPick})`;
+  if (overall !== null) return String(overall);
+  return roundPick || "N/A";
+};
+
 const rankChip = (rank) => rank ? `<em class="rank-chip">${rank.rank}/${rank.total}</em>` : "";
 
 const factHtml = ({ label, value, sub = "", className = "rank-mid", rank = null }) => `
@@ -738,21 +1306,38 @@ const escapeHtml = (value = "") => String(value)
 const overlayPositionStyle = () => {
   const { x, y } = assistantState.position || {};
   if (Number.isFinite(x) && Number.isFinite(y)) {
-    return `left:${Math.max(8, Math.min(x, window.innerWidth - 92))}px;top:${Math.max(8, Math.min(y, window.innerHeight - 48))}px;right:auto;`;
+    return `left:${x}px;top:${y}px;right:auto;`;
   }
   return "right:14px;top:86px;";
 };
 
+const panelSizeStyle = () => {
+  if (!assistantState.expanded) return "";
+  const width = Number(assistantState.size?.width);
+  const height = Number(assistantState.size?.height);
+  return `${Number.isFinite(width) ? `width:${width}px;` : ""}${Number.isFinite(height) ? `height:${height}px;` : ""}`;
+};
+
 const styles = `
   :host { all: initial; color-scheme: dark; }
+  #draft-assistant-panel {
+    position: fixed !important;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
   .panel {
     position: fixed;
     display: flex;
     flex-direction: column;
     z-index: 2147483647;
     width: min(360px, calc(100vw - 28px));
-    max-height: min(720px, calc(100vh - 110px));
-    overflow: hidden;
+    height: min(720px, calc(100vh - 110px));
+    min-width: 320px;
+    min-height: 400px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    overflow: auto;
+    resize: both;
     border: 1px solid #29313a;
     border-radius: 8px;
     background: #0f1316;
@@ -762,7 +1347,11 @@ const styles = `
   }
   .panel.collapsed {
     width: auto;
+    height: auto;
     min-width: 174px;
+    min-height: 0;
+    overflow: hidden;
+    resize: none;
   }
   .head {
     display: grid;
@@ -771,7 +1360,7 @@ const styles = `
     align-items: center;
     border-bottom: 1px solid #29313a;
     padding: 9px;
-    cursor: move;
+    cursor: grab;
     touch-action: none;
     user-select: none;
   }
@@ -850,6 +1439,44 @@ const styles = `
   .status.error {
     color: #f87171;
   }
+  .tier-cliff-alert {
+    margin: 8px 9px 0;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    background: linear-gradient(90deg, rgba(180, 83, 9, .36), rgba(127, 29, 29, .3));
+    color: #fef3c7;
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, .12), 0 8px 24px rgba(0, 0, 0, .28);
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.35;
+    padding: 9px 10px;
+  }
+  .must-draft-alert {
+    margin: 8px 9px 0;
+    border: 1px solid #fb7185;
+    border-radius: 8px;
+    background: linear-gradient(90deg, rgba(159, 18, 57, .45), rgba(127, 29, 29, .35));
+    color: #ffe4e6;
+    box-shadow: 0 0 18px rgba(244, 63, 94, .2);
+    font-size: 12px;
+    font-weight: 950;
+    line-height: 1.35;
+    padding: 9px 10px;
+  }
+  .survival-tag {
+    flex: 0 0 auto;
+    border: 1px solid;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1.25;
+    padding: 3px 6px;
+    white-space: nowrap;
+  }
+  .survival-high { border-color: #4ade80; background: rgba(20, 83, 45, .7); color: #bbf7d0; }
+  .survival-mid { border-color: #fb923c; background: rgba(124, 45, 18, .7); color: #fed7aa; }
+  .survival-low { border-color: #fb7185; background: rgba(136, 19, 55, .75); color: #ffe4e6; }
+  .survival-na { border-color: #64748b; background: rgba(30, 41, 59, .75); color: #cbd5e1; }
   .list {
     flex: 1 1 auto;
     min-height: 112px;
@@ -858,10 +1485,11 @@ const styles = `
     scrollbar-width: thin;
   }
   .row {
-    display: grid;
-    grid-template-columns: 38px minmax(0, 1fr) auto;
+    display: flex;
     gap: 8px;
     align-items: center;
+    width: 100%;
+    box-sizing: border-box;
     border-top: 1px solid #20272e;
     padding: 7px 9px;
     cursor: pointer;
@@ -875,19 +1503,33 @@ const styles = `
     outline-offset: -1px;
   }
   .rank {
+    flex: 0 0 38px;
     color: #facc15;
     font-size: 17px;
     font-weight: 950;
     text-align: center;
   }
-  .name { overflow: hidden; }
+  .player-avatar {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    margin-right: 8px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #20272e;
+  }
+  .name {
+    flex: 1;
+    min-width: 0;
+    overflow: visible;
+  }
   .name strong {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     align-items: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: visible;
+    white-space: normal;
     font-size: 14px;
     font-weight: 950;
   }
@@ -948,14 +1590,6 @@ const styles = `
     font-size: 11px;
     font-weight: 850;
   }
-  .tag {
-    border-radius: 999px;
-    background: rgba(56, 189, 248, .12);
-    color: #38bdf8;
-    font-size: 10px;
-    font-weight: 950;
-    padding: 4px 7px;
-  }
   .empty {
     color: #96a1ad;
     font-size: 12px;
@@ -983,6 +1617,12 @@ const styles = `
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     align-items: start;
+  }
+  .card-player {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
   }
   .card h3 {
     margin: 0;
@@ -1058,6 +1698,8 @@ const styles = `
   .collapsed .toolbar,
   .collapsed .filters,
   .collapsed .status,
+  .collapsed .tier-cliff-alert,
+  .collapsed .must-draft-alert,
   .collapsed .list,
   .collapsed .card {
     display: none;
@@ -1075,8 +1717,27 @@ const cardHtml = () => {
   const future = teamFuture(player.team);
   const share = ["RB", "WR", "TE"].includes(player.pos) ? teamTargetShare(projection, player.pos) : null;
   const props = playerProps(player).slice(0, 3);
-  const udVariance = Number.isFinite(player.udAdp) && player.udAdp !== 999 ? Math.round(player.udAdp - (index + 1)) : null;
-  const sleeperVariance = Number.isFinite(player.sleeperAdp) && player.sleeperAdp !== 999 ? Math.round(player.sleeperAdp - (index + 1)) : null;
+  const sleeperVariance = Number.isFinite(player.sleeperVar)
+    ? player.sleeperVar
+    : Number.isFinite(player.sleeperAdp) && player.sleeperAdp !== 999
+      ? Math.round(player.sleeperAdp - (index + 1))
+      : null;
+  const espnVariance = Number.isFinite(player.espnVar)
+    ? player.espnVar
+    : Number.isFinite(player.espnAdp) && player.espnAdp !== 999
+      ? Math.round(player.espnAdp - (index + 1))
+      : null;
+  const flockVariance = Number.isFinite(player.flockVar)
+    ? player.flockVar
+    : Number.isFinite(player.flockRank)
+      ? Math.round(player.flockRank - (index + 1))
+      : null;
+  const teamWinsValue = Number.isFinite(player.teamWins) ? player.teamWins : future?.line;
+  const shareValue = Number.isFinite(player.targetShare)
+    ? (player.targetShare <= 1 ? Math.round(player.targetShare * 100) : Math.round(player.targetShare))
+    : share;
+  const passingYardsValue = Number.isFinite(player.passingYards) ? player.passingYards : projection?.offense?.passYds;
+  const rushingYardsValue = Number.isFinite(player.rushingYards) ? player.rushingYards : projection?.offense?.rushYds;
   const winsRank = rankTeamFuture(player.team);
   const shareRank = rankTeamProjection(player.team, (row) => {
     const total = Number(row.offense?.targets);
@@ -1087,14 +1748,20 @@ const cardHtml = () => {
   const rushRank = rankTeamProjection(player.team, (row) => row.offense?.rushYds);
   const facts = [
     { label: "My Rank", value: String(index + 1), className: rankClass(index + 1, assistantState.players.length) },
-    { label: "Underdog", value: player.udPick || String(player.udAdp), className: rankClass(player.udAdp, assistantState.players.length) },
-    { label: "UD Var", value: udVariance === null ? "N/A" : `${udVariance > 0 ? "+" : ""}${udVariance}`, className: varianceClass(udVariance) },
-    { label: "Sleeper", value: player.sleeperPick || String(player.sleeperAdp || "N/A"), className: rankClass(player.sleeperAdp, assistantState.players.length) },
+    { label: "My Tier", value: tier, className: tierClass(tier) },
+    { label: "Sleeper", value: formatAdpWithPick(player.sleeperAdp, player.sleeperPick), className: rankClass(player.sleeperAdp, assistantState.players.length) },
     { label: "Sleeper Var", value: sleeperVariance === null ? "N/A" : `${sleeperVariance > 0 ? "+" : ""}${sleeperVariance}`, className: varianceClass(sleeperVariance) },
-    { label: "Team Wins", value: future ? formatWhole(future.line) : "N/A", sub: future ? `${future.overOdds || ""} / ${future.underOdds || ""}`.trim() : "", className: rankClass(winsRank?.rank, winsRank?.total), rank: winsRank },
-    { label: `${player.pos} Share`, value: share === null ? "N/A" : `${share}%`, className: rankClass(shareRank?.rank, shareRank?.total), rank: shareRank },
-    { label: "Clay Pass", value: formatWhole(projection?.offense?.passYds), sub: projection?.offense ? `${formatWhole(projection.offense.passAtt)} att / ${formatWhole(projection.offense.passTd)} TD` : "", className: rankClass(passRank?.rank, passRank?.total), rank: passRank },
-    { label: "Clay Rush", value: formatWhole(projection?.offense?.rushYds), sub: projection?.offense ? `${formatWhole(projection.offense.rushAtt)} att / ${formatWhole(projection.offense.rushTd)} TD` : "", className: rankClass(rushRank?.rank, rushRank?.total), rank: rushRank },
+    { label: "ESPN", value: formatAdpWithPick(player.espnAdp, player.espnPick), className: rankClass(player.espnAdp, assistantState.players.length) },
+    { label: "ESPN Var", value: espnVariance === null ? "N/A" : `${espnVariance > 0 ? "+" : ""}${espnVariance}`, className: varianceClass(espnVariance) },
+    ...(Number.isFinite(player.flockRank) ? [
+      { label: "Flock Rank", value: String(Math.round(player.flockRank)), className: rankClass(player.flockRank, assistantState.players.length) },
+      { label: "Flock Var", value: flockVariance === null ? "N/A" : `${flockVariance > 0 ? "+" : ""}${flockVariance}`, className: varianceClass(flockVariance) },
+    ] : []),
+    ...(player.teamContext ? [{ label: "Team Context", value: player.teamContext, className: "rank-mid" }] : []),
+    { label: "Team Wins", value: formatWhole(teamWinsValue), sub: future ? `${future.overOdds || ""} / ${future.underOdds || ""}`.trim() : "", className: rankClass(winsRank?.rank, winsRank?.total), rank: winsRank },
+    { label: player.pos === "RB" ? "RB Target Share" : `${player.pos} Share`, value: Number.isFinite(shareValue) ? `${shareValue}%` : "N/A", className: rankClass(shareRank?.rank, shareRank?.total), rank: shareRank },
+    { label: "Passing Yards", value: formatWhole(passingYardsValue), sub: projection?.offense ? `${formatWhole(projection.offense.passAtt)} att / ${formatWhole(projection.offense.passTd)} TD` : "", className: rankClass(passRank?.rank, passRank?.total), rank: passRank },
+    { label: "Rushing Yards", value: formatWhole(rushingYardsValue), sub: projection?.offense ? `${formatWhole(projection.offense.rushAtt)} att / ${formatWhole(projection.offense.rushTd)} TD` : "", className: rankClass(rushRank?.rank, rushRank?.total), rank: rushRank },
     ...props.map((prop) => {
       const propRank = rankPropLine(player, prop);
       return {
@@ -1109,9 +1776,12 @@ const cardHtml = () => {
   return `
     <div class="card">
       <div class="card-head">
-        <span>
-          <h3>${escapeHtml(player.name)}</h3>
-          <small>${player.pos} / ${player.team} · <b class="tier-badge ${tierClass(tier)}">${escapeHtml(tier)}</b></small>
+        <span class="card-player">
+          ${player.headshotUrl ? `<img class="player-avatar" src="${escapeHtml(player.headshotUrl)}" alt="" onerror="this.style.display='none';">` : ""}
+          <span>
+            <h3>${escapeHtml(player.name)}</h3>
+            <small>${player.pos} / ${player.team} · <b class="tier-badge ${tierClass(tier)}">${escapeHtml(tier)}</b></small>
+          </span>
         </span>
         <button data-action="close-card">Close</button>
       </div>
@@ -1122,6 +1792,83 @@ const cardHtml = () => {
   `;
 };
 
+const survivalTagHtml = (playerId) => {
+  const probability = assistantState.survivalByPlayerId[String(playerId)];
+  if (!Number.isFinite(probability)) {
+    return `<b class="survival-tag survival-na">—% Next Pick</b>`;
+  }
+  const className = probability > 60
+    ? "survival-high"
+    : probability >= 30 ? "survival-mid" : "survival-low";
+  return `<b class="survival-tag ${className}">${probability}% Next Pick</b>`;
+};
+
+const playerListHtml = (players) => `
+  ${!assistantState.error && players.length === 0 ? `<div class="empty">No available players detected.</div>` : ""}
+  ${players.map((player, index) => `
+    <div class="row ${index === 0 ? "best" : ""}" data-player="${escapeHtml(player.id)}">
+      <span class="rank">${assistantState.players.findIndex((item) => item.id === player.id) + 1}</span>
+      ${player.headshotUrl ? `<img class="player-avatar" src="${escapeHtml(player.headshotUrl)}" alt="" onerror="this.style.display='none';">` : ""}
+      <span class="name">
+        ${(() => {
+          const tier = playerTier(player, assistantState.players.findIndex((item) => item.id === player.id));
+          return `<strong>${escapeHtml(player.name)} <b class="tier-badge ${tierClass(tier)}">${escapeHtml(tier)}</b>${survivalTagHtml(player.id)}</strong>`;
+        })()}
+        <span>${player.pos} / ${player.team}</span>
+      </span>
+    </div>
+  `).join("")}
+`;
+
+const bindPlayerRows = (shadowRoot) => {
+  shadowRoot.querySelectorAll("[data-player]").forEach((row) => {
+    row.addEventListener("click", () => {
+      assistantState.selectedPlayerId = row.dataset.player;
+      renderAssistant();
+    });
+  });
+};
+
+const updateListUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
+  const list = shadowRoot?.querySelector(".list");
+  if (!list) return;
+  const previousScrollTop = list.scrollTop;
+  list.innerHTML = playerListHtml(visiblePlayers());
+  list.scrollTop = previousScrollTop;
+  bindPlayerRows(shadowRoot);
+};
+
+const updatePanelStateUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
+  if (!shadowRoot?.querySelector("#draft-assistant-panel")) {
+    renderAssistant();
+    return;
+  }
+  const players = visiblePlayers();
+  const best = players[0];
+  const subtitle = shadowRoot.querySelector("[data-role='best-player']");
+  if (subtitle) {
+    subtitle.textContent = assistantState.loading
+      ? "Loading rankings"
+      : best ? `Best: ${best.name}` : "No available players";
+  }
+  const status = shadowRoot.querySelector("[data-role='draft-status']");
+  if (status) {
+    status.classList.toggle("error", Boolean(assistantState.error));
+    status.textContent = `${assistantState.error || assistantState.source} · [${assistantState.draftedCount}] DRAFTED DETECTED`;
+  }
+  const mustDraft = shadowRoot.querySelector("[data-role='must-draft-alert']");
+  if (mustDraft) {
+    mustDraft.textContent = assistantState.mustDraftAlert;
+    mustDraft.hidden = !assistantState.mustDraftAlert;
+  }
+  const tierCliff = shadowRoot.querySelector("[data-role='tier-cliff-alert']");
+  if (tierCliff) {
+    tierCliff.textContent = assistantState.tierCliffAlert;
+    tierCliff.hidden = !assistantState.tierCliffAlert;
+  }
+  updateListUI(shadowRoot);
+};
+
 const renderAssistant = () => {
   if (!isSleeperDraft) {
     return;
@@ -1130,51 +1877,48 @@ const renderAssistant = () => {
   if (!root) {
     root = document.createElement("div");
     root.id = ASSISTANT_ID;
+    root.className = "extension-ui-element";
     root.attachShadow({ mode: "open" });
     document.documentElement.appendChild(root);
   }
   const previousList = root.shadowRoot.querySelector(".list");
   const previousScrollTop = previousList?.scrollTop || 0;
+  const focusedSearch = root.shadowRoot.activeElement?.id === "draft-assistant-search";
+  const priorSearchSelection = focusedSearch
+    ? {
+      start: root.shadowRoot.activeElement.selectionStart,
+      end: root.shadowRoot.activeElement.selectionEnd,
+    }
+    : null;
   const players = visiblePlayers();
   const best = players[0];
   root.shadowRoot.innerHTML = `
     <style>${styles}</style>
-    <section class="panel ${assistantState.expanded ? "" : "collapsed"}" style="${overlayPositionStyle()}">
+    <section id="draft-assistant-panel" class="panel extension-ui-element ${assistantState.expanded ? "" : "collapsed"}" style="${overlayPositionStyle()}${panelSizeStyle()}">
       <div class="head" data-drag-handle>
         <span class="title">
           <strong>Draft Assistant</strong>
-          <span>${assistantState.loading ? "Loading rankings" : best ? `Best: ${escapeHtml(best.name)}` : "No available players"}</span>
+          <span data-role="best-player">${assistantState.loading ? "Loading rankings" : best ? `Best: ${escapeHtml(best.name)}` : "No available players"}</span>
         </span>
         <button data-action="refresh">Refresh</button>
         <button data-action="toggle">${assistantState.expanded ? "Hide" : "Show"}</button>
       </div>
+      <div class="must-draft-alert" data-role="must-draft-alert" ${assistantState.mustDraftAlert ? "" : "hidden"}>${escapeHtml(assistantState.mustDraftAlert)}</div>
+      <div class="tier-cliff-alert" data-role="tier-cliff-alert" ${assistantState.tierCliffAlert ? "" : "hidden"}>${escapeHtml(assistantState.tierCliffAlert)}</div>
       <div class="toolbar">
-        <input value="${escapeHtml(assistantState.search)}" placeholder="Search player">
+        <input id="draft-assistant-search" value="${escapeHtml(assistantState.search)}" placeholder="Search player">
         <button data-action="open-board">Board</button>
       </div>
       <div class="filters">
         <button data-filter="ALL" class="${assistantState.filters.length === 0 ? "active" : ""}">ALL</button>
         ${POSITIONS.map((pos) => `<button data-filter="${pos}" class="${assistantState.filters.includes(pos) ? "active" : ""}">${pos}</button>`).join("")}
       </div>
-      <div class="status ${assistantState.error ? "error" : ""}">
-        ${escapeHtml(assistantState.error || assistantState.source)} · ${assistantState.draftedCount} drafted detected${assistantState.draftPicksReady ? "" : " · visible fallback"}
+      <div class="status ${assistantState.error ? "error" : ""}" data-role="draft-status">
+        ${escapeHtml(assistantState.error || assistantState.source)} · [${assistantState.draftedCount}] DRAFTED DETECTED
       </div>
       ${cardHtml()}
       <div class="list">
-        ${!assistantState.error && players.length === 0 ? `<div class="empty">No available players detected.</div>` : ""}
-        ${players.map((player, index) => `
-          <div class="row ${index === 0 ? "best" : ""}" data-player="${escapeHtml(player.id)}">
-            <span class="rank">${assistantState.players.findIndex((item) => item.id === player.id) + 1}</span>
-            <span class="name">
-              ${(() => {
-                const tier = playerTier(player, assistantState.players.findIndex((item) => item.id === player.id));
-                return `<strong>${escapeHtml(player.name)} <b class="tier-badge ${tierClass(tier)}">${escapeHtml(tier)}</b></strong>`;
-              })()}
-              <span>${player.pos} / ${player.team}</span>
-            </span>
-            <span class="tag">${index === 0 ? "BEST" : escapeHtml(player.udPick || "")}</span>
-          </div>
-        `).join("")}
+        ${playerListHtml(players)}
       </div>
     </section>
   `;
@@ -1183,6 +1927,11 @@ const renderAssistant = () => {
     nextList.scrollTop = previousScrollTop;
   }
   bindAssistant(root.shadowRoot);
+  if (focusedSearch) {
+    const searchInput = root.shadowRoot.querySelector("#draft-assistant-search");
+    searchInput?.focus({ preventScroll: true });
+    searchInput?.setSelectionRange(priorSearchSelection.start, priorSearchSelection.end);
+  }
 };
 
 const bindAssistant = (shadowRoot) => {
@@ -1200,9 +1949,9 @@ const bindAssistant = (shadowRoot) => {
       renderAssistant();
     });
   });
-  shadowRoot.querySelector("input")?.addEventListener("input", (event) => {
+  shadowRoot.querySelector("#draft-assistant-search")?.addEventListener("input", (event) => {
     assistantState.search = event.target.value;
-    renderAssistant();
+    updateListUI(shadowRoot);
   });
   shadowRoot.querySelector("[data-action='toggle']")?.addEventListener("click", () => {
     assistantState.expanded = !assistantState.expanded;
@@ -1210,7 +1959,9 @@ const bindAssistant = (shadowRoot) => {
     renderAssistant();
   });
   shadowRoot.querySelector("[data-action='refresh']")?.addEventListener("click", () => {
-    syncRankingsFromBoardTab();
+    syncDraftPicks().catch((error) => {
+      console.error("[DraftAssistant] Fetch error:", error);
+    });
   });
   shadowRoot.querySelector("[data-action='open-board']")?.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "OPEN_BOARD" });
@@ -1219,90 +1970,116 @@ const bindAssistant = (shadowRoot) => {
     assistantState.selectedPlayerId = "";
     renderAssistant();
   });
-  shadowRoot.querySelectorAll("[data-player]").forEach((row) => {
-    row.addEventListener("click", () => {
-      assistantState.selectedPlayerId = row.dataset.player;
-      renderAssistant();
-    });
-  });
+  bindPlayerRows(shadowRoot);
   const handle = shadowRoot.querySelector("[data-drag-handle]");
   const panel = shadowRoot.querySelector(".panel");
-  let drag = null;
-  handle?.addEventListener("pointerdown", (event) => {
-    if (event.target.closest("button")) {
-      return;
-    }
-    const rect = panel.getBoundingClientRect();
-    drag = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
-    assistantState.isDragging = true;
-    handle.setPointerCapture(event.pointerId);
-  });
-  handle?.addEventListener("pointermove", (event) => {
-    if (!drag) {
-      return;
-    }
-    assistantState.position = {
-      x: Math.max(8, Math.min(event.clientX - drag.dx, window.innerWidth - panel.offsetWidth - 8)),
-      y: Math.max(8, Math.min(event.clientY - drag.dy, window.innerHeight - 48)),
-    };
-    panel.style.left = `${assistantState.position.x}px`;
-    panel.style.top = `${assistantState.position.y}px`;
-    panel.style.right = "auto";
-  });
-  const stopDrag = () => {
-    if (drag) {
-      drag = null;
-      assistantState.isDragging = false;
+  if (handle && panel) {
+    bindSmoothPointerDrag({
+      element: panel,
+      handle,
+      onStart: () => { assistantState.isDragging = true; },
+      onStop: (nextPosition) => {
+        assistantState.position = nextPosition;
+        assistantState.isDragging = false;
+        saveOverlayPrefs();
+      },
+    });
+
+    panel.addEventListener("pointerdown", (event) => {
+      if (!assistantState.expanded) return;
+      const rect = panel.getBoundingClientRect();
+      if (event.clientX >= rect.right - 22 && event.clientY >= rect.bottom - 22) {
+        assistantState.isResizing = true;
+        window.addEventListener("pointerup", finishResize, { once: true });
+      }
+    });
+    const finishResize = () => {
+      if (!assistantState.isResizing) return;
+      assistantState.isResizing = false;
       saveOverlayPrefs();
+    };
+    panel.addEventListener("pointerup", finishResize);
+    panel.addEventListener("pointercancel", finishResize);
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (!assistantState.expanded) return;
+      const rect = panel.getBoundingClientRect();
+      const sizeChanged = Math.abs(Number(assistantState.size.width) - rect.width) > 1
+        || Math.abs(Number(assistantState.size.height) - rect.height) > 1;
+      if (sizeChanged) {
+        assistantState.size = { width: rect.width, height: rect.height };
+      }
+      if (sizeChanged && !assistantState.isResizing) {
+        saveOverlayPrefs();
+      }
+    });
+    resizeObserver.observe(panel);
+  } else {
+    if (assistantState.isDragging) {
+      assistantState.isDragging = false;
     }
-  };
-  handle?.addEventListener("pointerup", stopDrag);
-  handle?.addEventListener("pointercancel", stopDrag);
+  }
 };
 
 const observeDraftPage = () => {
-  let queued = false;
-  const schedule = () => {
-    if (queued) {
-      return;
+  setInterval(async () => {
+    try {
+      await syncDraftPicks();
+    } catch (e) {
+      assistantState.draftPicksError = e.message || "Sleeper picks unavailable.";
+      console.error("[DraftAssistant] Fetch error:", e);
     }
-    queued = true;
-    requestAnimationFrame(() => {
-      queued = false;
-      if (assistantState.isDragging) {
-        return;
-      }
-      renderAssistant();
-    });
-  };
-  const fastSchedule = () => {
-    schedule();
-    requestFastDraftRefresh();
-  };
-  const observer = new MutationObserver(fastSchedule);
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  setInterval(schedule, 900);
-  setInterval(refreshSleeperDraftPicks, 900);
-  window.addEventListener("focus", refreshSleeperDraftPicks);
+  }, 1000);
+  window.addEventListener("focus", () => {
+    syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
+  });
+  window.addEventListener("resize", () => {
+    renderAssistant();
+    renderAIAdvice();
+  });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
-      refreshSleeperDraftPicks();
+      syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
     }
   });
 };
 
 const initSleeperAssistant = async () => {
+  const activeDraftId = sleeperDraftId();
+  console.log("[DraftAssistant] Active Draft ID:", activeDraftId);
+  if (!activeDraftId) {
+    console.error("[DraftAssistant] Active Draft ID could not be parsed from URL:", window.location.href);
+  }
+  syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
   await loadOverlayPrefs();
+  await loadCustomRankings();
+  assistantState.aiAdvice = "Syncing live Sleeper picks...";
   renderAssistant();
   renderAIAdvice();
   await loadStoredDraftPicks();
   await loadRankings();
-  await syncRankingsFromBoardTab({ silent: true });
-  refreshSleeperDraftPicks();
+  try {
+    await syncRankingsFromBoardTab({ silent: true });
+  } catch (error) {
+    console.error("[DraftAssistant] Rankings sync error (draft polling continues):", error);
+  }
+  decorateSleeperPlayerCards();
+  assistantState.lastRecommendationPickSignature = "";
+  syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
   fetchTeamProjections().then(renderAssistant);
   loadMarketData().then(renderAssistant);
   observeDraftPage();
 };
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !changes.userRankings) return;
+  loadCustomRankings().then(() => {
+    assistantState.lastRecommendationPickSignature = "";
+    decorateSleeperPlayerCards();
+    syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
+    renderAssistant();
+  });
+});
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "EXPORT_RANKINGS") {
@@ -1316,17 +2093,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     saveOverlayPrefs();
     renderAssistant();
     sendResponse({ ok: true });
-    return true;
+    return false;
   }
   if (message?.type === "SHOW_ASSISTANT") {
     assistantState.expanded = true;
     saveOverlayPrefs();
     renderAssistant();
     sendResponse({ ok: true });
-    return true;
+    return false;
   }
   if (message?.type === "REFRESH_ASSISTANT_RANKINGS") {
-    syncRankingsFromBoardTab().then((ok) => sendResponse({ ok }));
+    syncRankingsFromBoardTab()
+      .then((ok) => sendResponse({ ok }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || "Refresh failed." }));
     return true;
   }
   return false;

@@ -79,7 +79,7 @@ const fetchAppResource = async (url, responseType) => {
     return { ok: false, error: "Unsupported resource URL." };
   }
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
       return { ok: false, error: `${response.status} ${response.statusText}` };
     }
@@ -111,23 +111,30 @@ const fetchSleeperDraftContext = async (draftId) => {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) {
     return { ok: false, error: "Invalid Sleeper draft id." };
   }
+  let draft;
   try {
     const draftResponse = await fetch(`https://api.sleeper.app/v1/draft/${id}`, { cache: "no-store" });
     if (!draftResponse.ok) {
       return { ok: false, error: `${draftResponse.status} ${draftResponse.statusText}` };
     }
-    const draft = await draftResponse.json();
-    const leagueId = String(draft?.league_id || "").trim();
-    if (!leagueId) {
-      return { ok: false, error: "This Sleeper draft is not attached to a league." };
-    }
+    draft = await draftResponse.json();
+  } catch (error) {
+    return { ok: false, error: error.message || "Sleeper draft settings fetch failed." };
+  }
+
+  const leagueId = String(draft?.league_id || "").trim();
+  if (!leagueId) {
+    return { ok: true, draft, league: null, mockLeague: true };
+  }
+
+  try {
     const leagueResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`, { cache: "no-store" });
     if (!leagueResponse.ok) {
-      return { ok: false, error: `${leagueResponse.status} ${leagueResponse.statusText}` };
+      return { ok: true, draft, league: null, mockLeague: true };
     }
-    return { ok: true, draft, league: await leagueResponse.json() };
-  } catch (error) {
-    return { ok: false, error: error.message || "Sleeper league settings fetch failed." };
+    return { ok: true, draft, league: await leagueResponse.json(), mockLeague: false };
+  } catch {
+    return { ok: true, draft, league: null, mockLeague: true };
   }
 };
 

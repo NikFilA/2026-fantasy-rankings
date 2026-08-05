@@ -1,11 +1,11 @@
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const GEMINI_MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
-const SYSTEM_PROMPT = "You are an elite fantasy football draft consultant. Analyze the user's draft context payload and league rules. Provide a concise, 2-sentence actionable recommendation on who to target next based on roster needs and tier cliffs.";
+const SYSTEM_PROMPT = "You are an elite fantasy football draft consultant. Analyze the user's draft context payload and league rules. Provide a concise, 2-sentence actionable recommendation on who to target next based on roster needs, custom tier cliffs, and each target's survivalProbability. Explicitly warn when a preferred player has less than a 25% chance to survive until the user's next turn.";
 
 const setCorsHeaders = (response) => {
     response.setHeader("Access-Control-Allow-Origin", "*");
-    response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 };
 
 export default async function handler(request, response) {
@@ -22,8 +22,8 @@ export default async function handler(request, response) {
         return;
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-        response.status(500).json({ error: "OpenAI API key is not configured" });
+    if (!process.env.GEMINI_API_KEY) {
+        response.status(500).json({ error: "Gemini API key is not configured" });
         return;
     }
 
@@ -43,37 +43,53 @@ export default async function handler(request, response) {
     }
 
     try {
-        const openAIResponse = await fetch(OPENAI_URL, {
+        const geminiUrl = `${GEMINI_MODEL_URL}?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+        const geminiResponse = await fetch(geminiUrl, {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "gpt-4o-mini",
-                messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    { role: "user", content: JSON.stringify(contextPayload) },
-                ],
+                contents: [{
+                    parts: [{
+                        text: `${SYSTEM_PROMPT}\n\nContext Payload: ${JSON.stringify(contextPayload)}`,
+                    }],
+                }],
             }),
         });
 
-        const data = await openAIResponse.json();
-        if (!openAIResponse.ok) {
-            response.status(openAIResponse.status).json({
-                error: data?.error?.message || "OpenAI request failed",
+        let data;
+        try {
+            data = await geminiResponse.json();
+        } catch {
+            response.status(502).json({ error: "Gemini returned an invalid response" });
+            return;
+        }
+
+        if (!geminiResponse.ok) {
+            const isRateLimit = geminiResponse.status === 429
+                || data?.error?.status === "RESOURCE_EXHAUSTED";
+            response.status(isRateLimit ? 429 : geminiResponse.status).json({
+                error: isRateLimit
+                    ? "Gemini usage limit reached. Try again after the quota resets."
+                    : data?.error?.message || "Gemini request failed",
             });
             return;
         }
 
-        const recommendation = data?.choices?.[0]?.message?.content?.trim();
-        if (!recommendation) {
-            response.status(502).json({ error: "OpenAI returned an empty recommendation" });
+        const adviceText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (!adviceText) {
+            const blockReason = data?.promptFeedback?.blockReason;
+            response.status(502).json({
+                error: blockReason
+                    ? `Gemini blocked the recommendation: ${blockReason}`
+                    : "Gemini returned an empty recommendation",
+            });
             return;
         }
 
-        response.status(200).json({ recommendation });
-    } catch (error) {
+        response.status(200).json({ recommendation: adviceText });
+    } catch {
         response.status(502).json({ error: "Unable to generate a draft recommendation" });
     }
 }

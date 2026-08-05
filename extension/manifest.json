@@ -15,6 +15,8 @@
       "matches": [
         "https://sleeper.com/draft/*",
         "https://*.sleeper.com/draft/*",
+        "https://sleeper.app/draft/*",
+        "https://*.sleeper.app/draft/*",
         "https://app.underdogsports.com/draft/*",
         "https://*.underdogsports.com/draft/*",
         "https://football.fantasysports.yahoo.com/*",
@@ -27,6 +29,7 @@
         "http://127.0.0.1:3000/*"
       ],
       "js": ["content.js"],
+      "css": ["styles.css"],
       "run_at": "document_idle"
     }
   ],
@@ -38,6 +41,8 @@
     "https://api.sleeper.app/*",
     "https://sleeper.com/*",
     "https://*.sleeper.com/*",
+    "https://sleeper.app/*",
+    "https://*.sleeper.app/*",
     "https://app.underdogsports.com/*",
     "https://*.underdogsports.com/*",
     "https://football.fantasysports.yahoo.com/*",
@@ -48,7 +53,7 @@
   "web_accessible_resources": [
     {
       "resources": ["draftEngine.js", "aiService.js"],
-      "matches": ["https://sleeper.com/*", "https://*.sleeper.com/*"]
+      "matches": ["https://sleeper.com/*", "https://*.sleeper.com/*", "https://sleeper.app/*", "https://*.sleeper.app/*"]
     }
   ],
   "permissions": ["activeTab", "scripting", "storage", "tabs"]

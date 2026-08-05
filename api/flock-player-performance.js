@@ -1,4 +1,15 @@
+const setCorsHeaders = (response) => {
+    response.setHeader("Access-Control-Allow-Origin", "*");
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+};
+
 export default async function handler(request, response) {
+    setCorsHeaders(response);
+    if (request.method === "OPTIONS") {
+        response.status(200).end();
+        return;
+    }
     const playerId = String(request.query.playerId || "");
     const year = String(request.query.year || "2025");
 

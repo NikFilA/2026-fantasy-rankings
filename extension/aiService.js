@@ -1,4 +1,4 @@
-const DRAFT_RECOMMENDATION_URL = "https://2026-fantasy-rankings.vercel.app/api/draft-recommendation";
+const DRAFT_RECOMMENDATION_URL = "https://2026-fantasy-rankings.vercel.app/api/gemini-advice";
 
 /**
  * Request a concise fantasy draft recommendation from the Vercel backend.
@@ -32,7 +32,7 @@ export async function getAIRecommendation(contextPayload) {
     throw new Error(result?.error || `Draft recommendation request failed with status ${response.status}.`);
   }
 
-  const recommendation = String(result?.recommendation || "").trim();
+  const recommendation = String(result?.adviceHtml || result?.recommendation || "").trim();
   if (!recommendation) {
     throw new Error("The draft recommendation service returned an empty recommendation.");
   }

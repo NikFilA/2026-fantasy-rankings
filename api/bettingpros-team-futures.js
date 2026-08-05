@@ -69,14 +69,14 @@ const readWinTotalOffer = (offer) => {
 
 const setCorsHeaders = (response) => {
     response.setHeader("Access-Control-Allow-Origin", "*");
-    response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 };
 
 export default async function handler(request, response) {
     setCorsHeaders(response);
     if (request.method === "OPTIONS") {
-        response.status(204).end();
+        response.status(200).end();
         return;
     }
     response.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=120");

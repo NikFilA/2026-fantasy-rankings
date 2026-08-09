@@ -96,11 +96,18 @@ const fetchSleeperDraftPicks = async (draftId) => {
     return { ok: false, error: "Invalid Sleeper draft id." };
   }
   try {
-    const response = await fetch(`https://api.sleeper.app/v1/draft/${id}/picks`, { cache: "no-store" });
+    const response = await fetch(
+      `https://api.sleeper.app/v1/draft/${id}/picks?_cb=${Date.now()}`,
+      { cache: "no-store" },
+    );
     if (!response.ok) {
       return { ok: false, error: `${response.status} ${response.statusText}` };
     }
-    return { ok: true, picks: await response.json() };
+    const picks = await response.json();
+    if (!Array.isArray(picks)) {
+      return { ok: false, error: "Sleeper picks response was not an array." };
+    }
+    return { ok: true, picks };
   } catch (error) {
     return { ok: false, error: error.message || "Sleeper picks fetch failed." };
   }
@@ -113,7 +120,10 @@ const fetchSleeperDraftContext = async (draftId) => {
   }
   let draft;
   try {
-    const draftResponse = await fetch(`https://api.sleeper.app/v1/draft/${id}`, { cache: "no-store" });
+    const draftResponse = await fetch(
+      `https://api.sleeper.app/v1/draft/${id}?_cb=${Date.now()}`,
+      { cache: "no-store" },
+    );
     if (!draftResponse.ok) {
       return { ok: false, error: `${draftResponse.status} ${draftResponse.statusText}` };
     }

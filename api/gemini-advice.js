@@ -1,17 +1,22 @@
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
 
-const SYSTEM_INSTRUCTION = `You are an elite, high-stakes Fantasy Football Game Theorist. Evaluate the user's live board, custom tiers, roster construction, league limits, positional scarcity, opponent demand, ADP, and turn-survival probabilities. Apply game theory: prioritize scarce positions and high snipe risk over attractive players likely to survive the turn, while recognizing coherent builds such as Hero-RB, Zero-RB, Robust-RB, or WR-WR starts.
+const SYSTEM_INSTRUCTION = `You are an expert fantasy football draft assistant and an elite, high-stakes Fantasy Football Game Theorist. Do NOT return generic placeholder text. Provide specific, tailored advice comparing the top recommended player to the user's turn odds and team needs. Evaluate the user's live board, custom tiers, roster construction, league limits, positional scarcity, opponent demand, ADP, and turn-survival probabilities. Apply game theory: prioritize scarce positions and high snipe risk over attractive players likely to survive the turn, while recognizing coherent builds such as Hero-RB, Zero-RB, Robust-RB, or WR-WR starts.
 
-Return exactly 3 short, punchy, high-impact HTML bullet lines. Use the supplied numbers explicitly; never invent a metric. The three lines must cover:
-1. Recommended Target & Tier.
-2. Turn Risk / positional drop-off, including the most decision-relevant survival percentage.
-3. Roster Synergy & Draft Strategy, tied to the user's current construction.
+The context includes topAvailablePlayers (the user's top 10 undrafted players), user_current_roster, current_overall_pick, user_next_pick, picks_until_user_turn, positional_needs, starter_slots, and upcoming_user_picks. Base every recommendation on these live fields. Explicitly use the roster and turn-distance fields in your reasoning. Never output placeholders such as "recalculating", "unavailable", "# -", or invented values.
 
-Return only safe HTML with exactly this structure and no Markdown or code fences:
-<div><strong>🎯 RECOMMENDED: Player Name (POS - Tier N)</strong></div>
-<div>• <strong>Turn Risk / Drop-off:</strong> concise metric-driven risk</div>
-<div>• <strong>Roster Synergy / Strategy:</strong> concise construction advice</div>`;
+Return only a JSON object matching the required schema. recommendedPlayer must name one player from topAvailablePlayers. strategy must be a detailed 2-3 sentence rationale tied to tier, survival odds, and build. turnRiskAnalysis must be a detailed 1-2 sentence explanation of likely positional/player movement before user_next_pick. rosterContext must state the user's current positional focus and roster construction. Never return Markdown, HTML, generic advice, or unsupported claims.`;
+
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    recommendedPlayer: { type: "STRING" },
+    strategy: { type: "STRING" },
+    turnRiskAnalysis: { type: "STRING" },
+    rosterContext: { type: "STRING" },
+  },
+  required: ["recommendedPlayer", "strategy", "turnRiskAnalysis", "rosterContext"],
+};
 
 const setCors = (response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
@@ -53,7 +58,9 @@ export default async function handler(request, response) {
     }],
     generationConfig: {
       temperature: 0.25,
-      maxOutputTokens: 300,
+      maxOutputTokens: 500,
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA,
     },
   });
 
@@ -102,9 +109,9 @@ export default async function handler(request, response) {
         });
       }
 
-      const adviceHtml = data?.candidates?.[0]?.content?.parts
+      const rawAdvice = data?.candidates?.[0]?.content?.parts
         ?.map((part) => part?.text || "").join("").trim();
-      if (!adviceHtml) {
+      if (!rawAdvice) {
         console.error(`[gemini-advice] ${model} returned no candidate text:`, rawBody);
         return response.status(500).json({
           error: "Gemini API call failed",
@@ -112,10 +119,29 @@ export default async function handler(request, response) {
           model,
         });
       }
+      let advice;
+      try {
+        advice = JSON.parse(rawAdvice.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim());
+      } catch (error) {
+        console.error(`[gemini-advice] ${model} returned invalid structured advice:`, rawAdvice);
+        return response.status(500).json({
+          error: "Gemini returned invalid structured advice",
+          details: rawAdvice,
+          model,
+        });
+      }
+      const requiredFields = ["recommendedPlayer", "strategy", "turnRiskAnalysis", "rosterContext"];
+      if (!requiredFields.every((field) => typeof advice?.[field] === "string" && advice[field].trim())) {
+        console.error(`[gemini-advice] ${model} omitted required advice fields:`, rawAdvice);
+        return response.status(500).json({
+          error: "Gemini response omitted required advice fields",
+          details: rawAdvice,
+          model,
+        });
+      }
       return response.status(200).json({
-        analysis: adviceHtml,
-        adviceHtml,
-        recommendation: adviceHtml,
+        analysis: advice,
+        ...advice,
         model,
       });
     }

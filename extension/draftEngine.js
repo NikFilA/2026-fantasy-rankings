@@ -16,13 +16,20 @@ const receptionPoints = (scoringType) => {
 
 export const createMockLeagueSettingsFromDraft = (draft = {}) => {
   const settings = draft?.settings || {};
+  const liveSlots = settings.slots || {};
+  const slotValue = (position, fallback) => integerSetting(
+    settings[`slots_${position.toLowerCase()}`]
+      ?? liveSlots[position]
+      ?? liveSlots[position.toLowerCase()],
+    fallback,
+  );
   const slots = {
-    QB: integerSetting(settings.slots_qb, 1),
-    RB: integerSetting(settings.slots_rb, 2),
-    WR: integerSetting(settings.slots_wr, 2),
-    TE: integerSetting(settings.slots_te, 1),
-    FLEX: integerSetting(settings.slots_flex, 2),
-    SUPER_FLEX: integerSetting(settings.slots_super_flex, 0),
+    QB: slotValue("QB", 1),
+    RB: slotValue("RB", 2),
+    WR: slotValue("WR", 2),
+    TE: slotValue("TE", 1),
+    FLEX: slotValue("FLEX", 2),
+    SUPER_FLEX: slotValue("SUPER_FLEX", 0),
   };
   const teams = integerSetting(settings.teams, 12) || 12;
   const rounds = integerSetting(settings.rounds, 15) || 15;
@@ -77,6 +84,31 @@ const normalizePlayerName = (value) => {
 };
 
 const normalizePosition = (value) => String(value ?? "").trim().toUpperCase();
+
+export const resolveUserDraftSlot = (draftDetails = {}, currentUserId = "", rawPicks = []) => {
+  const userId = normalizeId(currentUserId);
+  const draftOrder = draftDetails?.draft_order || {};
+  const teamCount = Number(draftDetails?.settings?.teams) || Object.keys(draftOrder).length;
+  const directSlot = Number(draftOrder[userId]);
+  if (Number.isInteger(directSlot) && directSlot >= 1 && directSlot <= teamCount) return directSlot;
+
+  const pickedSlot = (Array.isArray(rawPicks) ? rawPicks : [])
+    .map((pick) => ({
+      owner: normalizeId(pick?.picked_by_user_id ?? pick?.picked_by),
+      slot: Number(pick?.draft_slot ?? pick?.metadata?.draft_slot),
+    }))
+    .find((pick) => pick.owner === userId && Number.isInteger(pick.slot));
+  if (pickedSlot?.slot >= 1 && pickedSlot.slot <= teamCount) return pickedSlot.slot;
+
+  const slotToRoster = draftDetails?.slot_to_roster_id || {};
+  const rosterSlot = Number(Object.entries(slotToRoster)
+    .find(([, rosterId]) => normalizeId(rosterId) === userId)?.[0]);
+  if (Number.isInteger(rosterSlot) && rosterSlot >= 1 && rosterSlot <= teamCount) return rosterSlot;
+
+  const enteredSlot = Number(userId);
+  if (Number.isInteger(enteredSlot) && enteredSlot >= 1 && enteredSlot <= teamCount) return enteredSlot;
+  return null;
+};
 
 export const parseSleeperOverallAdp = (value, teams = 12) => {
   if (typeof value === "number") {
@@ -197,7 +229,7 @@ export function isUserOnTheClock(rawPicks = [], draftDetails = {}, currentUserId
 
   const picks = Array.isArray(rawPicks) ? rawPicks : [];
   const draftOrder = draftDetails?.draft_order || {};
-  const userSlot = Number(draftOrder[normalizeId(currentUserId)]);
+  const userSlot = resolveUserDraftSlot(draftDetails, currentUserId, picks);
   const teamCount = Number(draftDetails?.settings?.teams)
     || Object.keys(draftOrder).length;
   if (!Number.isFinite(userSlot) || userSlot < 1 || teamCount < 1) return false;
@@ -217,7 +249,7 @@ export function isUserOnTheClock(rawPicks = [], draftDetails = {}, currentUserId
 export const nextUserPickDistance = (rawPicks = [], draftDetails = {}, currentUserId = "") => {
   const picks = Array.isArray(rawPicks) ? rawPicks : [];
   const draftOrder = draftDetails?.draft_order || {};
-  const userSlot = Number(draftOrder[normalizeId(currentUserId)]);
+  const userSlot = resolveUserDraftSlot(draftDetails, currentUserId, picks);
   const teamCount = Number(draftDetails?.settings?.teams) || Object.keys(draftOrder).length;
   if (!Number.isFinite(userSlot) || userSlot < 1 || teamCount < 1) return null;
 
@@ -249,7 +281,7 @@ export const draftSlotAtPick = (pickNumber, teamCount, draftType) => {
 export const nextUserTurn = (rawPicks = [], draftDetails = {}, currentUserId = "") => {
   const picks = Array.isArray(rawPicks) ? rawPicks : [];
   const draftOrder = draftDetails?.draft_order || {};
-  const userSlot = Number(draftOrder[normalizeId(currentUserId)]);
+  const userSlot = resolveUserDraftSlot(draftDetails, currentUserId, picks);
   const teamCount = Number(draftDetails?.settings?.teams) || Object.keys(draftOrder).length;
   if (!Number.isFinite(userSlot) || userSlot < 1 || teamCount < 1) return null;
   const currentPickNumber = picks.length + 1;
@@ -267,6 +299,23 @@ export const nextUserTurn = (rawPicks = [], draftDetails = {}, currentUserId = "
     }
   }
   return null;
+};
+
+export const upcomingUserPickNumbers = (rawPicks = [], draftDetails = {}, currentUserId = "") => {
+  const picks = Array.isArray(rawPicks) ? rawPicks : [];
+  const teamCount = Number(draftDetails?.settings?.teams)
+    || Object.keys(draftDetails?.draft_order || {}).length;
+  const rounds = Number(draftDetails?.settings?.rounds) || 0;
+  const userSlot = resolveUserDraftSlot(draftDetails, currentUserId, picks);
+  if (!userSlot || !teamCount || !rounds) return [];
+  const currentPick = picks.filter((pick) => normalizeId(pick?.player_id)).length + 1;
+  const result = [];
+  for (let pickNumber = currentPick; pickNumber <= teamCount * rounds; pickNumber += 1) {
+    if (draftSlotAtPick(pickNumber, teamCount, draftDetails?.type) === userSlot) {
+      result.push(pickNumber);
+    }
+  }
+  return result;
 };
 
 export const normalCdf = (value) => {
@@ -304,6 +353,7 @@ const opponentNeedAnalysis = (picks, rankingsById, draftDetails, slotCounts, tur
   }
   const orderBySlot = new Map(Object.entries(draftDetails?.draft_order || {})
     .map(([userId, slot]) => [Number(slot), normalizeId(userId)]));
+  const userDraftSlot = resolveUserDraftSlot(draftDetails, currentUserId, picks);
   const rosterCounts = new Map();
   picks.forEach((pick) => {
     const userId = normalizeId(pick?.picked_by_user_id ?? pick?.picked_by);
@@ -317,16 +367,15 @@ const opponentNeedAnalysis = (picks, rankingsById, draftDetails, slotCounts, tur
   });
   const opponents = [];
   for (let pickNumber = turn.currentPickNumber; pickNumber < turn.nextPickNumber; pickNumber += 1) {
-    const userId = orderBySlot.get(draftSlotAtPick(
+    const slot = draftSlotAtPick(
       pickNumber,
       Number(draftDetails?.settings?.teams) || orderBySlot.size,
       draftDetails?.type,
-    ));
-    if (userId && userId !== normalizeId(currentUserId)) opponents.push({ userId, slot: draftSlotAtPick(
-      pickNumber,
-      Number(draftDetails?.settings?.teams) || orderBySlot.size,
-      draftDetails?.type,
-    ) });
+    );
+    const userId = orderBySlot.get(slot);
+    if (userId && slot !== userDraftSlot && userId !== normalizeId(currentUserId)) {
+      opponents.push({ userId, slot });
+    }
   }
   const uniqueOpponents = [...new Map(opponents.map((opponent) => [opponent.userId, opponent])).values()];
   if (!uniqueOpponents.length) return { needRates: {}, opponentCounts: {}, opponentSlots: [] };
@@ -520,12 +569,30 @@ export function generateDraftContextPayload(
     rankings.map((player) => [normalizeId(player?.player_id), player]),
   );
   const normalizedCurrentUserId = normalizeId(currentUserId);
+  const userDraftSlot = resolveUserDraftSlot(
+    draftState?.draftDetails || {},
+    currentUserId,
+    picks,
+  );
   const userPicks = picks
-    .filter((pick) => normalizeId(pick?.picked_by_user_id) === normalizedCurrentUserId)
+    .filter((pick) => {
+      const pickedBy = normalizeId(pick?.picked_by_user_id ?? pick?.picked_by);
+      const pickSlot = Number(pick?.draft_slot ?? pick?.metadata?.draft_slot);
+      return (normalizedCurrentUserId && pickedBy === normalizedCurrentUserId)
+        || (userDraftSlot && pickSlot === userDraftSlot);
+    })
     .map((pick) => ({
       ...pick,
       round: numericRound(pick?.round),
-      position: normalizePosition(rankingsById.get(normalizeId(pick?.player_id))?.position),
+      position: normalizePosition(
+        rankingsById.get(normalizeId(pick?.player_id))?.position
+        || pick?.position
+        || pick?.metadata?.position,
+      ),
+      name: rankingsById.get(normalizeId(pick?.player_id))?.name
+        || pick?.name
+        || pick?.metadata?.player_name
+        || `${pick?.metadata?.first_name || ""} ${pick?.metadata?.last_name || ""}`.trim(),
     }))
     .filter((pick) => pick.round > 0);
 
@@ -611,16 +678,56 @@ export function generateDraftContextPayload(
     slotCounts,
     superflex,
   );
+  const upcomingPicks = upcomingUserPickNumbers(
+    picks,
+    draftState?.draftDetails || {},
+    currentUserId,
+  );
+  const userCurrentRoster = userPicks.map((pick) => ({
+    player_id: normalizeId(pick.player_id),
+    name: pick.name || "Unknown Player",
+    position: pick.position,
+    round: pick.round,
+    overall_pick: Number(pick.pick_no) || null,
+  }));
+  const positionalNeeds = Object.fromEntries(CORE_POSITIONS.map((position) => [
+    position,
+    Math.max(0, (slotCounts[position] || 0) - (userRosterCounts[position] || 0)),
+  ]));
   const aiAdvicePayload = {
     userRoster: { ...userRosterCounts },
+    user_current_roster: userCurrentRoster,
     currentPick: turn.currentPickNumber,
     nextPick: turn.nextPickNumber,
-    topAvailablePlayers: undraftedPlayers.slice(0, 8).map((player) => ({
+    current_overall_pick: turn.currentPickNumber,
+    user_next_pick: turn.nextPickNumber,
+    picks_until_user_turn: picksUntilUserTurn,
+    user_draft_slot: userDraftSlot,
+    upcoming_user_picks: upcomingPicks,
+    positional_needs: positionalNeeds,
+    starter_slots: {
+      QB: slotCounts.QB || 0,
+      RB: slotCounts.RB || 0,
+      WR: slotCounts.WR || 0,
+      TE: slotCounts.TE || 0,
+      FLEX: slotCounts.FLEX || 0,
+      SUPER_FLEX: slotCounts.SUPER_FLEX || 0,
+    },
+    league_format: leagueFormatSummary(
+      slotCounts,
+      leagueSettings?.scoring_settings || {},
+      highWrDemand,
+      superflex,
+      teamCount,
+    ),
+    topAvailablePlayers: undraftedPlayers.slice(0, 10).map((player) => ({
       name: player.name,
       pos: normalizePosition(player.position),
       tier: player.tier,
+      user_rank: player.user_rank,
       survivalPct: player.survivalProbability,
       adp: player.sleeper_adp,
+      players_remaining_in_tier: player.players_remaining_in_tier,
     })),
   };
   const mustDraftTarget = topAvailableTargets.find((player) => (
@@ -649,6 +756,9 @@ export function generateDraftContextPayload(
       SUPER_FLEX: slotCounts.SUPER_FLEX || 0,
     },
     user_roster_counts: userRosterCounts,
+    user_current_roster: userCurrentRoster,
+    user_draft_slot: userDraftSlot,
+    positional_needs: positionalNeeds,
     active_strategy: strategy,
     undraftedPlayers,
     top_available_targets: topAvailableTargets,

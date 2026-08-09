@@ -13,9 +13,30 @@
     <button id="refreshRankings" type="button">Refresh Rankings</button>
     <button id="openBoard" type="button">Open Full Board</button>
     <label>
-      Sleeper user ID
-      <input id="sleeperUserId" type="text" autocomplete="off" placeholder="Your numeric Sleeper user ID">
+      Sleeper draft slot
+      <select id="sleeperSlotSelect">
+        <option value="">Auto-detect from Sleeper / User ID</option>
+        <option value="1">Slot 1 (1.01)</option>
+        <option value="2">Slot 2 (1.02)</option>
+        <option value="3">Slot 3 (1.03)</option>
+        <option value="4">Slot 4 (1.04)</option>
+        <option value="5">Slot 5 (1.05)</option>
+        <option value="6">Slot 6 (1.06)</option>
+        <option value="7">Slot 7 (1.07)</option>
+        <option value="8">Slot 8 (1.08)</option>
+        <option value="9">Slot 9 (1.09)</option>
+        <option value="10">Slot 10 (1.10)</option>
+        <option value="11">Slot 11 (1.11)</option>
+        <option value="12">Slot 12 (1.12)</option>
+      </select>
     </label>
+    <details class="advanced-sleeper-settings">
+      <summary>Optional Sleeper user ID</summary>
+      <label>
+        Raw Sleeper user ID
+        <input id="sleeperUserIdInput" type="text" autocomplete="off" placeholder="1390195387523923968">
+      </label>
+    </details>
     <button id="saveAISettings" type="button">Save Sleeper Settings</button>
     <p id="status">Open a Sleeper draft tab, then show the assistant here. Use Refresh Rankings after signing in on the board.</p>
   </main>

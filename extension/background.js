@@ -134,17 +134,31 @@ const fetchSleeperDraftContext = async (draftId) => {
 
   const leagueId = String(draft?.league_id || "").trim();
   if (!leagueId) {
-    return { ok: true, draft, league: null, mockLeague: true };
+    return { ok: true, draft, league: null, users: [], rosters: [], mockLeague: true };
   }
 
   try {
-    const leagueResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`, { cache: "no-store" });
-    if (!leagueResponse.ok) {
-      return { ok: true, draft, league: null, mockLeague: true };
+    const [leagueResult, usersResult, rostersResult] = await Promise.allSettled([
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}`, { cache: "no-store" }),
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`, { cache: "no-store" }),
+      fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`, { cache: "no-store" }),
+    ]);
+    const leagueResponse = leagueResult.status === "fulfilled" ? leagueResult.value : null;
+    const usersResponse = usersResult.status === "fulfilled" ? usersResult.value : null;
+    const rostersResponse = rostersResult.status === "fulfilled" ? rostersResult.value : null;
+    if (!leagueResponse?.ok) {
+      return { ok: true, draft, league: null, users: [], rosters: [], mockLeague: true };
     }
-    return { ok: true, draft, league: await leagueResponse.json(), mockLeague: false };
+    return {
+      ok: true,
+      draft,
+      league: await leagueResponse.json(),
+      users: usersResponse?.ok ? await usersResponse.json() : [],
+      rosters: rostersResponse?.ok ? await rostersResponse.json() : [],
+      mockLeague: false,
+    };
   } catch {
-    return { ok: true, draft, league: null, mockLeague: true };
+    return { ok: true, draft, league: null, users: [], rosters: [], mockLeague: true };
   }
 };
 

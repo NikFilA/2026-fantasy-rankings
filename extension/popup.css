@@ -64,15 +64,39 @@ label {
   text-transform: uppercase;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 38px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #161b22;
+  color: #f0f6fc;
+  padding: 10px 14px;
+  font: 13px Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+select {
+  cursor: pointer;
+}
+
+.advanced-sleeper-settings {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
-  color: var(--text);
-  padding: 8px 10px;
-  font: 13px Inter, ui-sans-serif, system-ui, sans-serif;
+  padding: 9px 10px;
+  color: var(--muted);
+}
+
+.advanced-sleeper-settings summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.advanced-sleeper-settings[open] summary {
+  margin-bottom: 9px;
 }
 
 p {

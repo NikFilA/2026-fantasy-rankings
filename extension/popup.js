@@ -11,10 +11,27 @@ const sendRuntimeMessage = (message) => new Promise((resolve) => {
   });
 });
 
+const sendActiveTabMessage = async (message) => {
+  const tab = await activeTab();
+  if (!tab?.id) return { ok: false, error: "No active draft tab." };
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tab.id, message, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+      resolve(response || { ok: false, error: "Draft assistant did not respond." });
+    });
+  });
+};
+
 const loadAISettings = async () => {
   await chrome.storage.local.remove("openAIApiKey");
-  const settings = await chrome.storage.local.get(["sleeperUserId"]);
-  document.getElementById("sleeperUserId").value = settings.sleeperUserId || "";
+  const settings = await chrome.storage.local.get(["sleeperUserOrSlot", "sleeperUserId"]);
+  const saved = String(settings.sleeperUserOrSlot ?? settings.sleeperUserId ?? "").trim();
+  const slot = /^([1-9]|1[0-2])$/.test(saved) ? saved : "";
+  document.getElementById("sleeperSlotSelect").value = slot;
+  document.getElementById("sleeperUserIdInput").value = slot ? "" : saved;
 };
 
 document.getElementById("openAssistant").addEventListener("click", async () => {
@@ -37,11 +54,20 @@ document.getElementById("openBoard").addEventListener("click", async () => {
 });
 
 document.getElementById("saveAISettings").addEventListener("click", async () => {
-  const sleeperUserId = document.getElementById("sleeperUserId").value.trim();
-  await chrome.storage.local.set({ sleeperUserId });
-  statusNode.textContent = sleeperUserId
-    ? "Sleeper settings saved. AI advice will refresh after the next pick."
-    : "A Sleeper user ID is required for roster-aware AI advice.";
+  const selectedSlot = document.getElementById("sleeperSlotSelect").value;
+  const rawUserId = document.getElementById("sleeperUserIdInput").value.trim();
+  const sleeperUserOrSlot = selectedSlot ? Number(selectedSlot) : rawUserId;
+  await chrome.storage.local.set({ sleeperUserOrSlot });
+  await chrome.storage.local.remove("sleeperUserId");
+  const update = await sendActiveTabMessage({
+    type: "UPDATE_SLEEPER_USER_OR_SLOT",
+    sleeperUserOrSlot,
+  });
+  statusNode.textContent = sleeperUserOrSlot
+    ? update.ok
+      ? "Sleeper slot setting saved and applied to the active draft."
+      : "Setting saved. Open or refresh a Sleeper draft to apply it."
+    : "Auto-detect enabled. Add a user ID if Sleeper cannot identify your slot.";
 });
 
 loadAISettings();

@@ -74,8 +74,35 @@ const assistantState = {
 
 let aiModulesPromise = null;
 const geminiAdviceByPick = new Map();
-const GEMINI_COOLDOWN_MS = 12_000;
+const GEMINI_COOLDOWN_MS = 18_000;
 const GEMINI_COOLDOWN_MESSAGE = "⏳ AI Cooldown: Showing top board value. (Gemini updates on your next pick).";
+const GEMINI_INTERACTION_QUIET_MS = 2_500;
+let lastUserInteractionAt = 0;
+let geminiRetryTimer = null;
+
+const noteUserInteraction = () => {
+  lastUserInteractionAt = Date.now();
+};
+
+const userIsActivelyInteracting = () => document.hidden
+  || !document.hasFocus()
+  || Date.now() - lastUserInteractionAt < GEMINI_INTERACTION_QUIET_MS;
+
+const scheduleAutomaticGeminiRetry = (delayMs = GEMINI_INTERACTION_QUIET_MS) => {
+  if (geminiRetryTimer) clearTimeout(geminiRetryTimer);
+  geminiRetryTimer = setTimeout(() => {
+    geminiRetryTimer = null;
+    assistantState.lastRecommendationPickSignature = "";
+    assistantState.wasUserOnTheClock = false;
+    syncDraftPicks().catch((error) => {
+      console.warn("[DraftAssistant] Deferred Gemini retry failed:", error);
+    });
+  }, Math.max(250, delayMs));
+};
+
+document.addEventListener("keydown", noteUserInteraction, true);
+document.addEventListener("input", noteUserInteraction, true);
+document.addEventListener("pointerdown", noteUserInteraction, true);
 
 const loadAiModules = () => {
   if (!aiModulesPromise) {
@@ -105,6 +132,18 @@ const fetchGeminiRecommendation = async (contextPayload) => {
   } catch (error) {
     console.error("[DraftAssistant] Gemini payload invalid:", jsonPayload || error);
     throw error;
+  }
+
+  if (jsonPayload?.is_quota_fallback) {
+    const recommendedPlayer = String(jsonPayload.recommended_player || "Best Available").trim();
+    const tier = String(jsonPayload.tier || "Fallback").trim();
+    return {
+      recommendedPlayer: `${recommendedPlayer} (${tier})`,
+      strategy: String(jsonPayload.reasoning || "Showing the top projected player while Gemini quota resets.").trim(),
+      turnRiskAnalysis: `Turn risk: ${String(jsonPayload.turn_risk || "Low").trim()}.`,
+      rosterContext: "Quota fallback is active; live board tracking and local rankings remain current.",
+      isQuotaFallback: true,
+    };
   }
 
   let advice = jsonPayload?.analysis && typeof jsonPayload.analysis === "object"
@@ -990,6 +1029,81 @@ const normalizedDraftPicks = (picks) => picks.map((pick) => ({
   name: pickPlayerName(pick),
 }));
 
+const resolveStoredUserDraftSlot = (storedIdentity, draftDetails = {}, picks = []) => {
+  const identity = String(storedIdentity || "").trim();
+  if (!identity) return null;
+  const draftOrder = draftDetails?.draft_order || {};
+  const teamCount = Number(draftDetails?.settings?.teams) || Object.keys(draftOrder).length || 12;
+  if (/^\d{1,2}$/.test(identity)) {
+    const enteredSlot = Number(identity);
+    if (enteredSlot >= 1 && enteredSlot <= teamCount) return enteredSlot;
+  }
+
+  const directSlot = Number(draftOrder[identity]);
+  if (Number.isInteger(directSlot) && directSlot >= 1 && directSlot <= teamCount) return directSlot;
+
+  const normalizedIdentity = normalize(identity);
+  const participants = [
+    ...(Array.isArray(draftDetails?.users) ? draftDetails.users : []),
+    ...(Array.isArray(draftDetails?.participants) ? draftDetails.participants : []),
+    ...(Array.isArray(draftDetails?.league_users) ? draftDetails.league_users : []),
+  ];
+  const matchedUser = participants.find((user) => {
+    const values = [user?.user_id, user?.owner_id, user?.display_name, user?.username];
+    return values.some((value) => String(value ?? "") === identity || normalize(value) === normalizedIdentity);
+  });
+  const matchedUserId = String(matchedUser?.user_id || matchedUser?.owner_id || identity);
+  const participantSlot = Number(
+    matchedUser?.draft_slot
+    ?? matchedUser?.slot
+    ?? draftOrder[matchedUserId],
+  );
+  if (Number.isInteger(participantSlot) && participantSlot >= 1 && participantSlot <= teamCount) {
+    return participantSlot;
+  }
+
+  const matchedRoster = (draftDetails?.league_rosters || []).find((roster) => (
+    String(roster?.owner_id || "") === matchedUserId
+  ));
+  const targetRosterId = String(matchedRoster?.roster_id || identity);
+  const slotToRoster = draftDetails?.slot_to_roster_id || {};
+  const rosterSlot = Number(Object.entries(slotToRoster)
+    .find(([, rosterId]) => String(rosterId) === targetRosterId)?.[0]);
+  if (Number.isInteger(rosterSlot) && rosterSlot >= 1 && rosterSlot <= teamCount) return rosterSlot;
+
+  const ownerPick = picks.find((pick) => {
+    const owner = String(pick?.picked_by || pick?.picked_by_user_id || "");
+    const displayName = String(
+      pick?.display_name
+      || pick?.owner_display_name
+      || pick?.metadata?.display_name
+      || pick?.metadata?.owner_name
+      || "",
+    );
+    return owner === identity
+      || owner === matchedUserId
+      || (normalizedIdentity && normalize(displayName) === normalizedIdentity);
+  });
+  const pickSlot = Number(ownerPick?.draft_slot ?? ownerPick?.metadata?.draft_slot);
+  return Number.isInteger(pickSlot) && pickSlot >= 1 && pickSlot <= teamCount ? pickSlot : null;
+};
+
+const detectSleeperUserIdentity = () => {
+  const keys = ["sleeper_user", "sleeperUser", "current_user", "user"];
+  for (const key of keys) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const userId = parsed?.user_id || parsed?.userId || parsed?.id;
+      if (userId) return String(userId);
+    } catch {
+      // Ignore unrelated or non-JSON Sleeper storage values.
+    }
+  }
+  return "";
+};
+
 const pickSignature = (picks) => picks
   .map((pick) => `${pick?.pick_no || ""}:${pick?.player_id || ""}:${pick?.picked_by || pick?.picked_by_user_id || ""}`)
   .join("|") || "empty-draft";
@@ -1020,6 +1134,8 @@ const loadSleeperDraftContext = async () => {
     : liveDraftSettings;
   assistantState.sleeperDraftDetails = {
     ...response.draft,
+    league_users: Array.isArray(response.users) ? response.users : [],
+    league_rosters: Array.isArray(response.rosters) ? response.rosters : [],
     settings: {
       ...response.draft.settings,
       teams: Number(response.draft?.settings?.teams)
@@ -1128,38 +1244,51 @@ const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
   renderAIAdvice();
 
   try {
-    const [{ sleeperUserId }, sleeperContext, modules] = await Promise.all([
-      chrome.storage.local.get(["sleeperUserId"]),
+    const [sleeperSettings, sleeperContext, modules] = await Promise.all([
+      chrome.storage.local.get(["sleeperUserOrSlot", "sleeperUserId"]),
       loadSleeperDraftContext(),
       loadAiModules(),
     ]);
-    const resolvedUserId = String(sleeperUserId || "");
+    const savedUserIdentity = String(
+      sleeperSettings.sleeperUserOrSlot ?? sleeperSettings.sleeperUserId ?? "",
+    ).trim();
+    const storedUserIdentity = savedUserIdentity || detectSleeperUserIdentity();
+    const normalizedPicks = normalizedDraftPicks(rawPicks).map((pick, index) => ({
+      ...pick,
+      pick_no: pick.pick_no || index + 1,
+    }));
+    const resolvedUserDraftSlot = resolveStoredUserDraftSlot(
+      storedUserIdentity,
+      sleeperContext.draftDetails,
+      normalizedPicks,
+    );
+    const resolvedUserIdentity = resolvedUserDraftSlot
+      ? String(resolvedUserDraftSlot)
+      : storedUserIdentity;
+    console.log("[DraftAssistant] Resolved User Draft Slot:", resolvedUserDraftSlot);
 
     const draftState = {
-      picks: normalizedDraftPicks(rawPicks).map((pick, index) => ({
-        ...pick,
-        pick_no: pick.pick_no || index + 1,
-      })),
+      picks: normalizedPicks,
       draftDetails: sleeperContext.draftDetails,
     };
     const contextPayload = modules.onPickUpdate(
       draftState,
       aiRankingPlayers(),
-      resolvedUserId,
+      resolvedUserIdentity,
       sleeperContext.leagueSettings,
       {
         updateMainPanelUI,
         updateAdviceBubbleUI,
       },
     );
-    const isOnClock = Boolean(resolvedUserId)
-      && modules.isUserOnTheClock(rawPicks, sleeperContext.draftDetails, resolvedUserId);
+    const isOnClock = Boolean(resolvedUserIdentity)
+      && modules.isUserOnTheClock(rawPicks, sleeperContext.draftDetails, resolvedUserIdentity);
     const cameOnClock = isOnClock && !assistantState.wasUserOnTheClock;
     assistantState.wasUserOnTheClock = isOnClock;
     console.log("[DraftAssistant] Gemini trigger state:", {
       manual,
-      sleeperUserOrSlot: resolvedUserId || "missing",
-      userDraftSlot: contextPayload.user_draft_slot,
+      sleeperUserOrSlot: storedUserIdentity || "missing",
+      userDraftSlot: resolvedUserDraftSlot ?? contextPayload.user_draft_slot,
       currentOverallPick: contextPayload.ai_advice_payload?.current_overall_pick,
       isOnClock,
       cameOnClock,
@@ -1176,7 +1305,7 @@ const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
     const cacheKey = `${geminiPayload.currentPick}_${userRosterCount}`;
     assistantState.currentAdviceCacheKey = cacheKey;
     const cachedAdvice = geminiAdviceByPick.get(cacheKey);
-    if (cachedAdvice) {
+    if (cachedAdvice && !manual) {
       if (requestId !== assistantState.aiRequestId) return;
       assistantState.aiAdviceSource = "Gemini";
       assistantState.aiAdviceError = false;
@@ -1190,8 +1319,13 @@ const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
 
     if (!manual && !cameOnClock) return;
 
+    if (!manual && userIsActivelyInteracting()) {
+      scheduleAutomaticGeminiRetry(GEMINI_INTERACTION_QUIET_MS);
+      return;
+    }
+
     const cooldownRemaining = GEMINI_COOLDOWN_MS - (Date.now() - assistantState.lastGeminiFetchTime);
-    if (cooldownRemaining > 0) {
+    if (!manual && cooldownRemaining > 0) {
       if (requestId !== assistantState.aiRequestId) return;
       assistantState.aiAdviceSource = "Gemini Cooldown";
       assistantState.aiAdviceError = false;
@@ -1200,6 +1334,7 @@ const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
       assistantState.geminiAdviceData = null;
       assistantState.aiAdvice = GEMINI_COOLDOWN_MESSAGE;
       renderAIAdvice();
+      scheduleAutomaticGeminiRetry(cooldownRemaining + 100);
       return;
     }
 
@@ -2180,6 +2315,7 @@ const bindAssistant = (shadowRoot) => {
     });
   });
   shadowRoot.querySelector("#draft-assistant-search")?.addEventListener("input", (event) => {
+    noteUserInteraction();
     assistantState.search = event.target.value;
     updateListUI(shadowRoot);
   });
@@ -2336,6 +2472,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     syncRankingsFromBoardTab()
       .then((ok) => sendResponse({ ok }))
       .catch((error) => sendResponse({ ok: false, error: error.message || "Refresh failed." }));
+    return true;
+  }
+  if (message?.type === "UPDATE_SLEEPER_USER_OR_SLOT") {
+    assistantState.lastRecommendationPickSignature = "";
+    assistantState.wasUserOnTheClock = false;
+    assistantState.currentAdviceCacheKey = "";
+    syncDraftPicks()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || "Slot update failed." }));
     return true;
   }
   return false;

@@ -141,7 +141,7 @@ const fetchGeminiRecommendation = async (contextPayload) => {
       recommendedPlayer: `${recommendedPlayer} (${tier})`,
       strategy: String(jsonPayload.reasoning || "Showing the top projected player while Gemini quota resets.").trim(),
       turnRiskAnalysis: `Turn risk: ${String(jsonPayload.turn_risk || "Low").trim()}.`,
-      rosterContext: "Quota fallback is active; live board tracking and local rankings remain current.",
+      rosterContext: String(jsonPayload.roster_context || "Quota fallback is active; live board tracking and local rankings remain current.").trim(),
       isQuotaFallback: true,
     };
   }
@@ -155,6 +155,14 @@ const fetchGeminiRecommendation = async (contextPayload) => {
     } catch {
       advice = null;
     }
+  }
+  if (advice && typeof advice === "object" && advice.recommended_player) {
+    advice = {
+      recommendedPlayer: `${String(advice.recommended_player).trim()}${advice.tier ? ` (${String(advice.tier).trim()})` : ""}`,
+      strategy: String(advice.reasoning || "").trim(),
+      turnRiskAnalysis: String(advice.turn_risk || "").trim(),
+      rosterContext: String(advice.roster_context || "").trim(),
+    };
   }
   const requiredFields = ["recommendedPlayer", "strategy", "turnRiskAnalysis", "rosterContext"];
   const isValidAdvice = requiredFields.every(

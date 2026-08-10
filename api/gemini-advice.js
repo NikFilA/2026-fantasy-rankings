@@ -1,21 +1,26 @@
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro"];
 
-const SYSTEM_INSTRUCTION = `You are an expert fantasy football draft assistant and an elite, high-stakes Fantasy Football Game Theorist. Do NOT return generic placeholder text. Provide specific, tailored advice comparing the top recommended player to the user's turn odds and team needs. Evaluate the user's live board, custom tiers, roster construction, league limits, positional scarcity, opponent demand, ADP, and turn-survival probabilities. Apply game theory: prioritize scarce positions and high snipe risk over attractive players likely to survive the turn, while recognizing coherent builds such as Hero-RB, Zero-RB, Robust-RB, or WR-WR starts.
+const SYSTEM_INSTRUCTION = `You are a High-Stakes Fantasy Football Draft Analyst. Produce specific, decisive advice using only the supplied live draft context.
 
-The context includes topAvailablePlayers (the user's top 10 undrafted players), user_current_roster, current_overall_pick, user_next_pick, picks_until_user_turn, positional_needs, starter_slots, and upcoming_user_picks. Base every recommendation on these live fields. Explicitly use the roster and turn-distance fields in your reasoning. Never output placeholders such as "recalculating", "unavailable", "# -", or invented values.
+Evaluate all four dimensions before recommending a player:
+1. Roster Construction: compare positions already drafted in user_current_roster/userRoster against starter_slots and positional_needs. Identify filled starters, open starters, and the current build archetype.
+2. Tier Breakdown: inspect the custom tier and players_remaining_in_tier data for RB, WR, and TE. Highlight meaningful tier drops likely to occur before user_next_pick.
+3. Turn Risk: use current_overall_pick, user_next_pick, picks_until_user_turn, survivalPct/survivalProbability, and opponent needs to explain which targets are likely to be sniped before the return turn. Never invent a percentage or pick count.
+4. Value vs Need: compare the recommended player against higher-ranked available players and explicitly explain why this player creates more draft leverage for the current roster—or state clearly when pure board value should win.
 
-Return only a JSON object matching the required schema. recommendedPlayer must name one player from topAvailablePlayers. strategy must be a detailed 2-3 sentence rationale tied to tier, survival odds, and build. turnRiskAnalysis must be a detailed 1-2 sentence explanation of likely positional/player movement before user_next_pick. rosterContext must state the user's current positional focus and roster construction. Never return Markdown, HTML, generic advice, or unsupported claims.`;
+The context includes topAvailablePlayers (the user's top 10 undrafted players), user_current_roster, current_overall_pick, user_next_pick, picks_until_user_turn, positional_needs, starter_slots, and upcoming_user_picks. recommended_player must name a player from topAvailablePlayers. Return only one JSON object matching the required schema, with no Markdown or HTML. reasoning should be a detailed but concise 2-4 sentence analysis of roster balance, positional scarcity, alternatives, and draft leverage. turn_risk must begin with High, Medium, or Low and include the exact supplied picks-until-turn value. roster_context must summarize the build and open priorities. Never return placeholders such as "recalculating", "unavailable", or "# -".`;
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
-    recommendedPlayer: { type: "STRING" },
-    strategy: { type: "STRING" },
-    turnRiskAnalysis: { type: "STRING" },
-    rosterContext: { type: "STRING" },
+    recommended_player: { type: "STRING" },
+    tier: { type: "STRING" },
+    reasoning: { type: "STRING" },
+    turn_risk: { type: "STRING" },
+    roster_context: { type: "STRING" },
   },
-  required: ["recommendedPlayer", "strategy", "turnRiskAnalysis", "rosterContext"],
+  required: ["recommended_player", "tier", "reasoning", "turn_risk", "roster_context"],
 };
 
 const setCors = (response) => {
@@ -82,8 +87,9 @@ const boardFallbackAdvice = (context) => ({
   is_quota_fallback: true,
   recommended_player: context?.topAvailablePlayers?.[0]?.name || "Best Available",
   tier: "Tier 1 (Board Rank)",
-  reasoning: "Live draft board pick recommendation based on top available ADP.",
+  reasoning: "[Fallback View] Displaying top projected board value. Full AI strategic analysis will resume once API quota resets. Live draft board pick recommendation is based on top available ADP.",
   turn_risk: "Low",
+  roster_context: "Live roster and board tracking remain active while AI quota resets.",
 });
 
 export default async function handler(request, response) {
@@ -174,7 +180,7 @@ export default async function handler(request, response) {
       if (!advice) {
         throw new Error(`${model} returned invalid JSON advice: ${rawAdvice}`);
       }
-      const requiredFields = ["recommendedPlayer", "strategy", "turnRiskAnalysis", "rosterContext"];
+      const requiredFields = ["recommended_player", "tier", "reasoning", "turn_risk", "roster_context"];
       if (!requiredFields.every((field) => typeof advice?.[field] === "string" && advice[field].trim())) {
         throw new Error(`${model} omitted required advice fields`);
       }

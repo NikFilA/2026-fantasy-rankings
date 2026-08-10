@@ -20,6 +20,10 @@ const isAppPage = isRankingsHost(window.location.hostname);
 const isSleeperDraft = /(^|\.)sleeper\.(com|app)$/.test(window.location.hostname)
   && /\/draft\/nfl\//.test(window.location.pathname);
 
+if (typeof window.activeDraftAlertHtml === "undefined") {
+  window.activeDraftAlertHtml = null;
+}
+
 const assistantState = {
   players: [],
   customRankings: [],
@@ -859,6 +863,15 @@ const updateMainPanelUI = (availablePlayers, contextPayload, { updateAlerts = tr
     assistantState.tierCliffAlert = contextPayload.tierCliffAlert || "";
     assistantState.mustDraftAlert = contextPayload.mustDraftAlert || "";
     assistantState.strategyAlertPickSignature = alertSignature;
+    const alertMarkup = [
+      assistantState.mustDraftAlert
+        ? `<div class="must-draft-alert">${escapeHtml(assistantState.mustDraftAlert)}</div>`
+        : "",
+      assistantState.tierCliffAlert
+        ? `<div class="tier-cliff-alert">${escapeHtml(assistantState.tierCliffAlert)}</div>`
+        : "",
+    ].join("");
+    if (alertMarkup) window.activeDraftAlertHtml = alertMarkup;
   }
   assistantState.survivalByPlayerId = Object.fromEntries(
     purgedAvailablePlayers.map((player) => [String(player.player_id), player.survivalProbability]),
@@ -870,6 +883,9 @@ const refreshLocalDraftMetrics = async (rawPicks, { force = false } = {}) => {
   const signature = pickSignature(rawPicks);
   const officialPickChanged = signature !== assistantState.lastRecommendationPickSignature;
   if (!force && signature === assistantState.lastRecommendationPickSignature) return;
+  if (officialPickChanged && assistantState.lastRecommendationPickSignature) {
+    window.activeDraftAlertHtml = null;
+  }
   assistantState.lastRecommendationPickSignature = signature;
 
   try {
@@ -1274,7 +1290,7 @@ const styles = `
     align-items: center;
     border-bottom: 1px solid #29313a;
     padding: 9px;
-    cursor: grab;
+    cursor: move;
     touch-action: none;
     user-select: none;
   }
@@ -1770,15 +1786,10 @@ const updatePanelStateUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.
     status.classList.toggle("error", Boolean(assistantState.error));
     status.textContent = `${assistantState.error || assistantState.source} · [${assistantState.draftedCount}] DRAFTED DETECTED`;
   }
-  const mustDraft = shadowRoot.querySelector("[data-role='must-draft-alert']");
-  if (mustDraft) {
-    mustDraft.textContent = assistantState.mustDraftAlert;
-    mustDraft.hidden = !assistantState.mustDraftAlert;
-  }
-  const tierCliff = shadowRoot.querySelector("[data-role='tier-cliff-alert']");
-  if (tierCliff) {
-    tierCliff.textContent = assistantState.tierCliffAlert;
-    tierCliff.hidden = !assistantState.tierCliffAlert;
+  const alertHost = shadowRoot.querySelector("[data-role='strategy-alerts']");
+  if (alertHost) {
+    const stickyAlertHtml = window.activeDraftAlertHtml || "";
+    if (alertHost.innerHTML !== stickyAlertHtml) alertHost.innerHTML = stickyAlertHtml;
   }
   updateListUI(shadowRoot);
 };
@@ -1809,7 +1820,7 @@ const renderAssistant = () => {
   root.shadowRoot.innerHTML = `
     <style>${styles}</style>
     <section id="draft-assistant-panel" class="panel extension-ui-element ${assistantState.expanded ? "" : "collapsed"}" style="${overlayPositionStyle()}${panelSizeStyle()}">
-      <div class="head" data-drag-handle>
+      <div class="head draft-assistant-header" data-drag-handle>
         <span class="title">
           <strong>Draft Assistant</strong>
           <span data-role="best-player">${assistantState.loading ? "Loading rankings" : best ? `Best: ${escapeHtml(best.name)}` : "No available players"}</span>
@@ -1817,8 +1828,7 @@ const renderAssistant = () => {
         <button data-action="refresh">Refresh</button>
         <button data-action="toggle">${assistantState.expanded ? "Hide" : "Show"}</button>
       </div>
-      <div class="must-draft-alert" data-role="must-draft-alert" ${assistantState.mustDraftAlert ? "" : "hidden"}>${escapeHtml(assistantState.mustDraftAlert)}</div>
-      <div class="tier-cliff-alert" data-role="tier-cliff-alert" ${assistantState.tierCliffAlert ? "" : "hidden"}>${escapeHtml(assistantState.tierCliffAlert)}</div>
+      <div class="strategy-alerts" data-role="strategy-alerts">${window.activeDraftAlertHtml || ""}</div>
       <div class="toolbar">
         <input id="draft-assistant-search" value="${escapeHtml(assistantState.search)}" placeholder="Search player">
         <button data-action="open-board">Board</button>
@@ -1846,6 +1856,47 @@ const renderAssistant = () => {
     searchInput?.focus({ preventScroll: true });
     searchInput?.setSelectionRange(priorSearchSelection.start, priorSearchSelection.end);
   }
+};
+
+const bindAssistantMouseDrag = (panel, handle) => {
+  handle.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || event.target.closest("button, input, select, a")) return;
+    const rect = panel.getBoundingClientRect();
+    const startMouseX = event.clientX;
+    const startMouseY = event.clientY;
+    const startLeft = rect.left;
+    const startTop = rect.top;
+    const previousUserSelect = document.documentElement.style.userSelect;
+    assistantState.isDragging = true;
+    document.documentElement.style.setProperty("user-select", "none", "important");
+    panel.style.left = `${startLeft}px`;
+    panel.style.top = `${startTop}px`;
+    panel.style.right = "auto";
+    handle.style.cursor = "grabbing";
+
+    const move = (moveEvent) => {
+      const next = boundedFloatingPosition(
+        startLeft + moveEvent.clientX - startMouseX,
+        startTop + moveEvent.clientY - startMouseY,
+        rect.width,
+        rect.height,
+      );
+      panel.style.left = `${next.x}px`;
+      panel.style.top = `${next.y}px`;
+      assistantState.position = next;
+    };
+    const stop = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+      document.documentElement.style.userSelect = previousUserSelect;
+      handle.style.cursor = "move";
+      assistantState.isDragging = false;
+      saveOverlayPrefs();
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop, { once: true });
+    event.preventDefault();
+  });
 };
 
 const bindAssistant = (shadowRoot) => {
@@ -1888,16 +1939,7 @@ const bindAssistant = (shadowRoot) => {
   const handle = shadowRoot.querySelector("[data-drag-handle]");
   const panel = shadowRoot.querySelector(".panel");
   if (handle && panel) {
-    bindSmoothPointerDrag({
-      element: panel,
-      handle,
-      onStart: () => { assistantState.isDragging = true; },
-      onStop: (nextPosition) => {
-        assistantState.position = nextPosition;
-        assistantState.isDragging = false;
-        saveOverlayPrefs();
-      },
-    });
+    bindAssistantMouseDrag(panel, handle);
 
     panel.addEventListener("pointerdown", (event) => {
       if (!assistantState.expanded) return;
@@ -2101,28 +2143,19 @@ const computeLiveTeamGrade = (teamPicks) => {
 
 const draftTeamHeaders = (board, teamCount) => {
   const headerScope = board.parentElement || board;
-  const headerRowSelector = [
-    ".draft-board-header",
-    "[data-testid='draft-board-header']",
-    "[class*='DraftBoardHeader']",
-    "[class*='draftBoardHeader']",
-    "[class*='draft-board-header']",
-  ].join(",");
-  const headerRows = [
-    ...(headerScope.matches(headerRowSelector) ? [headerScope] : []),
-    ...headerScope.querySelectorAll(headerRowSelector),
-  ];
-  for (const row of headerRows) {
-    const directChildren = [...row.children].filter((element) => {
-      if (element.closest(".extension-ui-element")) return false;
-      if (element.matches("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return false;
-      if (element.querySelector("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return false;
-      return element.matches(".team-header, .team-slot-header, .cell-header, .draft-cell.header, .cell.header, [data-testid='team-header'], [data-draft-slot]")
-        || Boolean(element.querySelector(":scope > img, :scope > [class*='avatar'], :scope > [class*='Avatar']"));
-    });
-    if (directChildren.length >= teamCount) return directChildren.slice(0, teamCount);
-  }
-  return [];
+  const structuralTargets = [...document.querySelectorAll(
+    '.draft-board-header > div, .team-header, [class*="team-header"], [class*="avatar"]',
+  )];
+  const headers = structuralTargets.map((element) => {
+    if (!headerScope.contains(element)) return null;
+    if (element.closest("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return null;
+    if (element.matches('[class*="avatar"]')) {
+      return element.closest('.team-header, [class*="team-header"], .team-slot-header, .cell-header')
+        || element.parentElement;
+    }
+    return element;
+  }).filter(Boolean).filter((element) => !element.closest(".extension-ui-element"));
+  return [...new Set(headers)].slice(0, teamCount);
 };
 
 const cleanupBrokenGradeInjections = () => {
@@ -2194,8 +2227,8 @@ const renderLiveDraftGrades = () => {
     badge.setAttribute("title", `Value Score: ${result.valueScore} | Starters: ${result.completenessScore} | Best Pick: ${result.bestPick}`);
     badge.style.cssText = [
       "position:absolute",
-      "top:-4px",
-      "right:-4px",
+      "top:-2px",
+      "right:-2px",
       `background:${result.color}`,
       "color:#ffffff",
       "border:2px solid #0f172a",
@@ -2205,7 +2238,7 @@ const renderLiveDraftGrades = () => {
       "font-weight:800",
       "font-family:system-ui,sans-serif",
       "line-height:1.25",
-      "z-index:100",
+      "z-index:9999",
       "box-shadow:0 2px 4px rgba(0,0,0,0.4)",
       "pointer-events:auto",
       "white-space:nowrap",
@@ -2217,6 +2250,7 @@ const renderLiveDraftGrades = () => {
 
 let liveGradeObserver = null;
 let liveGradeFrame = 0;
+let liveGradePollTimer = null;
 const observeLiveDraftGrades = () => {
   const attach = () => {
     const board = draftBoardElement();
@@ -2233,6 +2267,7 @@ const observeLiveDraftGrades = () => {
     });
     liveGradeObserver.observe(board, { childList: true, subtree: true, attributes: true });
     renderLiveDraftGrades();
+    if (!liveGradePollTimer) liveGradePollTimer = setInterval(renderLiveDraftGrades, 1000);
     return true;
   };
   if (!attach()) {

@@ -6,9 +6,7 @@ const TEAM_FUTURES_URL = `${APP_ORIGIN}/api/bettingpros-team-futures`;
 const LIVE_SLEEPER_ADP_URL = `${APP_ORIGIN}/api/sleeper-adp`;
 const LIVE_ESPN_ADP_URL = `${APP_ORIGIN}/api/espn-adp`;
 const LIVE_SLEEPER_PLAYERS_URL = `${APP_ORIGIN}/api/sleeper-players`;
-const GEMINI_ADVICE_URL = `${APP_ORIGIN}/api/gemini-advice`;
 const ASSISTANT_ID = "ff-draft-assistant-root";
-const AI_ADVICE_ID = "local-draft-advice";
 const STORAGE_KEY = "myCustomRankings";
 const POSITIONS = ["QB", "RB", "WR", "TE"];
 const APP_HOSTS = new Set(["2026-fantasy-rankings.vercel.app", "localhost", "127.0.0.1"]);
@@ -44,26 +42,10 @@ const assistantState = {
   size: { width: null, height: null },
   isDragging: false,
   isResizing: false,
-  advicePosition: { x: null, y: null },
-  adviceSize: { width: null, height: null },
-  adviceCollapsed: false,
-  isAdviceDragging: false,
-  isAdviceResizing: false,
   teamProjections: [],
   teamFutures: {},
   bettingProps: {},
-  aiAdvice: "Waiting for the latest Sleeper pick...",
-  aiAdviceHtml: "",
-  geminiAdviceData: null,
-  localAdviceDetails: null,
-  aiAdviceError: false,
-  aiLoading: false,
-  aiAdviceSource: "Local",
-  aiRequestId: 0,
   lastRecommendationPickSignature: "",
-  lastGeminiFetchTime: 0,
-  wasUserOnTheClock: false,
-  currentAdviceCacheKey: "",
   leagueSettings: null,
   sleeperDraftDetails: null,
   tierCliffAlert: "",
@@ -73,36 +55,6 @@ const assistantState = {
 };
 
 let aiModulesPromise = null;
-const geminiAdviceByPick = new Map();
-const GEMINI_COOLDOWN_MS = 18_000;
-const GEMINI_COOLDOWN_MESSAGE = "⏳ AI Cooldown: Showing top board value. (Gemini updates on your next pick).";
-const GEMINI_INTERACTION_QUIET_MS = 2_500;
-let lastUserInteractionAt = 0;
-let geminiRetryTimer = null;
-
-const noteUserInteraction = () => {
-  lastUserInteractionAt = Date.now();
-};
-
-const userIsActivelyInteracting = () => document.hidden
-  || !document.hasFocus()
-  || Date.now() - lastUserInteractionAt < GEMINI_INTERACTION_QUIET_MS;
-
-const scheduleAutomaticGeminiRetry = (delayMs = GEMINI_INTERACTION_QUIET_MS) => {
-  if (geminiRetryTimer) clearTimeout(geminiRetryTimer);
-  geminiRetryTimer = setTimeout(() => {
-    geminiRetryTimer = null;
-    assistantState.lastRecommendationPickSignature = "";
-    assistantState.wasUserOnTheClock = false;
-    syncDraftPicks().catch((error) => {
-      console.warn("[DraftAssistant] Deferred Gemini retry failed:", error);
-    });
-  }, Math.max(250, delayMs));
-};
-
-document.addEventListener("keydown", noteUserInteraction, true);
-document.addEventListener("input", noteUserInteraction, true);
-document.addEventListener("pointerdown", noteUserInteraction, true);
 
 const loadAiModules = () => {
   if (!aiModulesPromise) {
@@ -110,73 +62,9 @@ const loadAiModules = () => {
       createMockLeagueSettingsFromDraft: draftEngine.createMockLeagueSettingsFromDraft,
       generateDraftContextPayload: draftEngine.generateDraftContextPayload,
       onPickUpdate: draftEngine.onPickUpdate,
-      isUserOnTheClock: draftEngine.isUserOnTheClock,
     }));
   }
   return aiModulesPromise;
-};
-
-const fetchGeminiRecommendation = async (contextPayload) => {
-  console.log("[DraftAssistant] Initiating Gemini API fetch...");
-  let response;
-  let jsonPayload;
-  try {
-    response = await fetch(GEMINI_ADVICE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contextPayload }),
-    });
-    console.log("[DraftAssistant] API Status:", response.status);
-    jsonPayload = await response.json();
-    console.log("[DraftAssistant] Raw API Payload:", jsonPayload);
-  } catch (error) {
-    console.error("[DraftAssistant] Gemini payload invalid:", jsonPayload || error);
-    throw error;
-  }
-
-  if (jsonPayload?.is_quota_fallback) {
-    const recommendedPlayer = String(jsonPayload.recommended_player || "Best Available").trim();
-    const tier = String(jsonPayload.tier || "Fallback").trim();
-    return {
-      recommendedPlayer: `${recommendedPlayer} (${tier})`,
-      strategy: String(jsonPayload.reasoning || "Showing the top projected player while Gemini quota resets.").trim(),
-      turnRiskAnalysis: `Turn risk: ${String(jsonPayload.turn_risk || "Low").trim()}.`,
-      rosterContext: String(jsonPayload.roster_context || "Quota fallback is active; live board tracking and local rankings remain current.").trim(),
-      isQuotaFallback: true,
-    };
-  }
-
-  let advice = jsonPayload?.analysis && typeof jsonPayload.analysis === "object"
-    ? jsonPayload.analysis
-    : jsonPayload;
-  if (typeof jsonPayload?.analysis === "string") {
-    try {
-      advice = JSON.parse(jsonPayload.analysis);
-    } catch {
-      advice = null;
-    }
-  }
-  if (advice && typeof advice === "object" && advice.recommended_player) {
-    advice = {
-      recommendedPlayer: `${String(advice.recommended_player).trim()}${advice.tier ? ` (${String(advice.tier).trim()})` : ""}`,
-      strategy: String(advice.reasoning || "").trim(),
-      turnRiskAnalysis: String(advice.turn_risk || "").trim(),
-      rosterContext: String(advice.roster_context || "").trim(),
-    };
-  }
-  const requiredFields = ["recommendedPlayer", "strategy", "turnRiskAnalysis", "rosterContext"];
-  const isValidAdvice = requiredFields.every(
-    (field) => typeof advice?.[field] === "string" && advice[field].trim(),
-  );
-  if (!response.ok || !isValidAdvice) {
-    console.error("[DraftAssistant] Gemini payload invalid:", jsonPayload);
-    throw new Error(
-      jsonPayload?.error
-      || jsonPayload?.details
-      || `Gemini API returned invalid advice with status ${response.status}`,
-    );
-  }
-  return Object.fromEntries(requiredFields.map((field) => [field, advice[field].trim()]));
 };
 
 const normalize = (value = "") => String(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -654,9 +542,6 @@ const saveOverlayPrefs = () => chrome.storage.local.set({
   assistantExpanded: assistantState.expanded,
   assistantPosition: assistantState.position,
   assistantSize: assistantState.size,
-  assistantAdvicePosition: assistantState.advicePosition,
-  assistantAdviceSize: assistantState.adviceSize,
-  assistantAdviceCollapsed: assistantState.adviceCollapsed,
 });
 
 const loadOverlayPrefs = async () => {
@@ -666,9 +551,6 @@ const loadOverlayPrefs = async () => {
     "assistantExpanded",
     "assistantPosition",
     "assistantSize",
-    "assistantAdvicePosition",
-    "assistantAdviceSize",
-    "assistantAdviceCollapsed",
   ]);
   assistantState.filters = Array.isArray(prefs.assistantFilters)
     ? prefs.assistantFilters.filter((pos) => POSITIONS.includes(pos))
@@ -676,9 +558,6 @@ const loadOverlayPrefs = async () => {
   assistantState.expanded = prefs.assistantExpanded !== false;
   assistantState.position = prefs.assistantPosition || { x: null, y: null };
   assistantState.size = prefs.assistantSize || { width: null, height: null };
-  assistantState.advicePosition = prefs.assistantAdvicePosition || { x: null, y: null };
-  assistantState.adviceSize = prefs.assistantAdviceSize || { width: null, height: null };
-  assistantState.adviceCollapsed = prefs.assistantAdviceCollapsed === true;
 };
 
 const loadRankings = async ({ forceDefault = false } = {}) => {
@@ -836,194 +715,6 @@ const bindSmoothPointerDrag = ({ element, handle, onStart, onStop }) => {
   handle.addEventListener("pointercancel", finish);
 };
 
-const renderAIAdvice = () => {
-  if (!isSleeperDraft) return;
-  let box = document.getElementById(AI_ADVICE_ID);
-  if (box && (assistantState.isAdviceDragging || assistantState.isAdviceResizing)) return;
-  if (!box) {
-    box = document.createElement("div");
-    box.id = AI_ADVICE_ID;
-    box.className = "extension-ui-element local-draft-advice-container";
-    const header = document.createElement("div");
-    header.className = "advice-header";
-    header.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:grab;touch-action:none;user-select:none";
-    const label = document.createElement("strong");
-    label.className = "advice-label";
-    label.style.cssText = "flex:1;color:#facc15;font-size:11px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap";
-    const minimize = document.createElement("button");
-    minimize.type = "button";
-    minimize.className = "advice-minimize";
-    minimize.style.cssText = "width:26px;height:26px;border:1px solid #33404b;border-radius:999px;background:#161b20;color:#eef2f6;cursor:pointer;font:900 16px/1 system-ui";
-    const advice = document.createElement("span");
-    advice.className = "advice-content";
-    advice.style.cssText = "display:block;padding:0 14px 12px;white-space:normal;overflow-wrap:anywhere";
-    header.append(label, minimize);
-    box.append(header, advice);
-    document.documentElement.appendChild(box);
-
-    minimize.addEventListener("click", () => {
-      assistantState.adviceCollapsed = !assistantState.adviceCollapsed;
-      saveOverlayPrefs();
-      renderAIAdvice();
-    });
-    bindSmoothPointerDrag({
-      element: box,
-      handle: header,
-      onStart: () => { assistantState.isAdviceDragging = true; },
-      onStop: (nextPosition) => {
-        assistantState.isAdviceDragging = false;
-        assistantState.advicePosition = nextPosition;
-        saveOverlayPrefs();
-        renderAIAdvice();
-      },
-    });
-    const finishAdviceResize = () => {
-      if (!assistantState.isAdviceResizing) return;
-      assistantState.isAdviceResizing = false;
-      saveOverlayPrefs();
-    };
-    box.addEventListener("pointerdown", (event) => {
-      if (assistantState.adviceCollapsed) return;
-      const rect = box.getBoundingClientRect();
-      if (event.clientX >= rect.right - 22 && event.clientY >= rect.bottom - 22) {
-        assistantState.isAdviceResizing = true;
-        window.addEventListener("pointerup", finishAdviceResize, { once: true });
-      }
-    });
-    box.addEventListener("pointerup", finishAdviceResize);
-    box.addEventListener("pointercancel", finishAdviceResize);
-    const resizeObserver = new ResizeObserver(() => {
-      if (assistantState.adviceCollapsed) return;
-      const rect = box.getBoundingClientRect();
-      assistantState.adviceSize = { width: rect.width, height: rect.height };
-    });
-    resizeObserver.observe(box);
-  }
-  box.style.cssText = [
-    "position:fixed",
-    "z-index:2147483647",
-    `width:${assistantState.adviceCollapsed ? "auto" : (assistantState.adviceSize.width ? `${assistantState.adviceSize.width}px` : "min(640px,calc(100vw - 32px))")}`,
-    "height:auto",
-    `min-width:${assistantState.adviceCollapsed ? "180px" : "320px"}`,
-    `min-height:${assistantState.adviceCollapsed ? "0" : "84px"}`,
-    "max-width:calc(100vw - 16px)",
-    `max-height:${assistantState.adviceCollapsed ? "48px" : "150px"}`,
-    "box-sizing:border-box",
-    "border:1px solid",
-    `border-color:${assistantState.aiAdviceError ? "#fb7185" : "#38bdf8"}`,
-    `border-radius:${assistantState.adviceCollapsed ? "999px" : "12px"}`,
-    "background:rgba(17,20,22,.96)",
-    "box-shadow:0 14px 40px rgba(0,0,0,.45)",
-    "color:#eef2f6",
-    "font:600 14px/1.45 Inter,ui-sans-serif,system-ui,sans-serif",
-    `overflow:${assistantState.adviceCollapsed ? "hidden" : "auto"}`,
-    `resize:${assistantState.adviceCollapsed ? "none" : "both"}`,
-  ].join(";");
-  const label = box.querySelector(".advice-label");
-  const hasLiveGeminiAnalysis = assistantState.aiAdviceSource === "Gemini"
-    && Boolean(assistantState.geminiAdviceData || assistantState.aiAdviceHtml);
-  label.textContent = assistantState.aiLoading
-    ? "⚡ GEMINI STRATEGIST · ANALYZING"
-    : hasLiveGeminiAnalysis
-      ? "⚡ GEMINI STRATEGIST"
-      : `${assistantState.aiAdviceSource} Draft Advice`;
-  const minimize = box.querySelector(".advice-minimize");
-  minimize.textContent = assistantState.adviceCollapsed ? "+" : "−";
-  minimize.setAttribute("aria-label", assistantState.adviceCollapsed ? "Expand draft advice" : "Minimize draft advice");
-  const advice = box.querySelector(".advice-content");
-  if (assistantState.geminiAdviceData && !assistantState.aiLoading) {
-    const gemini = assistantState.geminiAdviceData;
-    const recommendation = document.createElement("div");
-    recommendation.className = "local-advice-recommendation";
-    recommendation.textContent = `🎯 RECOMMENDED: ${gemini.recommendedPlayer}`;
-    const list = document.createElement("ul");
-    list.className = "local-advice-bullets";
-    [
-      ["Strategy", gemini.strategy],
-      ["Turn Risk", gemini.turnRiskAnalysis],
-      ["Roster Context", gemini.rosterContext],
-    ].forEach(([heading, value]) => {
-      const item = document.createElement("li");
-      const strong = document.createElement("strong");
-      strong.textContent = `${heading}: `;
-      item.append(strong, document.createTextNode(value));
-      list.appendChild(item);
-    });
-    advice.replaceChildren(recommendation, list);
-  } else if (assistantState.aiAdviceHtml && !assistantState.aiLoading) {
-    const template = document.createElement("template");
-    template.innerHTML = assistantState.aiAdviceHtml
-      .replace(/^```(?:html)?/i, "")
-      .replace(/```$/i, "")
-      .trim();
-    const allowed = new Set(["DIV", "P", "UL", "LI", "STRONG", "EM", "BR", "SPAN"]);
-    [...template.content.querySelectorAll("*")].forEach((element) => {
-      if (["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "LINK", "META"].includes(element.tagName)) {
-        element.remove();
-        return;
-      }
-      if (!allowed.has(element.tagName)) {
-        element.replaceWith(...element.childNodes);
-        return;
-      }
-      [...element.attributes].forEach((attribute) => element.removeAttribute(attribute.name));
-    });
-    advice.replaceChildren(template.content.cloneNode(true));
-  } else if (assistantState.localAdviceDetails && !assistantState.aiLoading) {
-    const details = assistantState.localAdviceDetails;
-    const recommendation = document.createElement("div");
-    recommendation.className = "local-advice-recommendation";
-    recommendation.textContent = `🎯 RECOMMENDED: ${details.name} (${details.position} - Tier ${details.tier})`;
-    const list = document.createElement("ul");
-    list.className = "local-advice-bullets";
-    [
-      ["Strategy", details.strategy],
-      ["Turn Risk", details.turn_risk],
-      ["Roster Context", details.roster_context],
-    ].forEach(([heading, value]) => {
-      const item = document.createElement("li");
-      const strong = document.createElement("strong");
-      strong.textContent = `${heading}: `;
-      item.append(strong, document.createTextNode(value || "Unavailable."));
-      list.appendChild(item);
-    });
-    advice.replaceChildren(recommendation, list);
-  } else {
-    advice.textContent = assistantState.aiAdvice;
-  }
-  advice.hidden = assistantState.adviceCollapsed;
-
-  const rect = box.getBoundingClientRect();
-  const requestedX = Number.isFinite(assistantState.advicePosition.x)
-    ? assistantState.advicePosition.x
-    : (window.innerWidth - rect.width) / 2;
-  const requestedY = Number.isFinite(assistantState.advicePosition.y)
-    ? assistantState.advicePosition.y
-    : 16;
-  const position = boundedFloatingPosition(requestedX, requestedY, rect.width, rect.height);
-  box.style.left = `${position.x}px`;
-  box.style.top = `${position.y}px`;
-  box.style.right = "auto";
-  assistantState.advicePosition = position;
-};
-
-window.testGeminiUI = (sampleAdvice = {
-  recommendedPlayer: "Test Player (WR - Tier 2)",
-  strategy: "Test strategy tied to the current board.",
-  turnRiskAnalysis: "Test turn-risk analysis.",
-  rosterContext: "Test roster construction.",
-}) => {
-  assistantState.aiLoading = false;
-  assistantState.aiAdviceError = false;
-  assistantState.aiAdviceSource = "Gemini";
-  assistantState.localAdviceDetails = null;
-  assistantState.aiAdvice = "";
-  assistantState.aiAdviceHtml = "";
-  assistantState.geminiAdviceData = typeof sampleAdvice === "object" ? sampleAdvice : null;
-  renderAIAdvice();
-  console.log("[DraftAssistant] Successfully injected Gemini advice into DOM");
-};
-
 const aiRankingPlayers = () => customRankingPlayers();
 
 const normalizedDraftPicks = (picks) => picks.map((pick) => ({
@@ -1157,26 +848,6 @@ const loadSleeperDraftContext = async () => {
   };
 };
 
-const localRecommendation = (contextPayload, availablePlayers = contextPayload.undraftedPlayers || []) => {
-  const top = availablePlayers[0];
-  const engineAdvice = contextPayload.local_draft_advice;
-  if (engineAdvice && (!top || String(engineAdvice.player_id) === String(top.player_id))) {
-    return engineAdvice;
-  }
-  if (!top) return null;
-  return {
-    player_id: top.player_id,
-    name: top.name,
-    position: top.position || "—",
-    tier: String(top.tier ?? top.user_tier ?? "—").replace(/^tier\s*/i, ""),
-    strategy: `Highest-ranked available player on your board (#${top.user_rank || "—"}).`,
-    turn_risk: Number.isFinite(Number(top.survivalProbability))
-      ? `${top.survivalProbability}% chance to return; opponent needs are recalculating.`
-      : "Return odds are recalculating.",
-    roster_context: contextPayload.strategic_guidance || "Continue balancing value against open starters.",
-  };
-};
-
 const updateMainPanelUI = (availablePlayers, contextPayload) => {
   const purgedAvailablePlayers = availablePlayers.filter(
     (player) => !assistantState.draftedPlayerIds.has(String(player.player_id))
@@ -1192,64 +863,10 @@ const updateMainPanelUI = (availablePlayers, contextPayload) => {
   updatePanelStateUI();
 };
 
-const updateAdviceOverlay = (availablePlayers, contextPayload) => {
-  const purgedAvailablePlayers = availablePlayers.filter(
-    (player) => !assistantState.draftedPlayerIds.has(String(player.player_id))
-      && !assistantState.draftedNames.has(normalizePlayerName(player.name)),
-  );
-  const currentPick = assistantState.draftedCount + 1;
-  const cacheMatchesCurrentPick = assistantState.currentAdviceCacheKey.startsWith(`${currentPick}_`);
-  const cachedAdvice = cacheMatchesCurrentPick
-    ? geminiAdviceByPick.get(assistantState.currentAdviceCacheKey)
-    : null;
-  if (cachedAdvice) {
-    assistantState.aiAdviceSource = "Gemini";
-    assistantState.aiAdviceError = false;
-    assistantState.aiAdviceHtml = "";
-    assistantState.geminiAdviceData = cachedAdvice;
-    assistantState.localAdviceDetails = null;
-    assistantState.aiAdvice = "";
-    renderAIAdvice();
-    return;
-  }
-  if (assistantState.aiLoading) return;
-  assistantState.aiAdviceSource = "Local";
-  assistantState.aiAdviceError = false;
-  assistantState.aiAdviceHtml = "";
-  assistantState.geminiAdviceData = null;
-  assistantState.localAdviceDetails = localRecommendation(contextPayload, purgedAvailablePlayers);
-  assistantState.aiAdvice = assistantState.localAdviceDetails
-    ? `Recommended: ${assistantState.localAdviceDetails.name}`
-    : "No available ranked players remain.";
-  renderAIAdvice();
-};
-
-const updateAdviceBubbleUI = (availablePlayers, _userRoster, _draftState, contextPayload) => {
-  const purgedAvailablePlayers = Array.isArray(assistantState.undraftedPlayers)
-    ? assistantState.undraftedPlayers
-    : availablePlayers.filter(
-      (player) => !assistantState.draftedPlayerIds.has(String(player.player_id)),
-    );
-  const removedByLiveDetection = purgedAvailablePlayers.length !== availablePlayers.length;
-  updateAdviceOverlay(purgedAvailablePlayers, removedByLiveDetection
-    ? { ...contextPayload, tierCliffAlert: "", tier_cliff_warning: "", mustDraftAlert: "" }
-    : contextPayload);
-};
-
-const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
+const refreshLocalDraftMetrics = async (rawPicks, { force = false } = {}) => {
   const signature = pickSignature(rawPicks);
-  if (!manual && signature === assistantState.lastRecommendationPickSignature) return;
+  if (!force && signature === assistantState.lastRecommendationPickSignature) return;
   assistantState.lastRecommendationPickSignature = signature;
-
-  const requestId = ++assistantState.aiRequestId;
-  assistantState.aiLoading = false;
-  assistantState.aiAdviceError = false;
-  assistantState.aiAdviceSource = "Local";
-  assistantState.aiAdvice = "";
-  assistantState.aiAdviceHtml = "";
-  assistantState.geminiAdviceData = null;
-  assistantState.localAdviceDetails = null;
-  renderAIAdvice();
 
   try {
     const [sleeperSettings, sleeperContext, modules] = await Promise.all([
@@ -1279,102 +896,15 @@ const refreshAIRecommendation = async (rawPicks, { manual = false } = {}) => {
       picks: normalizedPicks,
       draftDetails: sleeperContext.draftDetails,
     };
-    const contextPayload = modules.onPickUpdate(
+    modules.onPickUpdate(
       draftState,
       aiRankingPlayers(),
       resolvedUserIdentity,
       sleeperContext.leagueSettings,
-      {
-        updateMainPanelUI,
-        updateAdviceBubbleUI,
-      },
+      { updateMainPanelUI },
     );
-    const isOnClock = Boolean(resolvedUserIdentity)
-      && modules.isUserOnTheClock(rawPicks, sleeperContext.draftDetails, resolvedUserIdentity);
-    const cameOnClock = isOnClock && !assistantState.wasUserOnTheClock;
-    assistantState.wasUserOnTheClock = isOnClock;
-    console.log("[DraftAssistant] Gemini trigger state:", {
-      manual,
-      sleeperUserOrSlot: storedUserIdentity || "missing",
-      userDraftSlot: resolvedUserDraftSlot ?? contextPayload.user_draft_slot,
-      currentOverallPick: contextPayload.ai_advice_payload?.current_overall_pick,
-      isOnClock,
-      cameOnClock,
-    });
-
-    const geminiPayload = contextPayload.ai_advice_payload || {
-      userRoster: contextPayload.user_roster_counts,
-      currentPick: contextPayload.next_pick_number - contextPayload.picks_until_user_turn,
-      nextPick: contextPayload.next_pick_number,
-      topAvailablePlayers: contextPayload.top_available_targets,
-    };
-    const userRosterCount = Object.values(geminiPayload.userRoster || {})
-      .reduce((total, count) => total + (Number(count) || 0), 0);
-    const cacheKey = `${geminiPayload.currentPick}_${userRosterCount}`;
-    assistantState.currentAdviceCacheKey = cacheKey;
-    const cachedAdvice = geminiAdviceByPick.get(cacheKey);
-    if (cachedAdvice && !manual) {
-      if (requestId !== assistantState.aiRequestId) return;
-      assistantState.aiAdviceSource = "Gemini";
-      assistantState.aiAdviceError = false;
-      assistantState.localAdviceDetails = null;
-      assistantState.aiAdviceHtml = "";
-      assistantState.geminiAdviceData = cachedAdvice;
-      assistantState.aiAdvice = "";
-      renderAIAdvice();
-      return;
-    }
-
-    if (!manual && !cameOnClock) return;
-
-    if (!manual && userIsActivelyInteracting()) {
-      scheduleAutomaticGeminiRetry(GEMINI_INTERACTION_QUIET_MS);
-      return;
-    }
-
-    const cooldownRemaining = GEMINI_COOLDOWN_MS - (Date.now() - assistantState.lastGeminiFetchTime);
-    if (!manual && cooldownRemaining > 0) {
-      if (requestId !== assistantState.aiRequestId) return;
-      assistantState.aiAdviceSource = "Gemini Cooldown";
-      assistantState.aiAdviceError = false;
-      assistantState.localAdviceDetails = null;
-      assistantState.aiAdviceHtml = "";
-      assistantState.geminiAdviceData = null;
-      assistantState.aiAdvice = GEMINI_COOLDOWN_MESSAGE;
-      renderAIAdvice();
-      scheduleAutomaticGeminiRetry(cooldownRemaining + 100);
-      return;
-    }
-
-    assistantState.aiLoading = true;
-    assistantState.aiAdviceSource = "Gemini";
-    assistantState.localAdviceDetails = null;
-    assistantState.aiAdviceHtml = "";
-    assistantState.geminiAdviceData = null;
-    assistantState.aiAdvice = "Generating Gemini advice...";
-    renderAIAdvice();
-    assistantState.lastGeminiFetchTime = Date.now();
-    const recommendation = await fetchGeminiRecommendation(geminiPayload);
-    if (requestId !== assistantState.aiRequestId) return;
-    geminiAdviceByPick.set(cacheKey, recommendation);
-    assistantState.aiAdviceHtml = "";
-    assistantState.geminiAdviceData = recommendation;
-    assistantState.aiAdvice = "";
-    renderAIAdvice();
-    console.log("[DraftAssistant] Successfully injected Gemini advice into DOM");
   } catch (error) {
-    if (requestId !== assistantState.aiRequestId) return;
-    assistantState.aiAdviceSource = "Gemini Error";
-    assistantState.aiAdviceHtml = "";
-    assistantState.geminiAdviceData = null;
-    assistantState.localAdviceDetails = null;
-    assistantState.aiAdvice = `Gemini advice error: ${error?.message || "Request failed"}`;
-    assistantState.aiAdviceError = true;
-  } finally {
-    if (requestId === assistantState.aiRequestId) {
-      assistantState.aiLoading = false;
-      renderAIAdvice();
-    }
+    console.warn("[DraftAssistant] Local draft metrics unavailable:", error);
   }
 };
 
@@ -1510,7 +1040,7 @@ const applyDraftPicks = (livePicks, {
   assistantState.draftPicksError = "";
   purgeDraftedIdsFromUi(completedIds, names);
   chrome.storage.local.set({ [sleeperDraftStorageKey()]: payload });
-  if (triggerAdvice) refreshAIRecommendation(completedPicks, { manual: manualAdvice });
+  if (triggerAdvice) refreshLocalDraftMetrics(completedPicks, { force: manualAdvice });
   return completedPicks;
 };
 
@@ -2323,7 +1853,6 @@ const bindAssistant = (shadowRoot) => {
     });
   });
   shadowRoot.querySelector("#draft-assistant-search")?.addEventListener("input", (event) => {
-    noteUserInteraction();
     assistantState.search = event.target.value;
     updateListUI(shadowRoot);
   });
@@ -2395,6 +1924,249 @@ const bindAssistant = (shadowRoot) => {
   }
 };
 
+const draftBoardElement = () => document.querySelector([
+  ".draft-board",
+  ".draft-board-container",
+  "[data-testid='draft-board']",
+  "[class*='DraftBoard']",
+  "[class*='draftBoard']",
+  "[class*='draft-board']",
+  "[id*='draft-board']",
+].join(","));
+
+const clampScore = (value) => Math.max(0, Math.min(100, Math.round(value)));
+
+const gradeFromScore = (score) => {
+  if (score >= 95) return { grade: "A+", color: "#22c55e" };
+  if (score >= 90) return { grade: "A", color: "#22c55e" };
+  if (score >= 85) return { grade: "B+", color: "#3b82f6" };
+  if (score >= 80) return { grade: "B", color: "#3b82f6" };
+  if (score >= 75) return { grade: "C+", color: "#eab308" };
+  if (score >= 70) return { grade: "C", color: "#eab308" };
+  if (score >= 60) return { grade: "D", color: "#ef4444" };
+  return { grade: "F", color: "#ef4444" };
+};
+
+const liveGradeStarterSlots = () => {
+  const rosterPositions = assistantState.leagueSettings?.roster_positions;
+  const counts = { QB: 0, RB: 0, WR: 0, TE: 0, FLEX: 0, SUPER_FLEX: 0 };
+  if (Array.isArray(rosterPositions)) {
+    rosterPositions.forEach((slot) => {
+      const key = String(slot || "").toUpperCase();
+      if (Object.hasOwn(counts, key)) counts[key] += 1;
+    });
+  }
+  if (!counts.QB && !counts.RB && !counts.WR && !counts.TE) {
+    Object.assign(counts, { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 2, SUPER_FLEX: 0 });
+  }
+  return counts;
+};
+
+const boardPlayerLookup = () => {
+  const rankings = customRankingPlayers();
+  const byId = new Map();
+  const byName = new Map();
+  rankings.forEach((player, index) => {
+    const enriched = { ...player, custom_rank: Number(player.custom_rank) || index + 1 };
+    byId.set(String(enriched.player_id), enriched);
+    playerAliases(enriched).forEach((alias) => byName.set(alias, enriched));
+    byName.set(normalizePlayerName(enriched.name), enriched);
+  });
+  return { byId, byName };
+};
+
+const readDraftPicksFromBoard = (board) => {
+  if (!board) return [];
+  const cells = [...board.querySelectorAll([
+    ".pick-cell",
+    "[data-pick-number]",
+    "[data-pick-no]",
+    "[data-testid='pick-cell']",
+    "[class*='PickCell']",
+    "[class*='pickCell']",
+  ].join(","))].filter((cell) => !cell.closest(".extension-ui-element"));
+  const { byId, byName } = boardPlayerLookup();
+  const teamCount = Number(assistantState.sleeperDraftDetails?.settings?.teams) || 12;
+  const seen = new Set();
+  const picks = [];
+
+  cells.forEach((cell, index) => {
+    const idNode = cell.matches("[data-player-id], [data-player_id], [data-playerid]")
+      ? cell
+      : cell.querySelector("[data-player-id], [data-player_id], [data-playerid]");
+    const playerId = idNode?.getAttribute("data-player-id")
+      || idNode?.getAttribute("data-player_id")
+      || idNode?.getAttribute("data-playerid");
+    let player = playerId ? byId.get(String(playerId)) : null;
+    if (!player) {
+      const textNodes = [cell, ...cell.querySelectorAll("span, p")];
+      player = textNodes.map((node) => (
+        byName.get(normalizePlayerName(node.textContent)) || byName.get(normalize(node.textContent))
+      )).find(Boolean);
+    }
+    if (!player || seen.has(String(player.player_id))) return;
+    const pickNumber = Number(
+      cell.getAttribute("data-pick-number")
+      || cell.getAttribute("data-pick-no")
+      || cell.closest("[data-pick-number], [data-pick-no]")?.getAttribute("data-pick-number")
+      || cell.closest("[data-pick-number], [data-pick-no]")?.getAttribute("data-pick-no"),
+    ) || index + 1;
+    const round = Math.floor((pickNumber - 1) / teamCount) + 1;
+    const roundIndex = (pickNumber - 1) % teamCount;
+    const inferredSlot = round % 2 === 1 ? roundIndex + 1 : teamCount - roundIndex;
+    const explicitSlot = Number(
+      cell.getAttribute("data-draft-slot")
+      || cell.closest("[data-draft-slot]")?.getAttribute("data-draft-slot"),
+    );
+    seen.add(String(player.player_id));
+    picks.push({
+      ...player,
+      pick_no: pickNumber,
+      round,
+      draft_slot: explicitSlot >= 1 && explicitSlot <= teamCount ? explicitSlot : inferredSlot,
+    });
+  });
+  return picks.sort((a, b) => a.pick_no - b.pick_no);
+};
+
+const computeLiveTeamGrade = (teamPicks) => {
+  const starters = liveGradeStarterSlots();
+  const positionCounts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+  const valueRows = teamPicks.map((pick) => {
+    const boardRank = Number(pick.custom_rank);
+    const adp = Number(pick.sleeper_adp);
+    const expectedValues = [boardRank, adp].filter((value) => Number.isFinite(value) && value > 0 && value < 500);
+    const expectedPick = expectedValues.length
+      ? expectedValues.reduce((sum, value) => sum + value, 0) / expectedValues.length
+      : pick.pick_no;
+    return { pick, surplus: pick.pick_no - expectedPick };
+  });
+  const averageSurplus = valueRows.length
+    ? valueRows.reduce((sum, row) => sum + row.surplus, 0) / valueRows.length
+    : 0;
+  const valueScore = clampScore(78 + averageSurplus * 1.6);
+
+  teamPicks.forEach((pick) => {
+    const position = String(pick.position || "").toUpperCase();
+    if (Object.hasOwn(positionCounts, position)) positionCounts[position] += 1;
+  });
+  const baseFilled = ["QB", "RB", "WR", "TE"].reduce(
+    (sum, position) => sum + Math.min(positionCounts[position], starters[position]),
+    0,
+  );
+  const flexEligibleExtras = ["RB", "WR", "TE"].reduce(
+    (sum, position) => sum + Math.max(0, positionCounts[position] - starters[position]),
+    0,
+  );
+  const flexFilled = Math.min(flexEligibleExtras, starters.FLEX);
+  const superFlexExtras = Math.max(0, positionCounts.QB - starters.QB)
+    + Math.max(0, flexEligibleExtras - flexFilled);
+  const superFlexFilled = Math.min(superFlexExtras, starters.SUPER_FLEX);
+  const filledStarters = baseFilled + flexFilled + superFlexFilled;
+  const totalStarters = Object.values(starters).reduce((sum, count) => sum + count, 0);
+  const expectedFilled = Math.max(1, Math.min(teamPicks.length, totalStarters));
+  const completenessScore = clampScore(50 + 50 * Math.min(1, filledStarters / expectedFilled));
+
+  let duplicatePenalty = 0;
+  const earlyCounts = { QB: 0, TE: 0 };
+  teamPicks.filter((pick) => pick.round <= 6).forEach((pick) => {
+    const position = String(pick.position || "").toUpperCase();
+    if (!Object.hasOwn(earlyCounts, position)) return;
+    earlyCounts[position] += 1;
+    const efficientLimit = starters[position] + (position === "QB" ? starters.SUPER_FLEX : 0);
+    if (earlyCounts[position] > Math.max(1, efficientLimit)) duplicatePenalty += 10;
+  });
+  const balanceScore = clampScore(100 - duplicatePenalty);
+  const score = clampScore(valueScore * 0.5 + completenessScore * 0.35 + balanceScore * 0.15);
+  const bestPick = valueRows.sort((a, b) => b.surplus - a.surplus)[0];
+  return {
+    score,
+    ...gradeFromScore(score),
+    valueScore,
+    completenessScore,
+    bestPick: bestPick?.pick?.name || "No picks yet",
+  };
+};
+
+const draftTeamHeaders = (board, teamCount) => {
+  const headerScope = board.parentElement || board;
+  const selectors = [
+    ".draft-board-header > *",
+    "[class*='DraftBoardHeader'] > *",
+    "[class*='draftBoardHeader'] > *",
+    "[class*='team-header']",
+    "[class*='TeamHeader']",
+    "[data-testid*='team-header']",
+  ];
+  const candidates = [...headerScope.querySelectorAll(selectors.join(","))]
+    .filter((element) => !element.closest(".extension-ui-element"));
+  const unique = [...new Set(candidates)];
+  if (unique.length >= teamCount) return unique.slice(0, teamCount);
+  const slotted = [...headerScope.querySelectorAll("[data-draft-slot]")]
+    .filter((element) => !element.matches("[data-pick-number], [data-pick-no]") && !element.closest(".pick-cell"));
+  return [...new Set(slotted)].slice(0, teamCount);
+};
+
+const renderLiveDraftGrades = () => {
+  const board = draftBoardElement();
+  if (!board) return;
+  const teamCount = Number(assistantState.sleeperDraftDetails?.settings?.teams) || 12;
+  const picks = readDraftPicksFromBoard(board);
+  const headers = draftTeamHeaders(board, teamCount);
+  if (!headers.length) return;
+  const picksBySlot = new Map(Array.from({ length: teamCount }, (_, index) => [index + 1, []]));
+  picks.forEach((pick) => picksBySlot.get(pick.draft_slot)?.push(pick));
+
+  headers.forEach((header, index) => {
+    const slot = Number(header.getAttribute("data-draft-slot")) || index + 1;
+    const result = computeLiveTeamGrade(picksBySlot.get(slot) || []);
+    const signature = `${result.score}:${result.valueScore}:${result.completenessScore}:${result.bestPick}`;
+    let badge = header.querySelector(":scope > .ff-live-grade-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "ff-live-grade-badge extension-ui-element";
+      badge.innerHTML = '<strong class="ff-live-grade-letter"></strong><span class="ff-live-grade-tooltip"></span>';
+      header.appendChild(badge);
+    }
+    if (badge.dataset.signature === signature) return;
+    badge.dataset.signature = signature;
+    badge.style.setProperty("--grade-color", result.color);
+    badge.querySelector(".ff-live-grade-letter").textContent = `${result.grade} · ${result.score}`;
+    badge.querySelector(".ff-live-grade-tooltip").textContent = [
+      `Value Score: ${result.valueScore}`,
+      `Starter Completeness: ${result.completenessScore}`,
+      `Best Pick (Steal): ${result.bestPick}`,
+    ].join("\n");
+  });
+};
+
+let liveGradeObserver = null;
+let liveGradeFrame = 0;
+const observeLiveDraftGrades = () => {
+  const attach = () => {
+    const board = draftBoardElement();
+    if (!board) return false;
+    liveGradeObserver?.disconnect();
+    liveGradeObserver = new MutationObserver((mutations) => {
+      const externalMutation = mutations.some((mutation) => {
+        const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+        return target && !target.closest(".extension-ui-element");
+      });
+      if (!externalMutation) return;
+      cancelAnimationFrame(liveGradeFrame);
+      liveGradeFrame = requestAnimationFrame(renderLiveDraftGrades);
+    });
+    liveGradeObserver.observe(board, { childList: true, subtree: true, attributes: true });
+    renderLiveDraftGrades();
+    return true;
+  };
+  if (!attach()) {
+    const discoveryTimer = setInterval(() => {
+      if (attach()) clearInterval(discoveryTimer);
+    }, 1000);
+  }
+};
+
 const observeDraftPage = () => {
   setInterval(async () => {
     try {
@@ -2409,7 +2181,7 @@ const observeDraftPage = () => {
   });
   window.addEventListener("resize", () => {
     renderAssistant();
-    renderAIAdvice();
+    renderLiveDraftGrades();
   });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
@@ -2427,9 +2199,7 @@ const initSleeperAssistant = async () => {
   syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
   await loadOverlayPrefs();
   await loadCustomRankings();
-  assistantState.aiAdvice = "Syncing live Sleeper picks...";
   renderAssistant();
-  renderAIAdvice();
   await loadStoredDraftPicks();
   await loadRankings();
   try {
@@ -2438,6 +2208,7 @@ const initSleeperAssistant = async () => {
     console.error("[DraftAssistant] Rankings sync error (draft polling continues):", error);
   }
   decorateSleeperPlayerCards();
+  observeLiveDraftGrades();
   assistantState.lastRecommendationPickSignature = "";
   syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
   fetchTeamProjections().then(renderAssistant);
@@ -2484,8 +2255,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "UPDATE_SLEEPER_USER_OR_SLOT") {
     assistantState.lastRecommendationPickSignature = "";
-    assistantState.wasUserOnTheClock = false;
-    assistantState.currentAdviceCacheKey = "";
     syncDraftPicks()
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: error.message || "Slot update failed." }));

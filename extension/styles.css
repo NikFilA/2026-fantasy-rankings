@@ -4,56 +4,45 @@
   overflow-y: auto !important;
 }
 
-#local-draft-advice {
-  position: fixed !important;
-  height: auto !important;
-  max-height: 150px !important;
-  overflow-y: auto !important;
-  box-sizing: border-box !important;
+.ff-live-grade-badge {
+  position: relative;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  margin: 3px;
+  border: 1px solid color-mix(in srgb, var(--grade-color) 75%, white 10%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--grade-color) 20%, #10151b 80%);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .35);
+  color: var(--grade-color);
+  cursor: help;
+  font: 900 10px/1 system-ui, sans-serif;
+  padding: 5px 7px;
+  white-space: nowrap;
 }
 
-.local-draft-advice-container {
-  height: auto !important;
-  max-height: 150px !important;
-  overflow-y: auto !important;
-  box-sizing: border-box !important;
+.ff-live-grade-tooltip {
+  position: absolute;
+  z-index: 2147483647;
+  top: calc(100% + 7px);
+  left: 50%;
+  display: none;
+  width: max-content;
+  max-width: 230px;
+  transform: translateX(-50%);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .5);
+  color: #e2e8f0;
+  font: 700 11px/1.55 system-ui, sans-serif;
+  padding: 8px 10px;
+  text-align: left;
+  white-space: pre-line;
 }
 
-.local-draft-advice-container .advice-content {
-  box-sizing: border-box;
-  width: 100%;
-}
-
-.local-advice-recommendation {
-  color: #f8fafc;
-  font-weight: 900;
-  line-height: 1.35;
-  margin: 0 0 6px;
-}
-
-.local-advice-bullets {
-  display: grid;
-  gap: 4px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.local-advice-bullets li {
-  color: #cbd5e1;
-  line-height: 1.35;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.local-advice-bullets li::before {
-  color: #38bdf8;
-  content: "•";
-  display: inline-block;
-  font-weight: 900;
-  margin-right: 6px;
-}
-
-.local-advice-bullets strong {
-  color: #f8fafc;
+.ff-live-grade-badge:hover .ff-live-grade-tooltip {
+  display: block;
 }

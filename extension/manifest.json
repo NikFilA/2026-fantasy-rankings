@@ -52,7 +52,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["draftEngine.js", "aiService.js"],
+      "resources": ["draftEngine.js"],
       "matches": ["https://sleeper.com/*", "https://*.sleeper.com/*", "https://sleeper.app/*", "https://*.sleeper.app/*"]
     }
   ],

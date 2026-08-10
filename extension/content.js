@@ -1997,34 +1997,6 @@ const draftBoardElement = () => document.querySelector([
   "[id*='draft-board']",
 ].join(","));
 
-const clampScore = (value) => Math.max(0, Math.min(100, Math.round(value)));
-
-const gradeFromScore = (score) => {
-  if (score >= 95) return { grade: "A+", color: "#22c55e" };
-  if (score >= 90) return { grade: "A", color: "#22c55e" };
-  if (score >= 85) return { grade: "B+", color: "#3b82f6" };
-  if (score >= 80) return { grade: "B", color: "#3b82f6" };
-  if (score >= 75) return { grade: "C+", color: "#eab308" };
-  if (score >= 70) return { grade: "C", color: "#eab308" };
-  if (score >= 60) return { grade: "D", color: "#ef4444" };
-  return { grade: "F", color: "#ef4444" };
-};
-
-const liveGradeStarterSlots = () => {
-  const rosterPositions = assistantState.leagueSettings?.roster_positions;
-  const counts = { QB: 0, RB: 0, WR: 0, TE: 0, FLEX: 0, SUPER_FLEX: 0 };
-  if (Array.isArray(rosterPositions)) {
-    rosterPositions.forEach((slot) => {
-      const key = String(slot || "").toUpperCase();
-      if (Object.hasOwn(counts, key)) counts[key] += 1;
-    });
-  }
-  if (!counts.QB && !counts.RB && !counts.WR && !counts.TE) {
-    Object.assign(counts, { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 2, SUPER_FLEX: 0 });
-  }
-  return counts;
-};
-
 const boardPlayerLookup = () => {
   const rankings = customRankingPlayers();
   const byId = new Map();
@@ -2041,10 +2013,12 @@ const boardPlayerLookup = () => {
 const readDraftPicksFromBoard = (board) => {
   if (!board) return [];
   const cells = [...board.querySelectorAll([
+    ".draft-cell",
     ".pick-cell",
     "[data-pick-number]",
     "[data-pick-no]",
     "[data-testid='pick-cell']",
+    "[class*='draft-cell']",
     "[class*='PickCell']",
     "[class*='pickCell']",
   ].join(","))].filter((cell) => !cell.closest(".extension-ui-element"));
@@ -2093,67 +2067,6 @@ const readDraftPicksFromBoard = (board) => {
   return picks.sort((a, b) => a.pick_no - b.pick_no);
 };
 
-const computeLiveTeamGrade = (teamPicks) => {
-  const starters = liveGradeStarterSlots();
-  const positionCounts = { QB: 0, RB: 0, WR: 0, TE: 0 };
-  const valueRows = teamPicks.map((pick) => {
-    const boardRank = Number(pick.custom_rank);
-    const adp = Number(pick.sleeper_adp);
-    const expectedValues = [boardRank, adp].filter((value) => Number.isFinite(value) && value > 0 && value < 500);
-    const expectedPick = expectedValues.length
-      ? expectedValues.reduce((sum, value) => sum + value, 0) / expectedValues.length
-      : pick.pick_no;
-    return { pick, surplus: pick.pick_no - expectedPick };
-  });
-  const averageSurplus = valueRows.length
-    ? valueRows.reduce((sum, row) => sum + row.surplus, 0) / valueRows.length
-    : 0;
-  const valueScore = clampScore(78 + averageSurplus * 1.6);
-
-  teamPicks.forEach((pick) => {
-    const position = String(pick.position || "").toUpperCase();
-    if (Object.hasOwn(positionCounts, position)) positionCounts[position] += 1;
-  });
-  const baseFilled = ["QB", "RB", "WR", "TE"].reduce(
-    (sum, position) => sum + Math.min(positionCounts[position], starters[position]),
-    0,
-  );
-  const flexEligibleExtras = ["RB", "WR", "TE"].reduce(
-    (sum, position) => sum + Math.max(0, positionCounts[position] - starters[position]),
-    0,
-  );
-  const flexFilled = Math.min(flexEligibleExtras, starters.FLEX);
-  const superFlexExtras = Math.max(0, positionCounts.QB - starters.QB)
-    + Math.max(0, flexEligibleExtras - flexFilled);
-  const superFlexFilled = Math.min(superFlexExtras, starters.SUPER_FLEX);
-  const filledStarters = baseFilled + flexFilled + superFlexFilled;
-  const totalStarters = Object.values(starters).reduce((sum, count) => sum + count, 0);
-  const expectedFilled = Math.max(1, Math.min(teamPicks.length, totalStarters));
-  const completenessScore = clampScore(50 + 50 * Math.min(1, filledStarters / expectedFilled));
-
-  let duplicatePenalty = 0;
-  const earlyCounts = { QB: 0, TE: 0 };
-  teamPicks.filter((pick) => pick.round <= 6).forEach((pick) => {
-    const position = String(pick.position || "").toUpperCase();
-    if (!Object.hasOwn(earlyCounts, position)) return;
-    earlyCounts[position] += 1;
-    const efficientLimit = starters[position] + (position === "QB" ? starters.SUPER_FLEX : 0);
-    if (earlyCounts[position] > Math.max(1, efficientLimit)) duplicatePenalty += 10;
-  });
-  const balanceScore = clampScore(100 - duplicatePenalty);
-  const score = clampScore(valueScore * 0.5 + completenessScore * 0.35 + balanceScore * 0.15);
-  const bestPick = valueRows.sort((a, b) => b.surplus - a.surplus)[0];
-  return {
-    score,
-    ...gradeFromScore(score),
-    valueScore,
-    completenessScore,
-    balanceScore,
-    averageSurplus,
-    bestPick: bestPick?.pick?.name || "No picks yet",
-  };
-};
-
 const overallAdpForPickGrade = (player) => {
   const raw = player?.sleeper_adp;
   if (typeof raw === "string" && /^\d+\.\d{1,2}$/.test(raw.trim())) {
@@ -2166,25 +2079,57 @@ const overallAdpForPickGrade = (player) => {
   return Number.isFinite(boardRank) && boardRank > 0 ? boardRank : null;
 };
 
-const pickGradeFromDelta = (delta) => {
-  const score = clampScore(80 + delta * 2.5);
-  if (score >= 97) return { score, grade: "A+", color: "#16a34a" };
-  if (score >= 93) return { score, grade: "A", color: "#22c55e" };
-  if (score >= 90) return { score, grade: "A-", color: "#4ade80" };
-  if (score >= 87) return { score, grade: "B+", color: "#2563eb" };
-  if (score >= 83) return { score, grade: "B", color: "#3b82f6" };
-  if (score >= 80) return { score, grade: "B-", color: "#60a5fa" };
-  if (score >= 77) return { score, grade: "C+", color: "#ca8a04" };
-  if (score >= 73) return { score, grade: "C", color: "#eab308" };
-  if (score >= 70) return { score, grade: "C-", color: "#facc15" };
-  if (score >= 60) return { score, grade: "D", color: "#f97316" };
-  return { score, grade: "F", color: "#ef4444" };
+const letterGradeFromPickScore = (score) => {
+  if (score >= 93) return { grade: "A+", color: "#16a34a" };
+  if (score >= 90) return { grade: "A", color: "#22c55e" };
+  if (score >= 85) return { grade: "A-", color: "#4ade80" };
+  if (score >= 80) return { grade: "B+", color: "#2563eb" };
+  if (score >= 75) return { grade: "B", color: "#3b82f6" };
+  if (score >= 72) return { grade: "B-", color: "#60a5fa" };
+  if (score >= 68) return { grade: "C+", color: "#ca8a04" };
+  if (score >= 65) return { grade: "C", color: "#eab308" };
+  if (score >= 60) return { grade: "C-", color: "#facc15" };
+  if (score >= 55) return { grade: "D", color: "#f97316" };
+  return { grade: "F", color: "#ef4444" };
 };
 
-const pickSpotLabel = (pickNumber, teamCount) => {
-  const round = Math.floor((pickNumber - 1) / teamCount) + 1;
-  const slot = ((pickNumber - 1) % teamCount) + 1;
-  return `${round}.${String(slot).padStart(2, "0")}`;
+const calculatePickGrade = (pick) => {
+  const playerADP = overallAdpForPickGrade(pick);
+  const pickSpot = Number(pick.pick_no);
+  const delta = playerADP === null ? 0 : pickSpot - playerADP;
+  const round = Number(pick.round) || 1;
+  const roundWeight = round <= 3 ? 3.5 : (round <= 8 ? 2 : 1);
+  const pickScore = Math.min(100, Math.max(50, 80 + delta * roundWeight));
+  return {
+    playerADP,
+    pickSpot,
+    delta,
+    round,
+    roundWeight,
+    pickScore,
+    ...letterGradeFromPickScore(pickScore),
+  };
+};
+
+const calculateWeightedTeamGrade = (teamPicks) => {
+  if (!teamPicks.length) {
+    const pickScore = 80;
+    return { teamScore: pickScore, totalWeight: 0, ...letterGradeFromPickScore(pickScore) };
+  }
+  const weighted = teamPicks.reduce((totals, pick) => {
+    const pickResult = calculatePickGrade(pick);
+    const weight = 1 / Math.sqrt(Math.max(1, pickResult.round));
+    return {
+      score: totals.score + pickResult.pickScore * weight,
+      weight: totals.weight + weight,
+    };
+  }, { score: 0, weight: 0 });
+  const teamScore = weighted.weight ? weighted.score / weighted.weight : 80;
+  return {
+    teamScore,
+    totalWeight: weighted.weight,
+    ...letterGradeFromPickScore(teamScore),
+  };
 };
 
 const draftSlotForHeader = (header, fallbackIndex, teamCount) => {
@@ -2212,15 +2157,13 @@ const boardTeamColumns = (headers, picks, teamCount) => {
   return columns;
 };
 
-const renderIndividualPickGrades = (board, columns, teamCount) => {
+const renderIndividualPickGrades = (board, columns) => {
   const activeBadges = new Set();
   columns.forEach((column) => {
     column.picks.forEach((pick) => {
       const cell = pick.cell;
       if (!(cell instanceof Element) || !board.contains(cell)) return;
-      const adp = overallAdpForPickGrade(pick);
-      const delta = adp === null ? 0 : Number(pick.pick_no) - adp;
-      const result = pickGradeFromDelta(delta);
+      const result = calculatePickGrade(pick);
       if (getComputedStyle(cell).position === "static") cell.style.setProperty("position", "relative");
       let badge = cell.querySelector(":scope > .pick-grade");
       if (!badge) {
@@ -2230,11 +2173,11 @@ const renderIndividualPickGrades = (board, columns, teamCount) => {
       }
       activeBadges.add(badge);
       badge.textContent = result.grade;
-      const roundedDelta = Number(delta.toFixed(1));
+      const roundedDelta = Number(result.delta.toFixed(1));
       const shownDelta = `${roundedDelta > 0 ? "+" : ""}${roundedDelta}`;
       badge.setAttribute(
         "title",
-        `Pick #${pick.pick_no} (${pick.name})\n• Pick Position: ${pickSpotLabel(pick.pick_no, teamCount)}\n• Player ADP: ${adp === null ? "N/A" : adp.toFixed(1)}\n• Value Delta: ${shownDelta} vs ADP\n• Grade Math: Base 80 + (${roundedDelta} × 2.5) = ${result.score}`,
+        `Pick #${pick.pick_no} (${pick.name})\n• Pick Spot: ${result.pickSpot} | ADP: ${result.playerADP === null ? "N/A" : result.playerADP.toFixed(1)}\n• Value Delta: ${shownDelta} picks\n• Pick Score: ${Math.round(result.pickScore)}/100 (${result.grade})`,
       );
       badge.style.cssText = [
         "position:absolute",
@@ -2320,11 +2263,11 @@ const renderLiveDraftGrades = () => {
   const picks = readDraftPicksFromBoard(board);
   const headers = draftTeamHeaders(board, teamCount);
   const columns = boardTeamColumns(headers, picks, teamCount);
-  renderIndividualPickGrades(board, columns, teamCount);
+  renderIndividualPickGrades(board, columns);
 
   columns.forEach(({ header, picks: teamPicks }) => {
     if (!header) return;
-    const result = computeLiveTeamGrade(teamPicks);
+    const result = calculateWeightedTeamGrade(teamPicks);
     const avatarWrapper = avatarWrapperForHeader(header);
     if (!avatarWrapper || avatarWrapper.closest("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return;
     if (avatarWrapper.style.getPropertyValue("position") !== "relative"
@@ -2342,10 +2285,9 @@ const renderLiveDraftGrades = () => {
       avatarWrapper.appendChild(badge);
     }
     badge.textContent = result.grade;
-    const efficiency = `${result.averageSurplus >= 0 ? "+" : ""}${result.averageSurplus.toFixed(1)}`;
     badge.setAttribute(
       "title",
-      `Team Grade: ${result.grade}\n• Total Roster Value: ${result.score}\n• ADP Efficiency: ${efficiency}\n• Starter Depth: ${result.completenessScore}/100\n• Roster Balance: ${result.balanceScore}/100`,
+      `Team Grade: ${result.grade}\n• Weighted Score: ${Math.round(result.teamScore)}/100\n• Total Picks Made: ${teamPicks.length}\n• Formula: Decay-weighted average of individual pick values`,
     );
     badge.style.cssText = [
       "position:absolute",

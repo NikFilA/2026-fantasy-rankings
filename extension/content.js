@@ -50,6 +50,7 @@ const assistantState = {
   sleeperDraftDetails: null,
   tierCliffAlert: "",
   mustDraftAlert: "",
+  strategyAlertPickSignature: "",
   survivalByPlayerId: {},
   undraftedPlayers: null,
 };
@@ -848,15 +849,17 @@ const loadSleeperDraftContext = async () => {
   };
 };
 
-const updateMainPanelUI = (availablePlayers, contextPayload) => {
+const updateMainPanelUI = (availablePlayers, contextPayload, { updateAlerts = true, pickSignature: alertSignature = "" } = {}) => {
   const purgedAvailablePlayers = availablePlayers.filter(
     (player) => !assistantState.draftedPlayerIds.has(String(player.player_id))
       && !assistantState.draftedNames.has(normalizePlayerName(player.name)),
   );
-  const removedByLiveDetection = purgedAvailablePlayers.length !== availablePlayers.length;
   assistantState.undraftedPlayers = purgedAvailablePlayers;
-  assistantState.tierCliffAlert = removedByLiveDetection ? "" : (contextPayload.tierCliffAlert || "");
-  assistantState.mustDraftAlert = removedByLiveDetection ? "" : (contextPayload.mustDraftAlert || "");
+  if (updateAlerts) {
+    assistantState.tierCliffAlert = contextPayload.tierCliffAlert || "";
+    assistantState.mustDraftAlert = contextPayload.mustDraftAlert || "";
+    assistantState.strategyAlertPickSignature = alertSignature;
+  }
   assistantState.survivalByPlayerId = Object.fromEntries(
     purgedAvailablePlayers.map((player) => [String(player.player_id), player.survivalProbability]),
   );
@@ -865,6 +868,7 @@ const updateMainPanelUI = (availablePlayers, contextPayload) => {
 
 const refreshLocalDraftMetrics = async (rawPicks, { force = false } = {}) => {
   const signature = pickSignature(rawPicks);
+  const officialPickChanged = signature !== assistantState.lastRecommendationPickSignature;
   if (!force && signature === assistantState.lastRecommendationPickSignature) return;
   assistantState.lastRecommendationPickSignature = signature;
 
@@ -901,7 +905,16 @@ const refreshLocalDraftMetrics = async (rawPicks, { force = false } = {}) => {
       aiRankingPlayers(),
       resolvedUserIdentity,
       sleeperContext.leagueSettings,
-      { updateMainPanelUI },
+      {
+        updateMainPanelUI: (availablePlayers, contextPayload) => updateMainPanelUI(
+          availablePlayers,
+          contextPayload,
+          {
+            updateAlerts: officialPickChanged || !assistantState.strategyAlertPickSignature,
+            pickSignature: signature,
+          },
+        ),
+      },
     );
   } catch (error) {
     console.warn("[DraftAssistant] Local draft metrics unavailable:", error);
@@ -1008,8 +1021,6 @@ const purgeDraftedIdsFromUi = (draftedIds, draftedNames = assistantState.drafted
     Object.entries(assistantState.survivalByPlayerId)
       .filter(([playerId]) => !normalizedIds.has(String(playerId))),
   );
-  assistantState.tierCliffAlert = "";
-  assistantState.mustDraftAlert = "";
   updatePanelStateUI();
 };
 
@@ -2090,29 +2101,69 @@ const computeLiveTeamGrade = (teamPicks) => {
 
 const draftTeamHeaders = (board, teamCount) => {
   const headerScope = board.parentElement || board;
-  const selectors = [
-    ".draft-cell.header",
-    ".team-slot-header",
-    ".draft-board-header > .draft-cell",
-    "[class*='DraftBoardHeader'] > [class*='header']",
-    "[class*='draftBoardHeader'] > [class*='header']",
-    "[class*='team-header']",
-    "[class*='TeamHeader']",
-    "[data-testid*='team-header']",
+  const headerRowSelector = [
+    ".draft-board-header",
+    "[data-testid='draft-board-header']",
+    "[class*='DraftBoardHeader']",
+    "[class*='draftBoardHeader']",
+    "[class*='draft-board-header']",
+  ].join(",");
+  const headerRows = [
+    ...(headerScope.matches(headerRowSelector) ? [headerScope] : []),
+    ...headerScope.querySelectorAll(headerRowSelector),
   ];
-  const candidates = [...headerScope.querySelectorAll(selectors.join(","))]
-    .filter((element) => !element.closest(".extension-ui-element"))
-    .filter((element) => !element.matches("[data-pick-number], [data-pick-no], .pick-cell"));
-  const unique = [...new Set(candidates)];
-  if (unique.length >= teamCount) return unique.slice(0, teamCount);
-  const slotted = [...headerScope.querySelectorAll("[data-draft-slot]")]
-    .filter((element) => !element.matches("[data-pick-number], [data-pick-no]") && !element.closest(".pick-cell"));
-  return [...new Set(slotted)].slice(0, teamCount);
+  for (const row of headerRows) {
+    const directChildren = [...row.children].filter((element) => {
+      if (element.closest(".extension-ui-element")) return false;
+      if (element.matches("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return false;
+      if (element.querySelector("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return false;
+      return element.matches(".team-header, .team-slot-header, .cell-header, .draft-cell.header, .cell.header, [data-testid='team-header'], [data-draft-slot]")
+        || Boolean(element.querySelector(":scope > img, :scope > [class*='avatar'], :scope > [class*='Avatar']"));
+    });
+    if (directChildren.length >= teamCount) return directChildren.slice(0, teamCount);
+  }
+  return [];
+};
+
+const cleanupBrokenGradeInjections = () => {
+  document.querySelectorAll([
+    ".draft-grade-pill",
+    ".draft-grade-tooltip",
+    ".draft-grade-label",
+    ".ff-live-grade-badge",
+    ".ff-live-grade-tooltip",
+  ].join(",")).forEach((element) => element.remove());
+  document.querySelectorAll(".draft-grade-badge").forEach((element) => {
+    if (element.tagName !== "SPAN" || element.children.length > 0) element.remove();
+  });
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const orphanedGradeText = [];
+  while (walker.nextNode()) {
+    if (/Value Score:.*Starter Completeness:.*Best Pick:/s.test(walker.currentNode.nodeValue || "")) {
+      orphanedGradeText.push(walker.currentNode);
+    }
+  }
+  orphanedGradeText.forEach((textNode) => textNode.remove());
+};
+
+const avatarWrapperForHeader = (header) => {
+  const avatar = header.querySelector([
+    ".avatar",
+    ".user-avatar",
+    ".team-avatar",
+    "[data-testid*='avatar']",
+    "[class*='Avatar']",
+    "[class*='avatar']",
+  ].join(","));
+  if (avatar) return avatar.tagName === "IMG" ? avatar.parentElement : avatar;
+  const image = header.querySelector("img");
+  return image?.parentElement || null;
 };
 
 const renderLiveDraftGrades = () => {
   const board = draftBoardElement();
   if (!board) return;
+  cleanupBrokenGradeInjections();
   const teamCount = Number(assistantState.sleeperDraftDetails?.settings?.teams) || 12;
   const picks = readDraftPicksFromBoard(board);
   const headers = draftTeamHeaders(board, teamCount);
@@ -2123,29 +2174,44 @@ const renderLiveDraftGrades = () => {
   headers.forEach((header, index) => {
     const slot = Number(header.getAttribute("data-draft-slot")) || index + 1;
     const result = computeLiveTeamGrade(picksBySlot.get(slot) || []);
-    const signature = `${result.score}:${result.valueScore}:${result.completenessScore}:${result.bestPick}`;
-    header.querySelectorAll(":scope > .ff-live-grade-badge").forEach((legacyBadge) => legacyBadge.remove());
-    let badge = header.querySelector(":scope > .draft-grade-badge");
-    if (!badge) {
-      badge = document.createElement("div");
-      badge.className = "draft-grade-badge extension-ui-element";
-      const gradeLabel = document.createElement("span");
-      gradeLabel.className = "draft-grade-label";
-      const tooltip = document.createElement("span");
-      tooltip.className = "draft-grade-tooltip";
-      badge.append(gradeLabel, tooltip);
-      if (getComputedStyle(header).position === "static") header.style.position = "relative";
-      header.appendChild(badge);
+    const avatarWrapper = avatarWrapperForHeader(header);
+    if (!avatarWrapper || avatarWrapper.closest("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return;
+    if (avatarWrapper.style.getPropertyValue("position") !== "relative"
+      || avatarWrapper.style.getPropertyPriority("position") !== "important") {
+      avatarWrapper.style.setProperty("position", "relative", "important");
     }
-    if (badge.dataset.signature === signature) return;
-    badge.dataset.signature = signature;
-    badge.style.setProperty("--grade-color", result.color);
-    badge.querySelector(".draft-grade-label").textContent = `[ ${result.grade} ]`;
-    badge.querySelector(".draft-grade-tooltip").textContent = [
-      `Value Score: ${result.valueScore}`,
-      `Starter Completeness: ${result.completenessScore}`,
-      `Best Pick (Steal): ${result.bestPick}`,
-    ].join("\n");
+    if (avatarWrapper.style.getPropertyValue("overflow") !== "visible"
+      || avatarWrapper.style.getPropertyPriority("overflow") !== "important") {
+      avatarWrapper.style.setProperty("overflow", "visible", "important");
+    }
+    let badge = avatarWrapper.querySelector(":scope > .draft-grade-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "draft-grade-badge extension-ui-element";
+      avatarWrapper.appendChild(badge);
+    }
+    badge.textContent = result.grade;
+    badge.setAttribute("title", `Value Score: ${result.valueScore} | Starters: ${result.completenessScore} | Best Pick: ${result.bestPick}`);
+    badge.style.cssText = [
+      "position:absolute",
+      "top:-4px",
+      "right:-4px",
+      `background:${result.color}`,
+      "color:#ffffff",
+      "border:2px solid #0f172a",
+      "border-radius:9999px",
+      "padding:2px 6px",
+      "font-size:10px",
+      "font-weight:800",
+      "font-family:system-ui,sans-serif",
+      "line-height:1.25",
+      "z-index:100",
+      "box-shadow:0 2px 4px rgba(0,0,0,0.4)",
+      "pointer-events:auto",
+      "white-space:nowrap",
+      "box-sizing:border-box",
+      "margin:0",
+    ].join(";");
   });
 };
 

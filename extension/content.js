@@ -1233,6 +1233,14 @@ const escapeHtml = (value = "") => String(value)
   .replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;");
 
+const restoreActiveDraftAlerts = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
+  if (!window.activeDraftAlertHtml || !shadowRoot) return;
+  const alertHost = shadowRoot.querySelector("[data-role='strategy-alerts']");
+  if (alertHost && alertHost.innerHTML !== window.activeDraftAlertHtml) {
+    alertHost.innerHTML = window.activeDraftAlertHtml;
+  }
+};
+
 const overlayPositionStyle = () => {
   const { x, y } = assistantState.position || {};
   if (Number.isFinite(x) && Number.isFinite(y)) {
@@ -1791,6 +1799,7 @@ const updatePanelStateUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.
     const stickyAlertHtml = window.activeDraftAlertHtml || "";
     if (alertHost.innerHTML !== stickyAlertHtml) alertHost.innerHTML = stickyAlertHtml;
   }
+  restoreActiveDraftAlerts(shadowRoot);
   updateListUI(shadowRoot);
 };
 
@@ -1851,6 +1860,7 @@ const renderAssistant = () => {
     nextList.scrollTop = previousScrollTop;
   }
   bindAssistant(root.shadowRoot);
+  restoreActiveDraftAlerts(root.shadowRoot);
   if (focusedSearch) {
     const searchInput = root.shadowRoot.querySelector("#draft-assistant-search");
     searchInput?.focus({ preventScroll: true });
@@ -2157,16 +2167,18 @@ const overallAdpForPickGrade = (player) => {
 };
 
 const pickGradeFromDelta = (delta) => {
-  if (delta >= 12) return { grade: "A+", color: "#16a34a" };
-  if (delta >= 8) return { grade: "A", color: "#22c55e" };
-  if (delta >= 4) return { grade: "A-", color: "#4ade80" };
-  if (delta >= 1) return { grade: "B+", color: "#2563eb" };
-  if (delta >= -2) return { grade: "B", color: "#3b82f6" };
-  if (delta >= -5) return { grade: "B-", color: "#60a5fa" };
-  if (delta >= -9) return { grade: "C+", color: "#ca8a04" };
-  if (delta >= -14) return { grade: "C", color: "#eab308" };
-  if (delta >= -20) return { grade: "D", color: "#f97316" };
-  return { grade: "F", color: "#ef4444" };
+  const score = clampScore(80 + delta * 2.5);
+  if (score >= 97) return { score, grade: "A+", color: "#16a34a" };
+  if (score >= 93) return { score, grade: "A", color: "#22c55e" };
+  if (score >= 90) return { score, grade: "A-", color: "#4ade80" };
+  if (score >= 87) return { score, grade: "B+", color: "#2563eb" };
+  if (score >= 83) return { score, grade: "B", color: "#3b82f6" };
+  if (score >= 80) return { score, grade: "B-", color: "#60a5fa" };
+  if (score >= 77) return { score, grade: "C+", color: "#ca8a04" };
+  if (score >= 73) return { score, grade: "C", color: "#eab308" };
+  if (score >= 70) return { score, grade: "C-", color: "#facc15" };
+  if (score >= 60) return { score, grade: "D", color: "#f97316" };
+  return { score, grade: "F", color: "#ef4444" };
 };
 
 const pickSpotLabel = (pickNumber, teamCount) => {
@@ -2218,12 +2230,11 @@ const renderIndividualPickGrades = (board, columns, teamCount) => {
       }
       activeBadges.add(badge);
       badge.textContent = result.grade;
-      const deltaText = delta >= 0
-        ? `+${delta.toFixed(1)} picks of value after ADP`
-        : `${Math.abs(delta).toFixed(1)}-pick reach ahead of ADP`;
+      const roundedDelta = Number(delta.toFixed(1));
+      const shownDelta = `${roundedDelta > 0 ? "+" : ""}${roundedDelta}`;
       badge.setAttribute(
         "title",
-        `Pick Grade: ${result.grade} | Player ADP: ${adp === null ? "N/A" : adp.toFixed(1)} | Pick Spot: ${pickSpotLabel(pick.pick_no, teamCount)} | Value Delta: ${deltaText}`,
+        `Pick #${pick.pick_no} (${pick.name})\n• Pick Position: ${pickSpotLabel(pick.pick_no, teamCount)}\n• Player ADP: ${adp === null ? "N/A" : adp.toFixed(1)}\n• Value Delta: ${shownDelta} vs ADP\n• Grade Math: Base 80 + (${roundedDelta} × 2.5) = ${result.score}`,
       );
       badge.style.cssText = [
         "position:absolute",
@@ -2262,7 +2273,7 @@ const draftTeamHeaders = (board, teamCount) => {
     }
     return element;
   }).filter(Boolean).filter((element) => !element.closest(".extension-ui-element"));
-  return [...new Set(headers)].slice(0, teamCount);
+  return [...new Set(headers)];
 };
 
 const cleanupBrokenGradeInjections = () => {
@@ -2301,6 +2312,7 @@ const avatarWrapperForHeader = (header) => {
 };
 
 const renderLiveDraftGrades = () => {
+  restoreActiveDraftAlerts();
   const board = draftBoardElement();
   if (!board) return;
   cleanupBrokenGradeInjections();
@@ -2309,13 +2321,6 @@ const renderLiveDraftGrades = () => {
   const headers = draftTeamHeaders(board, teamCount);
   const columns = boardTeamColumns(headers, picks, teamCount);
   renderIndividualPickGrades(board, columns, teamCount);
-
-  const totalCompletedPicks = Math.max(picks.length, Number(assistantState.draftedCount) || 0);
-  const roundFourFirstPick = teamCount * 3 + 1;
-  if (totalCompletedPicks < roundFourFirstPick) {
-    document.querySelectorAll(".draft-grade-badge").forEach((badge) => badge.remove());
-    return;
-  }
 
   columns.forEach(({ header, picks: teamPicks }) => {
     if (!header) return;
@@ -2340,7 +2345,7 @@ const renderLiveDraftGrades = () => {
     const efficiency = `${result.averageSurplus >= 0 ? "+" : ""}${result.averageSurplus.toFixed(1)}`;
     badge.setAttribute(
       "title",
-      `Overall Grade: ${result.grade} | Starters Value: ${result.completenessScore} | ADP Efficiency: ${efficiency} | Roster Balance: ${result.balanceScore}`,
+      `Team Grade: ${result.grade}\n• Total Roster Value: ${result.score}\n• ADP Efficiency: ${efficiency}\n• Starter Depth: ${result.completenessScore}/100\n• Roster Balance: ${result.balanceScore}/100`,
     );
     badge.style.cssText = [
       "position:absolute",

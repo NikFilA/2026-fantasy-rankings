@@ -2091,15 +2091,18 @@ const computeLiveTeamGrade = (teamPicks) => {
 const draftTeamHeaders = (board, teamCount) => {
   const headerScope = board.parentElement || board;
   const selectors = [
-    ".draft-board-header > *",
-    "[class*='DraftBoardHeader'] > *",
-    "[class*='draftBoardHeader'] > *",
+    ".draft-cell.header",
+    ".team-slot-header",
+    ".draft-board-header > .draft-cell",
+    "[class*='DraftBoardHeader'] > [class*='header']",
+    "[class*='draftBoardHeader'] > [class*='header']",
     "[class*='team-header']",
     "[class*='TeamHeader']",
     "[data-testid*='team-header']",
   ];
   const candidates = [...headerScope.querySelectorAll(selectors.join(","))]
-    .filter((element) => !element.closest(".extension-ui-element"));
+    .filter((element) => !element.closest(".extension-ui-element"))
+    .filter((element) => !element.matches("[data-pick-number], [data-pick-no], .pick-cell"));
   const unique = [...new Set(candidates)];
   if (unique.length >= teamCount) return unique.slice(0, teamCount);
   const slotted = [...headerScope.querySelectorAll("[data-draft-slot]")]
@@ -2121,18 +2124,24 @@ const renderLiveDraftGrades = () => {
     const slot = Number(header.getAttribute("data-draft-slot")) || index + 1;
     const result = computeLiveTeamGrade(picksBySlot.get(slot) || []);
     const signature = `${result.score}:${result.valueScore}:${result.completenessScore}:${result.bestPick}`;
-    let badge = header.querySelector(":scope > .ff-live-grade-badge");
+    header.querySelectorAll(":scope > .ff-live-grade-badge").forEach((legacyBadge) => legacyBadge.remove());
+    let badge = header.querySelector(":scope > .draft-grade-badge");
     if (!badge) {
-      badge = document.createElement("span");
-      badge.className = "ff-live-grade-badge extension-ui-element";
-      badge.innerHTML = '<strong class="ff-live-grade-letter"></strong><span class="ff-live-grade-tooltip"></span>';
+      badge = document.createElement("div");
+      badge.className = "draft-grade-badge extension-ui-element";
+      const gradeLabel = document.createElement("span");
+      gradeLabel.className = "draft-grade-label";
+      const tooltip = document.createElement("span");
+      tooltip.className = "draft-grade-tooltip";
+      badge.append(gradeLabel, tooltip);
+      if (getComputedStyle(header).position === "static") header.style.position = "relative";
       header.appendChild(badge);
     }
     if (badge.dataset.signature === signature) return;
     badge.dataset.signature = signature;
     badge.style.setProperty("--grade-color", result.color);
-    badge.querySelector(".ff-live-grade-letter").textContent = `${result.grade} · ${result.score}`;
-    badge.querySelector(".ff-live-grade-tooltip").textContent = [
+    badge.querySelector(".draft-grade-label").textContent = `[ ${result.grade} ]`;
+    badge.querySelector(".draft-grade-tooltip").textContent = [
       `Value Score: ${result.valueScore}`,
       `Starter Completeness: ${result.completenessScore}`,
       `Best Pick (Steal): ${result.bestPick}`,

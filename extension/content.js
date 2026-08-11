@@ -2012,7 +2012,7 @@ const boardPlayerLookup = () => {
 
 const readDraftPicksFromBoard = (board) => {
   if (!board) return [];
-  const cells = [...board.querySelectorAll([
+  const cellSelector = [
     ".draft-cell",
     ".pick-cell",
     "[data-pick-number]",
@@ -2021,50 +2021,75 @@ const readDraftPicksFromBoard = (board) => {
     "[class*='draft-cell']",
     "[class*='PickCell']",
     "[class*='pickCell']",
-  ].join(","))].filter((cell) => !cell.closest(".extension-ui-element"));
+  ].join(",");
+  const canonicalCellSelector = [
+    ".draft-cell",
+    ".pick-cell",
+    "[data-pick-number]",
+    "[data-pick-no]",
+    "[data-testid='pick-cell']",
+  ].join(",");
+  const cells = [...board.querySelectorAll(cellSelector)]
+    .filter((cell) => !cell.closest(".extension-ui-element"))
+    .filter((cell) => !cell.parentElement?.closest(canonicalCellSelector));
   const { byId, byName } = boardPlayerLookup();
   const teamCount = Number(assistantState.sleeperDraftDetails?.settings?.teams) || 12;
-  const seen = new Set();
-  const picks = [];
-
-  cells.forEach((cell, index) => {
-    const idNode = cell.matches("[data-player-id], [data-player_id], [data-playerid]")
-      ? cell
-      : cell.querySelector("[data-player-id], [data-player_id], [data-playerid]");
-    const playerId = idNode?.getAttribute("data-player-id")
-      || idNode?.getAttribute("data-player_id")
-      || idNode?.getAttribute("data-playerid");
-    let player = playerId ? byId.get(String(playerId)) : null;
-    if (!player) {
-      const textNodes = [cell, ...cell.querySelectorAll("span, p")];
-      player = textNodes.map((node) => (
-        byName.get(normalizePlayerName(node.textContent)) || byName.get(normalize(node.textContent))
-      )).find(Boolean);
-    }
-    if (!player || seen.has(String(player.player_id))) return;
-    const pickNumber = Number(
+  const pickNumberForCell = (cell, index) => {
+    const explicitPickNumber = Number(
       cell.getAttribute("data-pick-number")
       || cell.getAttribute("data-pick-no")
       || cell.closest("[data-pick-number], [data-pick-no]")?.getAttribute("data-pick-number")
       || cell.closest("[data-pick-number], [data-pick-no]")?.getAttribute("data-pick-no"),
-    ) || index + 1;
+    );
+    if (explicitPickNumber > 0) return explicitPickNumber;
+    const round = Number(cell.getAttribute("data-round") || cell.closest("[data-round]")?.getAttribute("data-round"));
+    const slot = Number(
+      cell.getAttribute("data-draft-slot")
+      || cell.getAttribute("data-slot")
+      || cell.closest("[data-draft-slot]")?.getAttribute("data-draft-slot"),
+    );
+    if (round > 0 && slot >= 1 && slot <= teamCount) {
+      const withinRound = round % 2 === 1 ? slot : teamCount - slot + 1;
+      return ((round - 1) * teamCount) + withinRound;
+    }
+    return index + 1;
+  };
+  const cellByPickNumber = new Map();
+  cells.forEach((cell, index) => {
+    const pickNumber = pickNumberForCell(cell, index);
+    if (!cellByPickNumber.has(pickNumber)) cellByPickNumber.set(pickNumber, cell);
+  });
+
+  const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
+    ? assistantState.lastLiveSleeperPicks
+    : [];
+  return trackedPicks.filter((pick) => pick?.player_id).map((pick, index) => {
+    const pickNumber = Number(pick.pick_no) || index + 1;
     const round = Math.floor((pickNumber - 1) / teamCount) + 1;
     const roundIndex = (pickNumber - 1) % teamCount;
     const inferredSlot = round % 2 === 1 ? roundIndex + 1 : teamCount - roundIndex;
-    const explicitSlot = Number(
-      cell.getAttribute("data-draft-slot")
-      || cell.closest("[data-draft-slot]")?.getAttribute("data-draft-slot"),
-    );
-    seen.add(String(player.player_id));
-    picks.push({
+    const explicitSlot = Number(pick.draft_slot ?? pick.metadata?.draft_slot);
+    const playerId = String(pick.player_id);
+    const trackedName = pickPlayerName(pick);
+    const player = byId.get(playerId)
+      || byName.get(normalizePlayerName(trackedName))
+      || byName.get(normalize(trackedName))
+      || {
+        player_id: playerId,
+        name: trackedName || `Player ${playerId}`,
+        position: String(pick.metadata?.position || pick.position || "").toUpperCase(),
+        custom_rank: null,
+        sleeper_adp: pick.metadata?.adp ?? null,
+      };
+    return {
       ...player,
-      cell,
+      player_id: playerId,
+      cell: cellByPickNumber.get(pickNumber) || null,
       pick_no: pickNumber,
-      round,
+      round: Number(pick.round) || round,
       draft_slot: explicitSlot >= 1 && explicitSlot <= teamCount ? explicitSlot : inferredSlot,
-    });
-  });
-  return picks.sort((a, b) => a.pick_no - b.pick_no);
+    };
+  }).sort((a, b) => a.pick_no - b.pick_no);
 };
 
 const overallAdpForPickGrade = (player) => {
@@ -2162,6 +2187,7 @@ const renderIndividualPickGrades = (board, columns) => {
   columns.forEach((column) => {
     column.picks.forEach((pick) => {
       const cell = pick.cell;
+      if (Number(pick.pick_no) > Number(assistantState.draftedCount)) return;
       if (!(cell instanceof Element) || !board.contains(cell)) return;
       const result = calculatePickGrade(pick);
       if (getComputedStyle(cell).position === "static") cell.style.setProperty("position", "relative");

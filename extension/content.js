@@ -2138,31 +2138,25 @@ function teamGradeBadgeColor(letterGrade) {
   return "#dc2626";
 }
 
-function getTeamHeaderNodes() {
-  let headers = Array.from(document.querySelectorAll(
-    '.draftboard-header .team, .draftboard-header [class*="team"], '
-    + '.sticky-header .team, .sticky-header [class*="team"], '
-    + '[class*="draftboard"] [class*="header"] > div',
+function getTeamAvatarContainers() {
+  const targets = Array.from(document.querySelectorAll(
+    '.draftboard-header .avatar, .draftboard-header [class*="avatar"], .draftboard-header img, '
+    + '.sticky-header .avatar, .sticky-header [class*="avatar"], .sticky-header img',
   ));
 
-  if (headers.length < DRAFT_TEAM_COUNT) {
-    headers = Array.from(document.querySelectorAll(
-      '[class*="team-name"], [class*="team-header"]',
-    )).map((element) => element.closest("div"));
-  }
-
-  const valid = headers.filter((element) => {
-    if (!element || element.closest(".extension-ui-element")) return false;
+  const valid = targets.filter((element) => {
+    if (element.closest(".extension-ui-element")) return false;
     if (element.closest(
       '.draft-cell, .pick-cell, [data-pick-number], [data-pick-no], [data-testid="pick-cell"]',
     )) return false;
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    return rect.width > 30
-      && rect.width < 300
-      && rect.height > 0
-      && rect.top < 300
-      && rect.bottom > -20
+    return rect.width >= 16
+      && rect.width <= 80
+      && rect.height >= 16
+      && rect.height <= 80
+      && rect.top >= -20
+      && rect.top <= 140
       && style.display !== "none"
       && style.visibility !== "hidden";
   });
@@ -2192,17 +2186,17 @@ function cleanupLegacyHeaderGradeUi() {
 function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   cleanupLegacyHeaderGradeUi();
-  const teamNodes = getTeamHeaderNodes();
+  const avatars = getTeamAvatarContainers();
 
-  teamNodes.forEach((teamNode, index) => {
+  avatars.forEach((avatar, index) => {
     const teamSlot = index + 1;
     const team = window.calculatedTeamGrades?.[teamSlot];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
     if (!hasPicks) return;
 
-    if (getComputedStyle(teamNode).position === "static") {
-      teamNode.style.position = "relative";
-    }
+    const container = avatar.parentElement || avatar;
+    container.style.setProperty("position", "relative", "important");
+    container.style.setProperty("overflow", "visible", "important");
     const badge = document.createElement("div");
     badge.className = "sleeper-extension-grade-badge extension-ui-element";
     badge.dataset.teamGradeSlot = String(teamSlot);
@@ -2210,9 +2204,9 @@ function updateTeamHeaderGradeBadges() {
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
       "position:absolute",
-      "top:2px",
-      "right:4px",
-      "z-index:99",
+      "top:-4px",
+      "right:-8px",
+      "z-index:999",
       "pointer-events:none",
       "min-width:22px",
       "height:22px",
@@ -2228,7 +2222,7 @@ function updateTeamHeaderGradeBadges() {
       "box-shadow:0 2px 5px rgba(0,0,0,.45)",
       "box-sizing:border-box",
     ].join(";");
-    teamNode.appendChild(badge);
+    container.appendChild(badge);
   });
 }
 

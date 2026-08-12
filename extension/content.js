@@ -2151,22 +2151,22 @@ function updateTeamHeaderGradeBadges() {
     overlayContainer = document.createElement("div");
     overlayContainer.id = "sleeper-extension-overlay-bar";
     overlayContainer.className = "extension-ui-element";
-    overlayContainer.style.cssText = [
-      "position:fixed",
-      "top:62px",
-      "left:0",
-      "right:0",
-      "height:0",
-      "z-index:999999",
-      "pointer-events:none",
-      "display:flex",
-      "justify-content:space-around",
-      "padding-left:40px",
-      "padding-right:40px",
-      "box-sizing:border-box",
-    ].join(";");
     document.body.appendChild(overlayContainer);
   }
+  overlayContainer.style.cssText = [
+    "position:fixed",
+    "top:190px",
+    "left:0",
+    "right:0",
+    "height:0",
+    "z-index:999999",
+    "pointer-events:none",
+    "display:flex",
+    "justify-content:space-around",
+    "padding-left:24px",
+    "padding-right:24px",
+    "box-sizing:border-box",
+  ].join(";");
   overlayContainer.replaceChildren();
 
   for (let teamNum = 1; teamNum <= DRAFT_TEAM_COUNT; teamNum += 1) {
@@ -2190,7 +2190,7 @@ function updateTeamHeaderGradeBadges() {
       badge.innerText = team.teamLetterGrade;
       badge.title = `Team ${teamNum}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
       badge.style.cssText = [
-        "transform:translate(18px,-10px)",
+        "transform:translate(12px,-6px)",
         "min-width:22px",
         "height:22px",
         "display:flex",

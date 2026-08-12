@@ -1232,7 +1232,8 @@ const styles = `
     overflow-y: auto;
     padding: 8px 9px 10px;
   }
-  .team-grades-heading {
+  .team-grades-heading,
+  .board-list-heading {
     display: flex;
     align-items: center;
     margin: 0 0 8px;
@@ -1241,6 +1242,9 @@ const styles = `
     font-weight: 900;
     letter-spacing: .06em;
     text-transform: uppercase;
+  }
+  .board-list-heading {
+    padding: 8px 9px 0;
   }
   .sleeper-extension-grade-info-wrap {
     display: inline-flex;
@@ -1736,6 +1740,19 @@ const survivalTagHtml = (playerId) => {
 };
 
 const playerListHtml = (players) => `
+  <div class="board-list-heading">
+    <span>Board · Next Pick %</span>
+    <span class="sleeper-extension-grade-info-wrap" tabindex="0" aria-label="How next-pick survival probability is calculated">
+      <span class="sleeper-extension-info-icon" aria-hidden="true">?</span>
+      <span class="sleeper-extension-grade-tooltip" role="tooltip">
+        <strong>Next Pick % Calculation</strong>
+        <span>• Pick Gap Math: Uses a logistic decay model (S-curve) measuring the distance between a player's rank and your next pick turn.</span>
+        <span>• Roster Need Hazard: Scans opponent rosters drafting between your turns and increases draft likelihood if they have vacant starter slots.</span>
+        <span>• Tier Cliff Penalty: Accelerates draft risk if a player is among the final remaining options in a positional tier.</span>
+        <span>• Live Odds: Dynamically recalculates after every pick to show the exact chance a player reaches your board.</span>
+      </span>
+    </span>
+  </div>
   ${!assistantState.error && players.length === 0 ? `<div class="empty">No available players detected.</div>` : ""}
   ${players.map((player, index) => `
     <div class="row ${index === 0 ? "best" : ""}" data-player="${escapeHtml(player.id)}">

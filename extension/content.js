@@ -2146,54 +2146,79 @@ function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   document.getElementById("extension-header-overlay-container")?.remove();
   document.querySelectorAll(".sleeper-extension-injected-badge").forEach((element) => element.remove());
+  const headerSlots = [];
+  const textElements = Array.from(document.querySelectorAll("div, span, p"));
 
-  const headerCandidates = [...document.querySelectorAll(
-    '.draftboard-header, .sticky-header, [class*="draftboard-header"], [class*="sticky-header"]',
-  )].filter((element) => {
-    if (element.closest(".extension-ui-element")) return false;
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return rect.width > 0
-      && rect.height > 0
-      && rect.bottom > 0
-      && rect.top < window.innerHeight
-      && style.display !== "none"
-      && style.visibility !== "hidden";
-  });
-  const headerContainer = headerCandidates[0] || document.querySelector('[class*="draftboard"]');
-  if (!headerContainer) return;
+  for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
+    const label = textElements.find((element) => {
+      if (element.closest(".extension-ui-element")) return false;
+      const text = element.textContent?.trim() || "";
+      if (text !== `Team ${teamSlot}` && text !== `Team${teamSlot}`) return false;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.top >= 0
+        && rect.top <= 220
+        && rect.width > 0
+        && style.display !== "none"
+        && style.visibility !== "hidden";
+    });
+    if (!label) continue;
 
-  const parentRect = headerContainer.getBoundingClientRect();
-  const candidateColumns = Array.from(
-    headerContainer.querySelectorAll('div, [class*="column"], [class*="cell"]'),
-  ).filter((element) => {
-    if (element.closest(".extension-ui-element")) return false;
-    const rect = element.getBoundingClientRect();
-    return rect.width >= 40
-      && rect.width <= 250
-      && rect.top >= parentRect.top - 10
-      && rect.top <= parentRect.top + 80;
-  });
-  candidateColumns.sort((left, right) => (
-    left.getBoundingClientRect().left - right.getBoundingClientRect().left
-  ));
+    const cell = label.closest('[class*="column"]')
+      || label.closest('[class*="cell"]')
+      || label.closest('[class*="header"]')
+      || label.parentElement;
+    if (cell) headerSlots.push({ teamSlot, cell, x: cell.getBoundingClientRect().left });
+  }
 
-  const teamColumns = [];
-  candidateColumns.forEach((column) => {
-    const rect = column.getBoundingClientRect();
-    const duplicate = teamColumns.some((existing) => (
-      Math.abs(existing.getBoundingClientRect().left - rect.left) < 15
+  if (headerSlots.length < DRAFT_TEAM_COUNT) {
+    const headerRows = Array.from(document.querySelectorAll(
+      '.draftboard-header, [class*="draftboard-header"], .sticky-header, [class*="sticky-header"]',
+    )).filter((row) => {
+      const rect = row.getBoundingClientRect();
+      const style = getComputedStyle(row);
+      return rect.width > 0 && rect.height > 0 && rect.top <= 220 && rect.bottom >= 0
+        && style.display !== "none" && style.visibility !== "hidden";
+    });
+    const avatarElements = headerRows.flatMap((row) => (
+      Array.from(row.querySelectorAll('[class*="avatar"], img, svg'))
+    )).filter((element) => {
+      if (element.closest(".extension-ui-element")) return false;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width >= 20 && rect.height >= 20 && rect.top >= 0 && rect.top <= 220
+        && style.display !== "none" && style.visibility !== "hidden";
+    });
+    avatarElements.sort((left, right) => (
+      left.getBoundingClientRect().left - right.getBoundingClientRect().left
     ));
-    if (!duplicate) teamColumns.push(column);
-  });
-  const activeColumns = teamColumns.slice(0, DRAFT_TEAM_COUNT);
-  if (!activeColumns.length) return;
 
-  activeColumns.forEach((cell, index) => {
-    const teamSlot = index + 1;
+    const uniqueColumns = [];
+    avatarElements.forEach((avatar) => {
+      const avatarRect = avatar.getBoundingClientRect();
+      const cell = avatar.closest('[class*="column"]')
+        || avatar.closest('[class*="cell"]')
+        || avatar.parentElement;
+      if (!cell || uniqueColumns.some((column) => Math.abs(column.x - avatarRect.left) < 20)) return;
+      uniqueColumns.push({ cell, x: avatarRect.left });
+    });
+
+    uniqueColumns.slice(0, DRAFT_TEAM_COUNT).forEach((column, index) => {
+      const teamSlot = index + 1;
+      if (!headerSlots.some((slot) => slot.teamSlot === teamSlot)) {
+        headerSlots.push({ teamSlot, cell: column.cell, x: column.x });
+      }
+    });
+  }
+
+  headerSlots.sort((left, right) => left.teamSlot - right.teamSlot);
+  const mountedCells = new Set();
+  headerSlots.forEach(({ teamSlot, cell }) => {
+    if (!cell || mountedCells.has(cell)) return;
     const team = window.calculatedTeamGrades?.[teamSlot];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
     if (!hasPicks || !team.teamLetterGrade || team.teamLetterGrade === "N/A") return;
+    mountedCells.add(cell);
 
     if (getComputedStyle(cell).position === "static") {
       cell.style.setProperty("position", "relative", "important");

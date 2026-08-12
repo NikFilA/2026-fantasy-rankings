@@ -1139,13 +1139,14 @@ const styles = `
     box-shadow: 0 24px 70px rgba(0, 0, 0, 0.54);
     font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   }
-  .panel.collapsed {
+  #draft-assistant-panel.is-collapsed {
     width: auto;
-    height: auto;
-    min-width: 174px;
-    min-height: 0;
+    height: auto !important;
+    min-width: 174px !important;
+    min-height: 0 !important;
+    max-height: none;
     overflow: hidden;
-    resize: none;
+    resize: none !important;
   }
   .head {
     display: grid;
@@ -1158,9 +1159,11 @@ const styles = `
     touch-action: none;
     user-select: none;
   }
-  .collapsed .head {
+  .is-collapsed .head {
     border-bottom: 0;
+    padding: 7px 8px;
   }
+  .is-collapsed [data-action="refresh"] { display: none; }
   .title { min-width: 0; }
   .title strong {
     display: block;
@@ -1547,15 +1550,16 @@ const styles = `
     padding: 2px 5px;
     text-align: center;
   }
-  .collapsed .toolbar,
-  .collapsed .view-tabs,
-  .collapsed .team-grades,
-  .collapsed .filters,
-  .collapsed .status,
-  .collapsed .tier-cliff-alert,
-  .collapsed .must-draft-alert,
-  .collapsed .list,
-  .collapsed .card {
+  .is-collapsed .strategy-alerts,
+  .is-collapsed .toolbar,
+  .is-collapsed .view-tabs,
+  .is-collapsed .team-grades,
+  .is-collapsed .filters,
+  .is-collapsed .status,
+  .is-collapsed .tier-cliff-alert,
+  .is-collapsed .must-draft-alert,
+  .is-collapsed .list,
+  .is-collapsed .card {
     display: none;
   }
 `;
@@ -1824,7 +1828,7 @@ const renderAssistant = () => {
   const best = players[0];
   root.shadowRoot.innerHTML = `
     <style>${styles}</style>
-    <section id="draft-assistant-panel" class="panel extension-ui-element ${assistantState.expanded ? "" : "collapsed"}" style="${overlayPositionStyle()}${panelSizeStyle()}">
+    <section id="draft-assistant-panel" class="panel extension-ui-element ${assistantState.expanded ? "" : "is-collapsed"}" style="${overlayPositionStyle()}${panelSizeStyle()}">
       <div class="head draft-assistant-header" data-drag-handle>
         <span class="title">
           <strong>Draft Assistant</strong>
@@ -2187,7 +2191,13 @@ function updateTeamHeaderGradeBadges() {
   if (!headerContainer) return;
 
   const rect = headerContainer.getBoundingClientRect();
-  if (rect.bottom < 0 || rect.top > 300 || rect.width < 500) return;
+  if (rect.bottom < 10 || rect.top > 300 || rect.width < 500) return;
+  const sampleAvatar = headerContainer.querySelector('img, svg, [class*="avatar"]');
+  let targetY = rect.top + 8;
+  if (sampleAvatar) {
+    const avatarRect = sampleAvatar.getBoundingClientRect();
+    targetY = avatarRect.top - 2;
+  }
   const columnWidth = rect.width / DRAFT_TEAM_COUNT;
 
   for (let index = 0; index < DRAFT_TEAM_COUNT; index += 1) {
@@ -2201,12 +2211,11 @@ function updateTeamHeaderGradeBadges() {
     badge.dataset.teamGradeSlot = String(teamSlot);
     badge.innerText = team.teamLetterGrade;
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
-    const leftPosition = rect.left + (index * columnWidth) + (columnWidth * 0.68);
-    const topPosition = Math.max(10, rect.top + 8);
+    const leftPosition = rect.left + (index * columnWidth) + (columnWidth * 0.65);
     badge.style.cssText = [
       "position:fixed",
       `left:${leftPosition}px`,
-      `top:${topPosition}px`,
+      `top:${targetY}px`,
       "z-index:999999",
       "pointer-events:none",
       "min-width:22px",

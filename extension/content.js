@@ -2139,52 +2139,43 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function getActiveHeaderAvatars() {
-  const stickyHeader = document.querySelector('.sticky-header, [class*="sticky"]');
-  const stickyRect = stickyHeader?.getBoundingClientRect();
-  const isStickyVisible = Boolean(
-    stickyHeader
-    && stickyRect.height > 0
-    && stickyRect.top >= -10
-    && getComputedStyle(stickyHeader).display !== "none"
-    && getComputedStyle(stickyHeader).visibility !== "hidden"
-  );
+  const candidates = Array.from(document.querySelectorAll(
+    '.sticky-header img, .sticky-header [class*="avatar"], '
+    + '.draftboard-header img, .draftboard-header [class*="avatar"], '
+    + '[class*="header"] [class*="avatar"]',
+  )).filter((element) => !element.closest(".extension-ui-element"));
 
-  let avatarElements = [];
-  if (isStickyVisible) {
-    avatarElements = Array.from(document.querySelectorAll(
-      '.sticky-header img, .sticky-header [class*="avatar"]',
-    ));
-  } else {
-    avatarElements = Array.from(document.querySelectorAll(
-      '.draftboard-header img, .draftboard-header [class*="avatar"], '
-      + '[class*="draftboard"] [class*="header"] [class*="team"] img, '
-      + '[class*="draftboard"] [class*="header"] [class*="avatar"]',
-    ));
-  }
-
-  const visible = avatarElements.filter((element) => {
-    if (element.closest(".extension-ui-element")) return false;
+  const validAvatars = candidates.filter((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    return rect.width > 12
-      && rect.height > 12
-      && rect.width < 120
+    return rect.width >= 16
+      && rect.width <= 90
+      && rect.height >= 16
+      && rect.height <= 90
+      && rect.top >= -20
+      && rect.top <= 120
       && style.display !== "none"
-      && style.visibility !== "hidden";
+      && style.visibility !== "hidden"
+      && style.opacity !== "0";
   });
 
-  visible.sort((left, right) => (
+  validAvatars.sort((left, right) => (
     left.getBoundingClientRect().left - right.getBoundingClientRect().left
   ));
 
   const unique = [];
-  visible.forEach((element) => {
+  validAvatars.forEach((element) => {
     const rect = element.getBoundingClientRect();
-    const duplicate = unique.some((existing) => (
-      Math.abs(existing.getBoundingClientRect().left - rect.left) < 15
+    const existingIndex = unique.findIndex((existing) => (
+      Math.abs(existing.getBoundingClientRect().left - rect.left) < 20
     ));
-    if (!duplicate) unique.push(element);
+    if (existingIndex === -1) {
+      unique.push(element);
+    } else if (rect.top < unique[existingIndex].getBoundingClientRect().top) {
+      unique[existingIndex] = element;
+    }
   });
+
   return unique.slice(0, DRAFT_TEAM_COUNT);
 }
 function removeNestedTeamHeaderBadges() {

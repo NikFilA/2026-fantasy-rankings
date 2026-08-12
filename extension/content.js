@@ -2145,56 +2145,44 @@ function teamGradeBadgeColor(letterGrade) {
 function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   document.getElementById("extension-header-overlay-container")?.remove();
+  document.querySelectorAll(".sleeper-extension-injected-badge").forEach((element) => element.remove());
 
-  const headerRows = [...document.querySelectorAll(
-    '.draftboard-header, [class*="draftboard-header"], [class*="sticky-header"]',
-  )].filter((row) => {
-    if (row.closest(".extension-ui-element")) return false;
-    const rect = row.getBoundingClientRect();
-    const style = getComputedStyle(row);
-    return rect.width > 0
-      && rect.height > 0
-      && rect.bottom > 0
-      && rect.top < window.innerHeight
-      && style.display !== "none"
-      && style.visibility !== "hidden";
-  });
-  const headerRow = headerRows[0];
-  if (!headerRow) return;
-
-  const teamCells = Array.from(headerRow.children).filter((child) => {
-    const rect = child.getBoundingClientRect();
-    return rect.width > 20;
-  });
-  if (!teamCells.length) return;
-
-  const activeBadges = new Set();
-  teamCells.slice(0, DRAFT_TEAM_COUNT).forEach((cell, index) => {
-    const teamSlot = index + 1;
-    const team = window.calculatedTeamGrades?.[teamSlot];
+  const allElements = Array.from(document.querySelectorAll("div, span, p"));
+  for (let teamNum = 1; teamNum <= DRAFT_TEAM_COUNT; teamNum += 1) {
+    const team = window.calculatedTeamGrades?.[teamNum];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
-    let badge = cell.querySelector(":scope > .sleeper-extension-injected-badge");
-    if (!hasPicks || !team.teamLetterGrade || team.teamLetterGrade === "N/A") {
-      badge?.remove();
-      return;
+    if (!hasPicks || !team.teamLetterGrade || team.teamLetterGrade === "N/A") continue;
+
+    const teamTextElement = allElements.find((element) => {
+      if (element.closest(".extension-ui-element")) return false;
+      const text = element.textContent ? element.textContent.trim() : "";
+      const isTeamMatch = text === `Team ${teamNum}` || text === `Team${teamNum}`;
+      if (!isTeamMatch) return false;
+      const rect = element.getBoundingClientRect();
+      return rect.top >= 0 && rect.top <= 250;
+    });
+    if (!teamTextElement) continue;
+
+    const teamHeaderCell = teamTextElement.closest('[class*="header"]')
+      || teamTextElement.closest('[class*="column"]')
+      || teamTextElement.parentElement;
+    if (!teamHeaderCell) continue;
+
+    if (getComputedStyle(teamHeaderCell).position === "static") {
+      teamHeaderCell.style.setProperty("position", "relative", "important");
     }
-    if (getComputedStyle(cell).position === "static") {
-      cell.style.setProperty("position", "relative", "important");
-    }
-    if (!badge) {
-      badge = document.createElement("div");
-      badge.className = "sleeper-extension-grade-badge sleeper-extension-injected-badge extension-ui-element";
-      cell.appendChild(badge);
-    }
-    activeBadges.add(badge);
-    badge.dataset.teamGradeSlot = String(teamSlot);
+    teamHeaderCell.style.setProperty("overflow", "visible", "important");
+
+    const badge = document.createElement("div");
+    badge.className = "sleeper-extension-grade-badge sleeper-extension-injected-badge extension-ui-element";
+    badge.dataset.teamGradeSlot = String(teamNum);
     badge.innerText = team.teamLetterGrade;
-    badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
+    badge.title = `Team ${teamNum}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
       "position:absolute",
-      "top:2px",
-      "right:15%",
-      "z-index:99",
+      "top:0",
+      "right:10px",
+      "z-index:9999",
       "pointer-events:none",
       "min-width:22px",
       "height:22px",
@@ -2210,11 +2198,8 @@ function updateTeamHeaderGradeBadges() {
       "box-shadow:0 2px 5px rgba(0,0,0,.45)",
       "box-sizing:border-box",
     ].join(";");
-  });
-
-  document.querySelectorAll(".sleeper-extension-injected-badge").forEach((badge) => {
-    if (!activeBadges.has(badge)) badge.remove();
-  });
+    teamHeaderCell.appendChild(badge);
+  }
 }
 
 let headerOverlayAnimationFrame = 0;

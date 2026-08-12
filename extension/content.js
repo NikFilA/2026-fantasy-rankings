@@ -2167,26 +2167,26 @@ function updateTeamHeaderGradeBadges() {
   ).forEach((element) => element.remove());
   const overlay = getOrCreateOverlay();
   overlay.innerHTML = "";
-  const boardElement = document.querySelector(
-    '.draftboard, [class*="draftboard-container"], .draftboard-header, [class*="sticky-header"]',
+  const headerContainer = document.querySelector(
+    '.draftboard-header, .sticky-header, [class*="draftboard-header"], [class*="sticky-header"]',
   ) || document.querySelector('[class*="draftboard"]');
-  if (!boardElement) return;
+  if (!headerContainer) return;
 
-  const boardRect = boardElement.getBoundingClientRect();
-  if (boardRect.width <= 0) return;
-  const avatarElement = document.querySelector(
+  const headerRect = headerContainer.getBoundingClientRect();
+  if (headerRect.width <= 0) return;
+  const sampleAvatar = headerContainer.querySelector(
     '.draftboard-header img, .sticky-header img, [class*="avatar"] img, [class*="avatar"] svg',
   );
-  let targetY = 140;
-  if (avatarElement) {
-    const avatarRect = avatarElement.getBoundingClientRect();
-    targetY = avatarRect.top > 40 && avatarRect.top < 220
+  let targetY = 50;
+  if (sampleAvatar) {
+    const avatarRect = sampleAvatar.getBoundingClientRect();
+    targetY = avatarRect.top > 10 && avatarRect.top < 150
       ? avatarRect.top - 2
-      : Math.max(135, boardRect.top + 138);
+      : Math.max(20, headerRect.top + 12);
   } else {
-    targetY = Math.max(135, boardRect.top + 138);
+    targetY = Math.max(20, headerRect.top + 12);
   }
-  const columnWidth = boardRect.width / DRAFT_TEAM_COUNT;
+  const columnWidth = headerRect.width / DRAFT_TEAM_COUNT;
 
   for (let index = 0; index < DRAFT_TEAM_COUNT; index += 1) {
     const teamSlot = index + 1;
@@ -2199,7 +2199,7 @@ function updateTeamHeaderGradeBadges() {
     badge.dataset.teamGradeSlot = String(teamSlot);
     badge.innerText = team.teamLetterGrade;
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
-    const leftPosition = boardRect.left + (index * columnWidth) + (columnWidth * 0.65);
+    const leftPosition = headerRect.left + (index * columnWidth) + (columnWidth * 0.65);
     badge.style.cssText = [
       "position:fixed",
       `left:${leftPosition}px`,

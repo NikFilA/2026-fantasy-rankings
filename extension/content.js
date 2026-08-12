@@ -36,6 +36,7 @@ const assistantState = {
   filters: [],
   search: "",
   panelView: "board",
+  listScrollTop: 0,
   expanded: true,
   loading: true,
   error: "",
@@ -1726,9 +1727,11 @@ const bindTeamGradeAccordions = (shadowRoot) => {
 const updateListUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
   const list = shadowRoot?.querySelector(".list");
   if (!list) return;
+  assistantState.listScrollTop = list.scrollTop;
   list.innerHTML = assistantState.panelView === "grades"
     ? teamGradesHtml()
     : playerListHtml(visiblePlayers());
+  list.scrollTop = assistantState.listScrollTop;
   if (assistantState.panelView === "board") bindPlayerRows(shadowRoot);
   else bindTeamGradeAccordions(shadowRoot);
 };
@@ -1772,6 +1775,8 @@ const renderAssistant = () => {
     root.attachShadow({ mode: "open" });
     document.documentElement.appendChild(root);
   }
+  const existingScrollContainer = root.shadowRoot.querySelector(".scrollable-list-container");
+  if (existingScrollContainer) assistantState.listScrollTop = existingScrollContainer.scrollTop;
   const focusedSearch = root.shadowRoot.activeElement?.id === "draft-assistant-search";
   const priorSearchSelection = focusedSearch
     ? {
@@ -1809,11 +1814,13 @@ const renderAssistant = () => {
         ${escapeHtml(assistantState.error || assistantState.source)} · [${assistantState.draftedCount}] DRAFTED DETECTED
       </div>
       ${cardHtml()}
-      <div class="list">
+      <div class="list scrollable-list-container">
         ${assistantState.panelView === "grades" ? teamGradesHtml() : playerListHtml(players)}
       </div>
     </section>
   `;
+  const nextScrollContainer = root.shadowRoot.querySelector(".scrollable-list-container");
+  if (nextScrollContainer) nextScrollContainer.scrollTop = assistantState.listScrollTop;
   bindAssistant(root.shadowRoot);
   restoreActiveDraftAlerts(root.shadowRoot);
   if (focusedSearch) {
@@ -1821,6 +1828,7 @@ const renderAssistant = () => {
     searchInput?.focus({ preventScroll: true });
     searchInput?.setSelectionRange(priorSearchSelection.start, priorSearchSelection.end);
   }
+  updateHeaderOverlayPositions();
 };
 
 const bindAssistantMouseDrag = (panel, handle) => {
@@ -1865,6 +1873,10 @@ const bindAssistantMouseDrag = (panel, handle) => {
 };
 
 const bindAssistant = (shadowRoot) => {
+  const scrollContainer = shadowRoot.querySelector(".scrollable-list-container");
+  scrollContainer?.addEventListener("scroll", () => {
+    assistantState.listScrollTop = scrollContainer.scrollTop;
+  }, { passive: true });
   shadowRoot.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
       assistantState.panelView = button.dataset.view === "grades" ? "grades" : "board";
@@ -1919,6 +1931,7 @@ const bindAssistant = (shadowRoot) => {
       if (!assistantState.expanded) return;
       const rect = panel.getBoundingClientRect();
       if (event.clientX >= rect.right - 22 && event.clientY >= rect.bottom - 22) {
+        assistantState.listScrollTop = scrollContainer?.scrollTop || 0;
         assistantState.isResizing = true;
         window.addEventListener("pointerup", finishResize, { once: true });
       }
@@ -1933,6 +1946,7 @@ const bindAssistant = (shadowRoot) => {
 
     const resizeObserver = new ResizeObserver(() => {
       if (!assistantState.expanded) return;
+      const lockedScrollTop = assistantState.listScrollTop;
       const rect = panel.getBoundingClientRect();
       const sizeChanged = Math.abs(Number(assistantState.size.width) - rect.width) > 1
         || Math.abs(Number(assistantState.size.height) - rect.height) > 1;
@@ -1941,6 +1955,9 @@ const bindAssistant = (shadowRoot) => {
       }
       if (sizeChanged && !assistantState.isResizing) {
         saveOverlayPrefs();
+      }
+      if (scrollContainer && scrollContainer.scrollTop !== lockedScrollTop) {
+        scrollContainer.scrollTop = lockedScrollTop;
       }
     });
     resizeObserver.observe(panel);
@@ -2191,12 +2208,19 @@ function updateTeamHeaderGradeBadges() {
 }
 
 let headerOverlayAnimationFrame = 0;
+let headerOverlayWatchdog = 0;
 function updateHeaderOverlayPositions() {
   cancelAnimationFrame(headerOverlayAnimationFrame);
   headerOverlayAnimationFrame = requestAnimationFrame(() => {
     headerOverlayAnimationFrame = 0;
     updateTeamHeaderGradeBadges();
   });
+}
+function ensureHeaderOverlayWatchdog() {
+  updateHeaderOverlayPositions();
+  if (!headerOverlayWatchdog) {
+    headerOverlayWatchdog = window.setInterval(updateHeaderOverlayPositions, 500);
+  }
 }
 const overallAdpForPickGrade = (player) => {
   const roundPick = player?.sleeper_pick ?? player?.sleeperPick;
@@ -2286,6 +2310,7 @@ const calculateWeightedTeamGrade = (teamPicks) => {
 };
 
 const observeDraftPage = () => {
+  ensureHeaderOverlayWatchdog();
   setInterval(async () => {
     try {
       await syncDraftPicks();
@@ -2315,10 +2340,12 @@ const initSleeperAssistant = async () => {
   if (!activeDraftId) {
     console.error("[DraftAssistant] Active Draft ID could not be parsed from URL:", window.location.href);
   }
+  ensureHeaderOverlayWatchdog();
   syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
   await loadOverlayPrefs();
   await loadCustomRankings();
   renderAssistant();
+  updateHeaderOverlayPositions();
   await loadStoredDraftPicks();
   await loadRankings();
   try {

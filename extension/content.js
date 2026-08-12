@@ -1872,6 +1872,7 @@ const bindAssistant = (shadowRoot) => {
       assistantState.panelView = button.dataset.view === "grades" ? "grades" : "board";
       assistantState.selectedPlayerId = "";
       renderAssistant();
+      requestAnimationFrame(updateTeamHeaderGradeBadges);
     });
   });
   shadowRoot.querySelectorAll("[data-filter]").forEach((button) => {
@@ -2065,8 +2066,101 @@ const calculateAllDraftGrades = () => {
   window.calculatedTeamGrades = calculatedTeamGrades;
   window.playerGradeMap = playerGradeMap;
   window.playerGradeAliasMap = playerGradeAliasMap;
+  updateTeamHeaderGradeBadges();
   return recognizedPicks;
 };
+
+function teamGradeBadgeColor(letterGrade) {
+  if (String(letterGrade).startsWith("A")) return "#16a34a";
+  if (String(letterGrade).startsWith("B")) return "#2563eb";
+  if (String(letterGrade).startsWith("C")) return "#ca8a04";
+  return "#dc2626";
+}
+
+function sleeperTeamHeaderElements() {
+  const board = document.querySelector([
+    ".draft-board",
+    ".draft-board-container",
+    "[data-testid='draft-board']",
+    "[class*='DraftBoard']",
+    "[class*='draftBoard']",
+    "[class*='draft-board']",
+  ].join(","));
+  if (!board) return [];
+  const scope = board.parentElement || board;
+  const headerRows = scope.querySelectorAll([
+    ".draft-board-header",
+    "[data-testid='draft-board-header']",
+    "[class*='DraftBoardHeader']",
+    "[class*='draftBoardHeader']",
+    "[class*='draft-board-header']",
+  ].join(","));
+  for (const row of headerRows) {
+    const headers = [...row.children].filter((element) => !element.closest(".extension-ui-element"));
+    if (headers.length >= DRAFT_TEAM_COUNT) return headers.slice(0, DRAFT_TEAM_COUNT);
+  }
+  return [...scope.querySelectorAll([
+    ".team-header",
+    ".team-slot-header",
+    "[data-testid='team-header']",
+    "[class*='TeamHeader']",
+    "[class*='teamHeader']",
+    "[class*='team-header']",
+  ].join(","))]
+    .filter((element) => !element.closest(".extension-ui-element"))
+    .sort((left, right) => left.getBoundingClientRect().left - right.getBoundingClientRect().left)
+    .slice(0, DRAFT_TEAM_COUNT);
+}
+
+function updateTeamHeaderGradeBadges() {
+  if (!isSleeperDraft) return;
+  const headers = sleeperTeamHeaderElements();
+  const activeBadges = new Set();
+  headers.forEach((header, index) => {
+    const teamSlot = index + 1;
+    const team = window.calculatedTeamGrades?.[teamSlot];
+    const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
+    let badge = header.querySelector(":scope > .team-header-grade-badge");
+    if (!hasPicks) {
+      badge?.remove();
+      return;
+    }
+    header.style.setProperty("position", "relative", "important");
+    header.style.setProperty("overflow", "visible", "important");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "team-header-grade-badge extension-ui-element";
+      header.appendChild(badge);
+    }
+    activeBadges.add(badge);
+    badge.textContent = team.teamLetterGrade;
+    badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
+    badge.style.cssText = [
+      "position:absolute",
+      "top:-4px",
+      "right:-4px",
+      "border-radius:50%",
+      "width:22px",
+      "height:22px",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "font-weight:bold",
+      "font-size:11px",
+      "font-family:system-ui,sans-serif",
+      "line-height:1",
+      "color:#fff",
+      `background:${teamGradeBadgeColor(team.teamLetterGrade)}`,
+      "border:2px solid #0f172a",
+      "box-sizing:border-box",
+      "z-index:999",
+      "pointer-events:auto",
+    ].join(";");
+  });
+  document.querySelectorAll(".team-header-grade-badge").forEach((badge) => {
+    if (!activeBadges.has(badge)) badge.remove();
+  });
+}
 
 const overallAdpForPickGrade = (player) => {
   const roundPick = player?.sleeper_pick ?? player?.sleeperPick;

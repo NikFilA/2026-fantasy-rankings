@@ -2103,22 +2103,14 @@ const calculateAllDraftGrades = () => {
   const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
     ? assistantState.lastLiveSleeperPicks.filter(Boolean)
     : [];
-  const trackedByPickNumber = new Map(trackedPicks.map((pick, index) => [
-    Number(pick.pick_no) || index + 1,
-    pick,
-  ]));
-  const totalDraftedCount = Math.max(
-    Number(assistantState.draftedCount) || 0,
-    trackedByPickNumber.size,
-  );
   const recognizedPicks = [];
-  for (let pickNumber = 1; pickNumber <= totalDraftedCount; pickNumber += 1) {
-    const pick = trackedByPickNumber.get(pickNumber);
-    if (!pick) continue;
-    const round = Math.ceil(pickNumber / DRAFT_TEAM_COUNT);
-    const positionInRound = ((pickNumber - 1) % DRAFT_TEAM_COUNT) + 1;
+  trackedPicks.forEach((pick, index) => {
+    const pickNumber = Number(pick.pick_no) || index + 1;
+    const round = Math.ceil(pickNumber / 12);
+    const remainder = pickNumber % 12;
+    const slotInRound = remainder === 0 ? 12 : remainder;
     const isOddRound = round % 2 === 1;
-    const teamSlot = isOddRound ? positionInRound : 13 - positionInRound;
+    const teamSlot = isOddRound ? slotInRound : 13 - slotInRound;
     const playerId = String(pick.player_id || "");
     const trackedName = pickPlayerName(pick);
     const player = byId.get(playerId)
@@ -2142,6 +2134,7 @@ const calculateAllDraftGrades = () => {
     const grade = calculatePickGrade(recognizedPick);
     recognizedPick.playerADP = grade.playerADP;
     recognizedPick.valueDelta = grade.delta;
+    recognizedPick.delta = grade.delta;
     recognizedPick.pickScore = grade.pickScore;
     recognizedPick.letterGrade = grade.grade;
     recognizedPick.gradeColor = grade.color;
@@ -2150,23 +2143,32 @@ const calculateAllDraftGrades = () => {
       teamSlot,
       playerADP: grade.playerADP,
       valueDelta: grade.delta,
+      delta: grade.delta,
       pickScore: grade.pickScore,
       letterGrade: grade.grade,
       gradeColor: grade.color,
     });
     recognizedPicks.push(recognizedPick);
-  }
+  });
   const calculatedTeamGrades = {};
   for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
     const teamPicks = recognizedPicks.filter((pick) => pick.teamSlot === teamSlot);
-    const weighted = calculateWeightedTeamGrade(teamPicks);
+    const weighted = teamPicks.length ? calculateWeightedTeamGrade(teamPicks) : null;
     calculatedTeamGrades[teamSlot] = {
       teamSlot,
       teamPicks,
-      teamScore: weighted.teamScore,
-      teamLetterGrade: weighted.grade,
-      color: weighted.color,
+      teamScore: weighted?.teamScore ?? null,
+      teamLetterGrade: weighted?.grade ?? null,
+      color: weighted?.color ?? "#64748b",
     };
+  }
+  const aggregatedPickCount = Object.values(calculatedTeamGrades)
+    .reduce((total, team) => total + team.teamPicks.length, 0);
+  if (aggregatedPickCount !== recognizedPicks.length) {
+    console.error("[DraftAssistant] Team-grade aggregation mismatch:", {
+      recognizedPicks: recognizedPicks.length,
+      aggregatedPicks: aggregatedPickCount,
+    });
   }
   window.calculatedTeamGrades = calculatedTeamGrades;
   return recognizedPicks;
@@ -2318,6 +2320,21 @@ const renderIndividualPickGrades = (board, processedPicks, visibleCells) => {
 
 const draftTeamHeaders = (board, teamCount) => {
   const headerScope = board.parentElement || board;
+  const headerRows = [...headerScope.querySelectorAll([
+    ".draft-board-header",
+    "[data-testid='draft-board-header']",
+    "[class*='DraftBoardHeader']",
+    "[class*='draftBoardHeader']",
+    "[class*='draft-board-header']",
+  ].join(","))];
+  for (const row of headerRows) {
+    const directHeaders = [...row.children].filter((element) => (
+      !element.closest(".extension-ui-element")
+      && !element.matches("[data-pick-number], [data-pick-no], .pick-cell")
+      && Boolean(avatarWrapperForHeader(element))
+    ));
+    if (directHeaders.length >= teamCount) return directHeaders.slice(0, teamCount);
+  }
   const structuralTargets = [...document.querySelectorAll(
     '.draft-board-header > div, .team-header, [class*="team-header"], [class*="avatar"]',
   )];
@@ -2330,7 +2347,12 @@ const draftTeamHeaders = (board, teamCount) => {
     }
     return element;
   }).filter(Boolean).filter((element) => !element.closest(".extension-ui-element"));
-  return [...new Set(headers)];
+  const uniqueHeaders = [...new Set(headers)].filter((candidate, index, all) => (
+    !all.some((other, otherIndex) => otherIndex !== index && other.contains(candidate))
+  ));
+  return uniqueHeaders.sort((left, right) => (
+    left.getBoundingClientRect().left - right.getBoundingClientRect().left
+  ));
 };
 
 const cleanupBrokenGradeInjections = () => {
@@ -2406,10 +2428,12 @@ const renderLiveDraftGrades = () => {
       badge.className = "draft-grade-badge extension-ui-element";
       avatarWrapper.appendChild(badge);
     }
-    badge.textContent = result.grade;
+    badge.textContent = result.grade || "—";
     badge.setAttribute(
       "title",
-      `Team Grade: ${result.grade}\n• Weighted Score: ${Math.round(result.teamScore)}/100\n• Total Picks Recognized: ${teamPicks.length}\n• Picks Breakdown: ${teamPicks.map((pick) => pick.letterGrade).join(", ") || "None"}`,
+      teamPicks.length
+        ? `Team Grade: ${result.grade}\n• Weighted Score: ${Math.round(result.teamScore)}/100\n• Total Picks Recognized: ${teamPicks.length}\n• Picks Breakdown: ${teamPicks.map((pick) => pick.letterGrade).join(", ")}`
+        : "No picks yet",
     );
     badge.style.cssText = [
       "position:absolute",

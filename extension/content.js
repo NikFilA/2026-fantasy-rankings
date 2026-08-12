@@ -2078,67 +2078,90 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function sleeperTeamHeaderElements() {
-  const board = document.querySelector([
-    ".draft-board",
-    ".draft-board-container",
-    "[data-testid='draft-board']",
-    "[class*='DraftBoard']",
-    "[class*='draftBoard']",
-    "[class*='draft-board']",
-  ].join(","));
-  if (!board) return [];
-  const scope = board.parentElement || board;
-  const headerRows = scope.querySelectorAll([
-    ".draft-board-header",
-    "[data-testid='draft-board-header']",
-    "[class*='DraftBoardHeader']",
-    "[class*='draftBoardHeader']",
-    "[class*='draft-board-header']",
-  ].join(","));
-  for (const row of headerRows) {
-    const headers = [...row.children].filter((element) => !element.closest(".extension-ui-element"));
-    if (headers.length >= DRAFT_TEAM_COUNT) return headers.slice(0, DRAFT_TEAM_COUNT);
-  }
-  return [...scope.querySelectorAll([
-    ".team-header",
-    ".team-slot-header",
-    "[data-testid='team-header']",
-    "[class*='TeamHeader']",
-    "[class*='teamHeader']",
-    "[class*='team-header']",
-  ].join(","))]
+  const exactAvatars = [...document.querySelectorAll(
+    '.draftboard-header .team-avatar, [class*="team-header"]',
+  )]
     .filter((element) => !element.closest(".extension-ui-element"))
+    .filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+
+  const leafCandidates = exactAvatars.filter((candidate, index, all) => (
+    !all.some((other, otherIndex) => otherIndex !== index && candidate.contains(other))
+  ));
+  const uniqueByColumn = [];
+  leafCandidates
     .sort((left, right) => left.getBoundingClientRect().left - right.getBoundingClientRect().left)
-    .slice(0, DRAFT_TEAM_COUNT);
+    .forEach((candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      const duplicate = uniqueByColumn.some((existing) => (
+        Math.abs(existing.getBoundingClientRect().left - rect.left) < 3
+      ));
+      if (!duplicate) uniqueByColumn.push(candidate);
+    });
+
+  return uniqueByColumn.length === DRAFT_TEAM_COUNT ? uniqueByColumn : [];
+}
+
+function removeNestedTeamHeaderBadges() {
+  document.querySelectorAll(".team-header-grade-badge").forEach((badge) => {
+    if (badge.closest("#extension-header-overlay-container")) return;
+    const formerHeader = badge.parentElement;
+    badge.remove();
+    formerHeader?.style.removeProperty("position");
+    formerHeader?.style.removeProperty("overflow");
+  });
+}
+
+function headerGradeOverlayContainer() {
+  let container = document.getElementById("extension-header-overlay-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "extension-header-overlay-container";
+    container.className = "extension-ui-element";
+    container.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;";
+    document.body.appendChild(container);
+  }
+  return container;
 }
 
 function updateTeamHeaderGradeBadges() {
-  if (!isSleeperDraft) return;
+  if (!isSleeperDraft || !document.body) return;
+  removeNestedTeamHeaderBadges();
+  const container = headerGradeOverlayContainer();
   const headers = sleeperTeamHeaderElements();
-  const activeBadges = new Set();
-  headers.forEach((header, index) => {
+  if (headers.length !== DRAFT_TEAM_COUNT) {
+    container.replaceChildren();
+    console.warn("[DraftAssistant] Expected exactly 12 Sleeper team headers; found:", headers.length);
+    return;
+  }
+
+  const activeSlots = new Set();
+  headers.forEach((headerEl, index) => {
     const teamSlot = index + 1;
     const team = window.calculatedTeamGrades?.[teamSlot];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
-    let badge = header.querySelector(":scope > .team-header-grade-badge");
+    let badge = container.querySelector(`[data-team-grade-slot="${teamSlot}"]`);
     if (!hasPicks) {
       badge?.remove();
       return;
     }
-    header.style.setProperty("position", "relative", "important");
-    header.style.setProperty("overflow", "visible", "important");
+
+    const rect = headerEl.getBoundingClientRect();
     if (!badge) {
       badge = document.createElement("span");
-      badge.className = "team-header-grade-badge extension-ui-element";
-      header.appendChild(badge);
+      badge.className = "team-header-grade-badge";
+      badge.dataset.teamGradeSlot = String(teamSlot);
+      container.appendChild(badge);
     }
-    activeBadges.add(badge);
+    activeSlots.add(teamSlot);
     badge.textContent = team.teamLetterGrade;
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
       "position:absolute",
-      "top:-4px",
-      "right:-4px",
+      `top:${rect.top + window.scrollY - 4}px`,
+      `left:${rect.right + window.scrollX - 16}px`,
       "border-radius:50%",
       "width:22px",
       "height:22px",
@@ -2157,11 +2180,11 @@ function updateTeamHeaderGradeBadges() {
       "pointer-events:auto",
     ].join(";");
   });
-  document.querySelectorAll(".team-header-grade-badge").forEach((badge) => {
-    if (!activeBadges.has(badge)) badge.remove();
+
+  container.querySelectorAll("[data-team-grade-slot]").forEach((badge) => {
+    if (!activeSlots.has(Number(badge.dataset.teamGradeSlot))) badge.remove();
   });
 }
-
 const overallAdpForPickGrade = (player) => {
   const roundPick = player?.sleeper_pick ?? player?.sleeperPick;
   if (typeof roundPick === "string" && /^\d+\.\d{1,2}$/.test(roundPick.trim())) {
@@ -2263,7 +2286,9 @@ const observeDraftPage = () => {
   });
   window.addEventListener("resize", () => {
     renderAssistant();
+    updateTeamHeaderGradeBadges();
   });
+  window.addEventListener("scroll", updateTeamHeaderGradeBadges, { passive: true });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));

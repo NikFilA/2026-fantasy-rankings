@@ -2034,41 +2034,77 @@ const readDraftPicksFromBoard = (board) => {
     .filter((cell) => !cell.parentElement?.closest(canonicalCellSelector));
   const { byId, byName } = boardPlayerLookup();
   const teamCount = Number(assistantState.sleeperDraftDetails?.settings?.teams) || 12;
-  const pickNumberForCell = (cell, index) => {
+  const strictSnakePickNumber = (round, teamSlot) => {
+    if (!(round > 0) || !(teamSlot >= 1 && teamSlot <= teamCount)) return null;
+    const isOddRound = round % 2 === 1;
+    return isOddRound
+      ? ((round - 1) * teamCount) + teamSlot
+      : ((round - 1) * teamCount) + (teamCount + 1 - teamSlot);
+  };
+  const teamSlotFromPickNumber = (pickNumber, round) => {
+    const withinRound = ((pickNumber - 1) % teamCount) + 1;
+    return round % 2 === 1 ? withinRound : teamCount + 1 - withinRound;
+  };
+  const positiveIntAttribute = (cell, names) => {
+    for (const name of names) {
+      const direct = Number(cell.getAttribute(name));
+      if (Number.isInteger(direct) && direct > 0) return direct;
+      const ancestor = cell.closest(`[${name}]`);
+      const inherited = Number(ancestor?.getAttribute(name));
+      if (Number.isInteger(inherited) && inherited > 0) return inherited;
+    }
+    return null;
+  };
+  const cellCoordinates = (cell) => {
     const explicitPickNumber = Number(
       cell.getAttribute("data-pick-number")
       || cell.getAttribute("data-pick-no")
       || cell.closest("[data-pick-number], [data-pick-no]")?.getAttribute("data-pick-number")
       || cell.closest("[data-pick-number], [data-pick-no]")?.getAttribute("data-pick-no"),
     );
-    if (explicitPickNumber > 0) return explicitPickNumber;
-    const round = Number(cell.getAttribute("data-round") || cell.closest("[data-round]")?.getAttribute("data-round"));
-    const slot = Number(
-      cell.getAttribute("data-draft-slot")
-      || cell.getAttribute("data-slot")
-      || cell.closest("[data-draft-slot]")?.getAttribute("data-draft-slot"),
-    );
-    if (round > 0 && slot >= 1 && slot <= teamCount) {
-      const withinRound = round % 2 === 1 ? slot : teamCount - slot + 1;
-      return ((round - 1) * teamCount) + withinRound;
+    let round = positiveIntAttribute(cell, ["data-round", "data-round-number", "aria-rowindex"]);
+    let teamSlot = positiveIntAttribute(cell, [
+      "data-draft-slot",
+      "data-team-slot",
+      "data-slot",
+      "data-column",
+      "aria-colindex",
+    ]);
+    if ((!round || !teamSlot) && Number.isInteger(explicitPickNumber) && explicitPickNumber > 0) {
+      round ||= Math.floor((explicitPickNumber - 1) / teamCount) + 1;
+      teamSlot ||= teamSlotFromPickNumber(explicitPickNumber, round);
     }
-    return index + 1;
+    const computed = getComputedStyle(cell);
+    const gridRow = Number.parseInt(computed.gridRowStart, 10);
+    const gridColumn = Number.parseInt(computed.gridColumnStart, 10);
+    if (!round && Number.isInteger(gridRow) && gridRow > 0) round = gridRow;
+    if (!teamSlot && Number.isInteger(gridColumn) && gridColumn >= 1 && gridColumn <= teamCount) {
+      teamSlot = gridColumn;
+    }
+    const pickNumber = strictSnakePickNumber(round, teamSlot);
+    return pickNumber ? { round, teamSlot, pickNumber } : null;
   };
-  const cellByPickNumber = new Map();
-  cells.forEach((cell, index) => {
-    const pickNumber = pickNumberForCell(cell, index);
-    if (!cellByPickNumber.has(pickNumber)) cellByPickNumber.set(pickNumber, cell);
+  const cellByRoundAndSlot = new Map();
+  cells.forEach((cell) => {
+    const coordinates = cellCoordinates(cell);
+    if (!coordinates) return;
+    const key = `${coordinates.round}:${coordinates.teamSlot}`;
+    if (!cellByRoundAndSlot.has(key)) cellByRoundAndSlot.set(key, cell);
   });
 
   const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
     ? assistantState.lastLiveSleeperPicks
     : [];
-  return trackedPicks.filter((pick) => pick?.player_id).map((pick, index) => {
-    const pickNumber = Number(pick.pick_no) || index + 1;
-    const round = Math.floor((pickNumber - 1) / teamCount) + 1;
-    const roundIndex = (pickNumber - 1) % teamCount;
-    const inferredSlot = round % 2 === 1 ? roundIndex + 1 : teamCount - roundIndex;
+  return trackedPicks.filter((pick) => pick?.player_id).map((pick) => {
+    const officialPickNumber = Number(pick.pick_no);
+    let round = Number(pick.round);
     const explicitSlot = Number(pick.draft_slot ?? pick.metadata?.draft_slot);
+    if (!round && officialPickNumber > 0) round = Math.floor((officialPickNumber - 1) / teamCount) + 1;
+    const teamSlot = explicitSlot >= 1 && explicitSlot <= teamCount
+      ? explicitSlot
+      : (officialPickNumber > 0 && round > 0 ? teamSlotFromPickNumber(officialPickNumber, round) : null);
+    const pickNumber = strictSnakePickNumber(round, teamSlot);
+    if (!pickNumber) return null;
     const playerId = String(pick.player_id);
     const trackedName = pickPlayerName(pick);
     const player = byId.get(playerId)
@@ -2084,12 +2120,12 @@ const readDraftPicksFromBoard = (board) => {
     return {
       ...player,
       player_id: playerId,
-      cell: cellByPickNumber.get(pickNumber) || null,
+      cell: cellByRoundAndSlot.get(`${round}:${teamSlot}`) || null,
       pick_no: pickNumber,
-      round: Number(pick.round) || round,
-      draft_slot: explicitSlot >= 1 && explicitSlot <= teamCount ? explicitSlot : inferredSlot,
+      round,
+      draft_slot: teamSlot,
     };
-  }).sort((a, b) => a.pick_no - b.pick_no);
+  }).filter(Boolean).sort((a, b) => a.pick_no - b.pick_no);
 };
 
 const overallAdpForPickGrade = (player) => {
@@ -2207,15 +2243,15 @@ const renderIndividualPickGrades = (board, columns) => {
       );
       badge.style.cssText = [
         "position:absolute",
-        "top:2px",
-        "right:2px",
+        "top:3px",
+        "right:3px",
         `background:${result.color}`,
         "color:#fff",
         "border:1px solid #0f172a",
         "border-radius:9999px",
         "padding:1px 4px",
         "font:800 9px/1.2 system-ui,sans-serif",
-        "z-index:9998",
+        "z-index:10",
         "pointer-events:auto",
         "white-space:nowrap",
         "box-sizing:border-box",

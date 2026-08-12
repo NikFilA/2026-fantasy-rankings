@@ -40,6 +40,7 @@
     "http://127.0.0.1:3000/*",
     "https://api.sleeper.app/*",
     "https://sleepercdn.com/*",
+    "https://a.espncdn.com/*",
     "https://sleeper.com/*",
     "https://*.sleeper.com/*",
     "https://sleeper.app/*",

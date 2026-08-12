@@ -66,6 +66,7 @@ const assistantState = {
   strategyAlertPickSignature: "",
   survivalByPlayerId: {},
   undraftedPlayers: null,
+  sleeperPlayerIdByName: new Map(),
 };
 
 let aiModulesPromise = null;
@@ -213,6 +214,8 @@ const teamAliases = (team) => {
 
 const clonePlayer = (player, index) => ({
   id: String(player.id || index + 1),
+  sleeperId: String(player.sleeperId || player.sleeper_id || player.player_id || ""),
+  espnId: String(player.espnId || player.espn_id || ""),
   name: String(player.name || "Unknown Player"),
   pos: String(player.pos || "WR").toUpperCase(),
   team: String(player.team || "FA").toUpperCase(),
@@ -415,9 +418,25 @@ const mergeLiveWebsiteMarkets = async (basePlayers) => {
   const espnRows = espnResult.status === "fulfilled"
     ? (espnResult.value?.players || espnResult.value || [])
     : [];
-  const livePlayerRows = playersResult.status === "fulfilled"
+  const rawLivePlayerRows = playersResult.status === "fulfilled"
     ? (playersResult.value?.players || playersResult.value || [])
     : [];
+  const livePlayerRows = Array.isArray(rawLivePlayerRows)
+    ? rawLivePlayerRows
+    : Object.values(rawLivePlayerRows || {});
+  assistantState.sleeperPlayerIdByName = new Map();
+  livePlayerRows.forEach((player) => {
+    const playerId = String(
+      player?.sleeperId || player?.sleeper_id || player?.player_id || player?.id || "",
+    ).trim();
+    const playerName = player?.full_name
+      || player?.fullName
+      || player?.name
+      || `${player?.first_name || ""} ${player?.last_name || ""}`.trim();
+    if (playerId && playerName) {
+      assistantState.sleeperPlayerIdByName.set(normalizePlayerName(playerName), playerId);
+    }
+  });
   const sleeperByKey = new Map(sleeperRows.map((player) => [liveMarketKey(player), player]));
   const espnByKey = new Map(espnRows.map((player) => [liveMarketKey(player), player]));
   const playerByKey = new Map(livePlayerRows.map((player) => [liveMarketKey(player), player]));
@@ -434,6 +453,18 @@ const mergeLiveWebsiteMarkets = async (basePlayers) => {
       espnAdp: Number.isFinite(Number(espn?.adp)) ? Number(espn.adp) : basePlayer.espnAdp,
       espnPick: espn?.pick || basePlayer.espnPick,
       espnRank: Number.isFinite(Number(espn?.pprRank)) ? Number(espn.pprRank) : basePlayer.espnRank,
+      sleeperId: livePlayer?.sleeperId
+        || livePlayer?.sleeper_id
+        || livePlayer?.player_id
+        || sleeper?.sleeperId
+        || sleeper?.sleeper_id
+        || sleeper?.player_id
+        || basePlayer.sleeperId,
+      espnId: livePlayer?.espnId
+        || livePlayer?.espn_id
+        || espn?.espnId
+        || espn?.espn_id
+        || basePlayer.espnId,
       headshotUrl: livePlayer?.headshotUrl
         || livePlayer?.headshot_url
         || livePlayer?.imageUrl
@@ -1083,17 +1114,34 @@ const factHtml = ({ label, value, sub = "", className = "rank-mid", rank = null 
 
 const selectedPlayer = () => assistantState.players.find((player) => player.id === assistantState.selectedPlayerId);
 
+const validSleeperPlayerId = (value) => {
+  const playerId = String(value || "").trim();
+  return /^\d{4,}$/.test(playerId) ? playerId : "";
+};
+
+const resolveSleeperPlayerId = (player = {}) => {
+  const explicitId = validSleeperPlayerId(
+    player.sleeperId || player.sleeper_id || player.player_id,
+  );
+  if (explicitId) return explicitId;
+  const genericId = validSleeperPlayerId(player.id);
+  if (genericId) return genericId;
+  return assistantState.sleeperPlayerIdByName.get(normalizePlayerName(player.name)) || "";
+};
+
 const sleeperPlayerHeadshotUrl = (player = {}) => {
-  const playerId = String(
-    player.sleeperId || player.sleeper_id || player.player_id || player.id || "",
-  ).trim();
-  return playerId ? `https://sleepercdn.com/content/nfl/players/${encodeURIComponent(playerId)}.jpg` : "";
+  const sleeperId = resolveSleeperPlayerId(player);
+  return sleeperId
+    ? `https://sleepercdn.com/content/nfl/players/thumb/${encodeURIComponent(sleeperId)}.jpg`
+    : "";
 };
 
 const playerAvatarHtml = (player = {}) => {
-  const source = sleeperPlayerHeadshotUrl(player) || player.headshotUrl || "";
-  if (!source) return "";
+  const espnId = String(player.espnId || player.espn_id || "").trim();
   const fallback = "https://sleepercdn.com/images/v2/symbols/custom_avatar.png";
+  const source = espnId
+    ? `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(espnId)}.png`
+    : sleeperPlayerHeadshotUrl(player) || fallback;
   return `<img class="player-avatar" src="${escapeHtml(source)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${fallback}';">`;
 };
 
@@ -1495,13 +1543,13 @@ const styles = `
     text-align: center;
   }
   .player-avatar {
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
     margin-right: 8px;
     border-radius: 50%;
     object-fit: cover;
-    background: #20272e;
+    background: rgba(255, 255, 255, .05);
   }
   .name {
     flex: 1;

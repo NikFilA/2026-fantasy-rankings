@@ -2148,7 +2148,10 @@ function updateTeamHeaderGradeBadges() {
       return;
     }
 
-    const rect = headerEl.getBoundingClientRect();
+    const avatarEl = headerEl.querySelector(
+      'img, .avatar, [class*="avatar-image"], [class*="avatar"]',
+    ) || headerEl;
+    const rect = avatarEl.getBoundingClientRect();
     if (!badge) {
       badge = document.createElement("span");
       badge.className = "team-header-grade-badge";
@@ -2160,8 +2163,8 @@ function updateTeamHeaderGradeBadges() {
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
       "position:absolute",
-      `top:${rect.top + window.scrollY - 4}px`,
-      `left:${rect.right + window.scrollX - 16}px`,
+      `top:${rect.top + window.scrollY - 2}px`,
+      `left:${rect.right + window.scrollX - 14}px`,
       "border-radius:50%",
       "width:22px",
       "height:22px",

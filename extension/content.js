@@ -2244,6 +2244,8 @@ function updateTeamHeaderGradeBadges() {
 let headerOverlayAnimationFrame = 0;
 let headerOverlayWatchdog = 0;
 let headerLayoutObserver = null;
+let headerWindowListenersBound = false;
+let headerScrollPending = false;
 function updateHeaderOverlayPositions() {
   cancelAnimationFrame(headerOverlayAnimationFrame);
   headerOverlayAnimationFrame = requestAnimationFrame(() => {
@@ -2253,11 +2255,31 @@ function updateHeaderOverlayPositions() {
 }
 const renderHeaderBadges = () => updateHeaderOverlayPositions();
 
-function triggerInitialBadgeRender() {
+function forceBadgeLayoutUpdate() {
+  window.dispatchEvent(new Event("scroll"));
+  window.dispatchEvent(new Event("resize"));
   renderHeaderBadges();
-  [300, 800, 1500, 3000].forEach((delay) => {
-    window.setTimeout(renderHeaderBadges, delay);
+}
+
+function triggerInitialBadgeRender() {
+  forceBadgeLayoutUpdate();
+  [100, 300, 600, 1000, 2000].forEach((delay) => {
+    window.setTimeout(forceBadgeLayoutUpdate, delay);
   });
+}
+
+function bindHeaderWindowListeners() {
+  if (headerWindowListenersBound) return;
+  headerWindowListenersBound = true;
+  window.addEventListener("scroll", () => {
+    if (headerScrollPending) return;
+    headerScrollPending = true;
+    requestAnimationFrame(() => {
+      renderHeaderBadges();
+      headerScrollPending = false;
+    });
+  }, { passive: true, capture: true });
+  window.addEventListener("resize", renderHeaderBadges, { passive: true });
 }
 
 function observeHeaderLayoutChanges() {
@@ -2277,6 +2299,7 @@ function observeHeaderLayoutChanges() {
 }
 
 function initializeHeaderBadgeRendering() {
+  bindHeaderWindowListeners();
   triggerInitialBadgeRender();
   observeHeaderLayoutChanges();
 }
@@ -2387,11 +2410,6 @@ const observeDraftPage = () => {
   window.addEventListener("focus", () => {
     syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
   });
-  window.addEventListener("resize", () => {
-    renderAssistant();
-    updateHeaderOverlayPositions();
-  });
-  window.addEventListener("scroll", updateHeaderOverlayPositions, { passive: true, capture: true });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));

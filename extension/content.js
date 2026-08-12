@@ -2243,6 +2243,7 @@ function updateTeamHeaderGradeBadges() {
 
 let headerOverlayAnimationFrame = 0;
 let headerOverlayWatchdog = 0;
+let headerLayoutObserver = null;
 function updateHeaderOverlayPositions() {
   cancelAnimationFrame(headerOverlayAnimationFrame);
   headerOverlayAnimationFrame = requestAnimationFrame(() => {
@@ -2250,6 +2251,36 @@ function updateHeaderOverlayPositions() {
     updateTeamHeaderGradeBadges();
   });
 }
+const renderHeaderBadges = () => updateHeaderOverlayPositions();
+
+function triggerInitialBadgeRender() {
+  renderHeaderBadges();
+  [300, 800, 1500, 3000].forEach((delay) => {
+    window.setTimeout(renderHeaderBadges, delay);
+  });
+}
+
+function observeHeaderLayoutChanges() {
+  if (headerLayoutObserver || !document.body) return;
+  headerLayoutObserver = new MutationObserver((mutations) => {
+    const hasSleeperMutation = mutations.some((mutation) => {
+      const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+      if (!target || target.closest(".extension-ui-element")) return false;
+      if (!mutation.addedNodes.length) return true;
+      return [...mutation.addedNodes].some((node) => (
+        !(node instanceof Element) || !node.closest(".extension-ui-element")
+      ));
+    });
+    if (hasSleeperMutation) renderHeaderBadges();
+  });
+  headerLayoutObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function initializeHeaderBadgeRendering() {
+  triggerInitialBadgeRender();
+  observeHeaderLayoutChanges();
+}
+
 function ensureHeaderOverlayWatchdog() {
   updateHeaderOverlayPositions();
   if (!headerOverlayWatchdog) {
@@ -2441,5 +2472,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 if (isSleeperDraft) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeHeaderBadgeRendering, { once: true });
+  } else {
+    initializeHeaderBadgeRendering();
+  }
   initSleeperAssistant();
 }

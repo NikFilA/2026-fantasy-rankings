@@ -2146,70 +2146,46 @@ function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   document.getElementById("extension-header-overlay-container")?.remove();
   document.querySelectorAll(".sleeper-extension-injected-badge").forEach((element) => element.remove());
-  const headerCandidates = Array.from(document.querySelectorAll(
-    "div, span, p, img, svg",
-  )).filter((element) => {
-    if (element.closest(".extension-ui-element")) return false;
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return rect.top >= -20
-      && rect.top <= 180
-      && rect.width > 0
-      && rect.height > 0
-      && style.display !== "none"
-      && style.visibility !== "hidden"
-      && style.opacity !== "0";
-  });
-
-  const topContainers = Array.from(document.querySelectorAll("div")).filter((element) => {
+  const allHeaderDivs = Array.from(document.querySelectorAll("div")).filter((element) => {
     if (element.closest(".extension-ui-element")) return false;
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return rect.top >= -10
-      && rect.top <= 120
+      && rect.top <= 160
       && rect.width >= 40
       && rect.width <= 250
-      && rect.height > 0
+      && rect.height >= 30
+      && rect.height <= 200
       && style.display !== "none"
-      && style.visibility !== "hidden";
+      && style.visibility !== "hidden"
+      && style.opacity !== "0";
   });
-  topContainers.sort((left, right) => (
+  allHeaderDivs.sort((left, right) => (
     left.getBoundingClientRect().left - right.getBoundingClientRect().left
   ));
-  const columns = [];
-  topContainers.forEach((element) => {
+
+  const teamColumns = [];
+  allHeaderDivs.forEach((element) => {
     const x = element.getBoundingClientRect().left;
-    if (!columns.some((column) => Math.abs(column.x - x) < 20)) {
-      columns.push({ element, x });
+    if (!teamColumns.some((existing) => Math.abs(existing.x - x) < 20)) {
+      teamColumns.push({ element, x });
     }
   });
-  const mountedContainers = new Set();
+  const activeSlots = teamColumns
+    .filter(({ element }) => element.getBoundingClientRect().width < 300)
+    .slice(0, DRAFT_TEAM_COUNT);
+  if (!activeSlots.length) return;
 
-  for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
+  activeSlots.forEach(({ element }, index) => {
+    const teamSlot = index + 1;
     const team = window.calculatedTeamGrades?.[teamSlot];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
-    if (!hasPicks || !team.teamLetterGrade || team.teamLetterGrade === "N/A") continue;
+    if (!hasPicks || !team.teamLetterGrade || team.teamLetterGrade === "N/A") return;
 
-    let targetCell = null;
-    const labelMatch = headerCandidates.find((element) => {
-      const text = element.textContent?.trim() || "";
-      return text === `Team ${teamSlot}` || text === `Team${teamSlot}`;
-    });
-    if (labelMatch) {
-      targetCell = labelMatch.closest('[class*="column"]')
-        || labelMatch.closest('[class*="cell"]')
-        || labelMatch.parentElement;
+    if (getComputedStyle(element).position === "static") {
+      element.style.setProperty("position", "relative", "important");
     }
-    if (!targetCell && columns[teamSlot - 1]) {
-      targetCell = columns[teamSlot - 1].element;
-    }
-    if (!targetCell || mountedContainers.has(targetCell)) continue;
-    mountedContainers.add(targetCell);
-
-    if (getComputedStyle(targetCell).position === "static") {
-      targetCell.style.setProperty("position", "relative", "important");
-    }
-    targetCell.style.setProperty("overflow", "visible", "important");
+    element.style.setProperty("overflow", "visible", "important");
 
     const badge = document.createElement("div");
     badge.className = "sleeper-extension-grade-badge sleeper-extension-injected-badge extension-ui-element";
@@ -2219,7 +2195,7 @@ function updateTeamHeaderGradeBadges() {
     badge.style.cssText = [
       "position:absolute",
       "top:2px",
-      "right:6px",
+      "right:8px",
       "z-index:99999",
       "pointer-events:none",
       "min-width:22px",
@@ -2236,8 +2212,8 @@ function updateTeamHeaderGradeBadges() {
       "box-shadow:0 2px 5px rgba(0,0,0,.45)",
       "box-sizing:border-box",
     ].join(";");
-    targetCell.appendChild(badge);
-  }
+    element.appendChild(badge);
+  });
 }
 
 let headerOverlayAnimationFrame = 0;

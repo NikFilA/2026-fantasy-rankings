@@ -2016,14 +2016,8 @@ const boardPlayerLookup = () => {
 };
 
 const DRAFT_TEAM_COUNT = 12;
-const strictSnakePickNumber = (round, teamSlot) => (
-  round % 2 === 1
-    ? ((round - 1) * DRAFT_TEAM_COUNT) + teamSlot
-    : ((round - 1) * DRAFT_TEAM_COUNT) + (13 - teamSlot)
-);
-
-const visibleDraftCellMap = (board, processedPicks) => {
-  if (!board) return new Map();
+const visibleDraftCells = (board) => {
+  if (!board) return [];
   const cellSelector = [
     ".draft-cell",
     ".pick-cell",
@@ -2044,88 +2038,7 @@ const visibleDraftCellMap = (board, processedPicks) => {
   const cells = [...board.querySelectorAll(cellSelector)]
     .filter((cell) => !cell.closest(".extension-ui-element"))
     .filter((cell) => !cell.parentElement?.closest(canonicalCellSelector));
-  const teamSlotFromPickNumber = (pickNumber, round) => {
-    const withinRound = ((pickNumber - 1) % DRAFT_TEAM_COUNT) + 1;
-    return round % 2 === 1 ? withinRound : 13 - withinRound;
-  };
-  const positiveIntAttribute = (cell, names) => {
-    for (const name of names) {
-      const direct = Number(cell.getAttribute(name));
-      if (Number.isInteger(direct) && direct > 0) return direct;
-      const ancestor = cell.closest(`[${name}]`);
-      const inherited = Number(ancestor?.getAttribute(name));
-      if (Number.isInteger(inherited) && inherited > 0) return inherited;
-    }
-    return null;
-  };
-  const pickById = new Map(processedPicks.map((pick) => [String(pick.player_id), pick]));
-  const pickByName = new Map(processedPicks.flatMap((pick) => (
-    playerAliases(pick).map((alias) => [alias, pick])
-  )));
-  const cellCoordinates = (cell) => {
-    const explicitPickNumber = Number(
-      cell.getAttribute("data-pick-number")
-      || cell.getAttribute("data-pick-no")
-      || cell.closest("[data-pick-number], [data-pick-no]")?.getAttribute("data-pick-number")
-      || cell.closest("[data-pick-number], [data-pick-no]")?.getAttribute("data-pick-no"),
-    );
-    let round = positiveIntAttribute(cell, ["data-round", "data-round-number", "aria-rowindex"]);
-    let teamSlot = positiveIntAttribute(cell, [
-      "data-team-slot",
-      "data-slot",
-      "data-column",
-      "aria-colindex",
-    ]);
-    if ((!round || !teamSlot) && Number.isInteger(explicitPickNumber) && explicitPickNumber > 0) {
-      round ||= Math.floor((explicitPickNumber - 1) / DRAFT_TEAM_COUNT) + 1;
-      teamSlot ||= teamSlotFromPickNumber(explicitPickNumber, round);
-    }
-    const idNode = cell.matches("[data-player-id], [data-player_id], [data-playerid]")
-      ? cell
-      : cell.querySelector("[data-player-id], [data-player_id], [data-playerid]");
-    const playerId = idNode?.getAttribute("data-player-id")
-      || idNode?.getAttribute("data-player_id")
-      || idNode?.getAttribute("data-playerid");
-    const cellText = String(cell.textContent || "");
-    const labelMatch = cellText.match(/(?:^|\s)(\d{1,2})\.(\d{1,2})(?:\s|$)/);
-    if ((!round || !teamSlot) && labelMatch) {
-      const labelRound = Number(labelMatch[1]);
-      const labelPosition = Number(labelMatch[2]);
-      if (labelRound > 0 && labelPosition >= 1 && labelPosition <= DRAFT_TEAM_COUNT) {
-        round ||= labelRound;
-        teamSlot ||= labelRound % 2 === 1 ? labelPosition : 13 - labelPosition;
-      }
-    }
-    if (!round || !teamSlot) {
-      const textNodes = [cell, ...cell.querySelectorAll("span, p")];
-      const matchedPick = pickById.get(String(playerId || ""))
-        || textNodes.map((node) => (
-          pickByName.get(normalizePlayerName(node.textContent)) || pickByName.get(normalize(node.textContent))
-        )).find(Boolean);
-      if (matchedPick) {
-        round ||= matchedPick.round;
-        teamSlot ||= matchedPick.teamSlot;
-      }
-    }
-    const computed = getComputedStyle(cell);
-    const gridRow = Number.parseInt(computed.gridRowStart, 10);
-    const gridColumn = Number.parseInt(computed.gridColumnStart, 10);
-    if (!round && Number.isInteger(gridRow) && gridRow > 0) round = gridRow;
-    if (!teamSlot && Number.isInteger(gridColumn) && gridColumn >= 1 && gridColumn <= DRAFT_TEAM_COUNT) {
-      teamSlot = gridColumn;
-    }
-    if (!(round > 0) || !(teamSlot >= 1 && teamSlot <= DRAFT_TEAM_COUNT)) return null;
-    return { round, teamSlot, pickNumber: strictSnakePickNumber(round, teamSlot) };
-  };
-  const cellByRoundAndSlot = new Map();
-  cells.forEach((cell) => {
-    const coordinates = cellCoordinates(cell);
-    if (!coordinates) return;
-    const key = `${coordinates.round}:${coordinates.teamSlot}`;
-    if (!cellByRoundAndSlot.has(key)) cellByRoundAndSlot.set(key, cell);
-  });
-
-  return cellByRoundAndSlot;
+  return cells;
 };
 
 const calculateAllDraftGrades = () => {
@@ -2134,6 +2047,8 @@ const calculateAllDraftGrades = () => {
     ? assistantState.lastLiveSleeperPicks
     : [];
   const recognizedPicks = [];
+  const playerGradeMap = Object.create(null);
+  const playerGradeAliasMap = new Map();
   trackedPicks.forEach((rawPick, index) => {
     const pick = rawPick || {};
     const sequence = index + 1;
@@ -2170,6 +2085,18 @@ const calculateAllDraftGrades = () => {
     recognizedPick.pickScore = grade.pickScore;
     recognizedPick.letterGrade = grade.grade;
     recognizedPick.gradeColor = grade.color;
+    const gradeEntry = {
+      letterGrade: grade.grade,
+      pickScore: grade.pickScore,
+      delta: grade.delta,
+      playerADP: grade.playerADP,
+      playerName: recognizedPick.player_name || recognizedPick.name,
+    };
+    const normalizedPlayerName = normalizePlayerName(gradeEntry.playerName);
+    if (normalizedPlayerName) playerGradeMap[normalizedPlayerName] = gradeEntry;
+    playerAliases({ name: gradeEntry.playerName }).forEach((alias) => {
+      if (alias) playerGradeAliasMap.set(alias, gradeEntry);
+    });
     Object.assign(pick, {
       calculatedRound: round,
       teamSlot,
@@ -2203,6 +2130,8 @@ const calculateAllDraftGrades = () => {
     });
   }
   window.calculatedTeamGrades = calculatedTeamGrades;
+  window.playerGradeMap = playerGradeMap;
+  window.playerGradeAliasMap = playerGradeAliasMap;
   return recognizedPicks;
 };
 
@@ -2300,39 +2229,43 @@ const boardTeamColumns = (headers, picks, teamCount) => {
   return columns;
 };
 
-const renderIndividualPickGrades = (board, processedPicks, visibleCells) => {
+const renderIndividualPickGrades = (board, visibleCells) => {
   const activeBadges = new Set();
-  processedPicks.forEach((pick) => {
-      const cell = visibleCells.get(`${pick.round}:${pick.teamSlot}`);
+  const aliasMap = window.playerGradeAliasMap instanceof Map
+    ? window.playerGradeAliasMap
+    : new Map(Object.entries(window.playerGradeMap || {}));
+  visibleCells.forEach((cell) => {
       if (!(cell instanceof Element) || !board.contains(cell)) return;
-      const result = {
-        playerADP: pick.playerADP,
-        delta: pick.valueDelta,
-        pickScore: pick.pickScore,
-        grade: pick.letterGrade,
-        color: pick.gradeColor,
-        pickSpot: Number(pick.pick_no),
-      };
+      const textCandidates = [cell, ...cell.querySelectorAll("span, p, div")]
+        .map((node) => String(node.textContent || "").trim())
+        .filter(Boolean);
+      const result = textCandidates.map((text) => {
+        const exact = aliasMap.get(normalizePlayerName(text)) || aliasMap.get(normalize(text));
+        if (exact) return exact;
+        const compactText = normalize(text);
+        return [...aliasMap.entries()].find(([alias]) => alias.length >= 4 && compactText.includes(alias))?.[1];
+      }).find(Boolean);
+      if (!result) return;
       if (getComputedStyle(cell).position === "static") cell.style.setProperty("position", "relative");
-      let badge = cell.querySelector(":scope > .pick-grade");
+      let badge = cell.querySelector(":scope > .my-pick-badge");
       if (!badge) {
         badge = document.createElement("span");
-        badge.className = "pick-grade extension-ui-element";
+        badge.className = "my-pick-badge extension-ui-element";
         cell.appendChild(badge);
       }
       activeBadges.add(badge);
-      badge.textContent = result.grade;
+      badge.textContent = result.letterGrade;
       const roundedDelta = Number(result.delta.toFixed(1));
       const shownDelta = `${roundedDelta > 0 ? "+" : ""}${roundedDelta}`;
       badge.setAttribute(
         "title",
-        `Pick #${pick.pick_no} (${pick.player_name || pick.name})\n• ADP: ${result.playerADP === null ? "N/A" : result.playerADP.toFixed(1)}\n• Value Delta: ${shownDelta}\n• Pick Score: ${Math.round(result.pickScore)}/100\n• Grade: ${result.grade}`,
+        `Grade: ${result.letterGrade} | ADP: ${result.playerADP === null ? "N/A" : result.playerADP.toFixed(1)} | Delta: ${shownDelta}`,
       );
       badge.style.cssText = [
         "position:absolute",
         "top:3px",
         "right:3px",
-        `background:${result.color}`,
+        `background:${letterGradeFromPickScore(result.pickScore).color}`,
         "color:#fff",
         "border:1px solid #0f172a",
         "border-radius:9999px",
@@ -2345,7 +2278,7 @@ const renderIndividualPickGrades = (board, processedPicks, visibleCells) => {
         "margin:0",
       ].join(";");
   });
-  board.querySelectorAll(".pick-grade").forEach((badge) => {
+  board.querySelectorAll(".pick-grade, .my-pick-badge").forEach((badge) => {
     if (!activeBadges.has(badge)) badge.remove();
   });
 };
@@ -2428,10 +2361,10 @@ const renderLiveDraftGrades = () => {
   const board = draftBoardElement();
   if (!board) return;
   cleanupBrokenGradeInjections();
-  const visibleCells = visibleDraftCellMap(board, processedPicks);
+  const visibleCells = visibleDraftCells(board);
   const headers = draftTeamHeaders(board, DRAFT_TEAM_COUNT);
   const columns = boardTeamColumns(headers, processedPicks, DRAFT_TEAM_COUNT);
-  renderIndividualPickGrades(board, processedPicks, visibleCells);
+  renderIndividualPickGrades(board, visibleCells);
 
   for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
     const header = columns[teamSlot - 1]?.header;

@@ -2139,62 +2139,47 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function sleeperTeamHeaderElements() {
-  const avatarSelector = 'img, [class*="avatar-image"], .team-avatar img, .team-avatar';
-  const isTrueAvatar = (element) => {
-    if (!(element instanceof Element) || element.closest(".extension-ui-element")) return false;
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return rect.width > 15
-      && rect.height > 15
-      && rect.width < 100
-      && rect.height < 100
-      && Math.abs(rect.width - rect.height) < Math.max(rect.width, rect.height) * 0.35
-      && style.display !== "none"
-      && style.visibility !== "hidden"
-      && rect.top >= -50
-      && rect.bottom <= window.innerHeight + 50;
+  const avatarSelector = 'img, [class*="avatar-image"], [class*="avatar"]';
+  const visibleColumn = (column) => {
+    if (!(column instanceof Element) || column.closest(".extension-ui-element")) return false;
+    const rect = column.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   };
-  const avatarInside = (column) => (
-    [...column.querySelectorAll(avatarSelector)].find(isTrueAvatar)
-    || (column.matches(avatarSelector) && isTrueAvatar(column) ? column : null)
-  );
-  const visibleHeaderRoots = [...document.querySelectorAll([
-    ".sticky-header",
-    ".draftboard-header",
-    ".draft-board-header",
-    '[class*="draftboard-header"]',
-    '[class*="draft-board-header"]',
-  ].join(","))].filter((root) => {
-    if (root.closest(".extension-ui-element")) return false;
-    const rect = root.getBoundingClientRect();
-    const style = getComputedStyle(root);
-    return rect.width > 0
-      && rect.height > 0
-      && rect.bottom > 0
-      && rect.top < window.innerHeight
-      && style.display !== "none"
-      && style.visibility !== "hidden";
-  });
+  const avatarInside = (column) => {
+    const candidates = [
+      ...(column.matches(avatarSelector) ? [column] : []),
+      ...column.querySelectorAll(avatarSelector),
+    ];
+    return candidates.find((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 15
+        && rect.height > 15
+        && rect.width < 100
+        && rect.height < 100
+        && style.display !== "none"
+        && style.visibility !== "hidden";
+    }) || null;
+  };
 
-  for (const root of visibleHeaderRoots) {
-    const possibleRows = [root, ...root.querySelectorAll(":scope > *, :scope > * > *")];
-    for (const row of possibleRows) {
-      const columns = [...row.children].filter((column) => avatarInside(column));
-      if (columns.length === DRAFT_TEAM_COUNT) {
-        return columns.map(avatarInside);
-      }
-    }
-    const namedColumns = [...root.querySelectorAll(
-      '.team-header, [class*="team-header"], .column, [class*="team-column"]',
-    )].filter((column) => avatarInside(column));
-    const leafColumns = namedColumns.filter((column, index, all) => (
-      !all.some((other, otherIndex) => otherIndex !== index && column.contains(other))
+  let columns = Array.from(document.querySelectorAll(
+    '.sticky-header [class*="team"], .sticky-header .column',
+  ));
+  if (!columns.length || columns.every((column) => column.getBoundingClientRect().height === 0)) {
+    columns = Array.from(document.querySelectorAll(
+      '.draftboard-header [class*="team"], .draftboard-header .column, .draft-board-header [class*="team"], .draft-board-header .column',
     ));
-    if (leafColumns.length === DRAFT_TEAM_COUNT) {
-      return leafColumns.map(avatarInside);
-    }
   }
-  return [];
+
+  const avatars = [];
+  const seenAvatars = new Set();
+  columns.filter(visibleColumn).forEach((column) => {
+    const avatar = avatarInside(column);
+    if (!avatar || seenAvatars.has(avatar)) return;
+    seenAvatars.add(avatar);
+    avatars.push(avatar);
+  });
+  return avatars.slice(0, DRAFT_TEAM_COUNT);
 }
 
 function removeNestedTeamHeaderBadges() {
@@ -2223,12 +2208,8 @@ function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   removeNestedTeamHeaderBadges();
   const container = headerGradeOverlayContainer();
-  container.replaceChildren();
+  container.innerHTML = "";
   const headers = sleeperTeamHeaderElements();
-  if (headers.length !== DRAFT_TEAM_COUNT) {
-    console.warn("[DraftAssistant] Expected exactly 12 Sleeper team headers; found:", headers.length);
-    return;
-  }
 
   headers.forEach((avatarEl, index) => {
     const teamSlot = index + 1;
@@ -2246,7 +2227,7 @@ function updateTeamHeaderGradeBadges() {
     badge.style.cssText = [
       "position:absolute",
       `top:${rect.top + window.scrollY - 2}px`,
-      `left:${rect.right + window.scrollX - 14}px`,
+      `left:${rect.right + window.scrollX - 16}px`,
       "border-radius:50%",
       "width:22px",
       "height:22px",

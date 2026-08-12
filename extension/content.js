@@ -2139,35 +2139,62 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function sleeperTeamHeaderElements() {
-  const allAvatars = Array.from(document.querySelectorAll(
-    '.draftboard-header [class*="avatar"], .team-avatar, [class*="team-header"] [class*="avatar"], .avatar',
-  )).filter((element) => !element.closest(".extension-ui-element"));
-
-  const visibleAvatars = allAvatars.filter((element) => {
+  const avatarSelector = 'img, [class*="avatar-image"], .team-avatar img, .team-avatar';
+  const isTrueAvatar = (element) => {
+    if (!(element instanceof Element) || element.closest(".extension-ui-element")) return false;
     const rect = element.getBoundingClientRect();
-    return rect.width > 0
-      && rect.height > 0
+    const style = getComputedStyle(element);
+    return rect.width > 15
+      && rect.height > 15
+      && rect.width < 100
+      && rect.height < 100
+      && Math.abs(rect.width - rect.height) < Math.max(rect.width, rect.height) * 0.35
+      && style.display !== "none"
+      && style.visibility !== "hidden"
       && rect.top >= -50
       && rect.bottom <= window.innerHeight + 50;
+  };
+  const avatarInside = (column) => (
+    [...column.querySelectorAll(avatarSelector)].find(isTrueAvatar)
+    || (column.matches(avatarSelector) && isTrueAvatar(column) ? column : null)
+  );
+  const visibleHeaderRoots = [...document.querySelectorAll([
+    ".sticky-header",
+    ".draftboard-header",
+    ".draft-board-header",
+    '[class*="draftboard-header"]',
+    '[class*="draft-board-header"]',
+  ].join(","))].filter((root) => {
+    if (root.closest(".extension-ui-element")) return false;
+    const rect = root.getBoundingClientRect();
+    const style = getComputedStyle(root);
+    return rect.width > 0
+      && rect.height > 0
+      && rect.bottom > 0
+      && rect.top < window.innerHeight
+      && style.display !== "none"
+      && style.visibility !== "hidden";
   });
 
-  const leafAvatars = visibleAvatars.filter((candidate, index, all) => (
-    !all.some((other, otherIndex) => otherIndex !== index && candidate.contains(other))
-  ));
-  const uniqueByColumn = [];
-  leafAvatars
-    .sort((left, right) => left.getBoundingClientRect().left - right.getBoundingClientRect().left)
-    .forEach((candidate) => {
-      const candidateLeft = candidate.getBoundingClientRect().left;
-      const duplicate = uniqueByColumn.some((existing) => (
-        Math.abs(existing.getBoundingClientRect().left - candidateLeft) < 3
-      ));
-      if (!duplicate) uniqueByColumn.push(candidate);
-    });
-
-  return uniqueByColumn.length >= DRAFT_TEAM_COUNT
-    ? uniqueByColumn.slice(0, DRAFT_TEAM_COUNT)
-    : [];
+  for (const root of visibleHeaderRoots) {
+    const possibleRows = [root, ...root.querySelectorAll(":scope > *, :scope > * > *")];
+    for (const row of possibleRows) {
+      const columns = [...row.children].filter((column) => avatarInside(column));
+      if (columns.length === DRAFT_TEAM_COUNT) {
+        return columns.map(avatarInside);
+      }
+    }
+    const namedColumns = [...root.querySelectorAll(
+      '.team-header, [class*="team-header"], .column, [class*="team-column"]',
+    )].filter((column) => avatarInside(column));
+    const leafColumns = namedColumns.filter((column, index, all) => (
+      !all.some((other, otherIndex) => otherIndex !== index && column.contains(other))
+    ));
+    if (leafColumns.length === DRAFT_TEAM_COUNT) {
+      return leafColumns.map(avatarInside);
+    }
+  }
+  return [];
 }
 
 function removeNestedTeamHeaderBadges() {

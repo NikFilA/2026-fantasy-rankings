@@ -2146,7 +2146,13 @@ function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   document.getElementById("extension-header-overlay-container")?.remove();
   document.querySelectorAll(".sleeper-extension-injected-badge").forEach((element) => element.remove());
-  const allTextNodes = Array.from(document.querySelectorAll("div, span, p"));
+  const allHeaderElements = Array.from(document.querySelectorAll("div, span, p")).filter((element) => {
+    if (element.closest(".extension-ui-element")) return false;
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return rect.top >= -20 && rect.top <= 250 && rect.width > 0
+      && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+  });
   const visibleHeaderRows = Array.from(document.querySelectorAll(
     '.draftboard-header, [class*="draftboard-header"], .sticky-header, [class*="sticky-header"]',
   )).filter((row) => {
@@ -2164,37 +2170,43 @@ function updateTeamHeaderGradeBadges() {
     if (!hasPicks || !team.teamLetterGrade || team.teamLetterGrade === "N/A") continue;
 
     let targetContainer = null;
-    const teamLabel = allTextNodes.find((element) => {
-      if (element.closest(".extension-ui-element")) return false;
+    const teamLabel = allHeaderElements.find((element) => {
       const text = element.textContent?.trim() || "";
-      if (text !== `Team ${teamSlot}` && text !== `Team${teamSlot}`) return false;
-      const rect = element.getBoundingClientRect();
-      return rect.top >= 0 && rect.top <= 250 && rect.width > 0;
+      return text === `Team ${teamSlot}` || text === `Team${teamSlot}`;
     });
     if (teamLabel) {
       targetContainer = teamLabel.closest('[class*="column"]')
         || teamLabel.closest('[class*="cell"]')
+        || teamLabel.closest('[class*="header"]')
         || teamLabel.parentElement;
     }
 
     if (!targetContainer && headerRow) {
-      const boardRect = headerRow.getBoundingClientRect();
-      const columnWidth = boardRect.width / DRAFT_TEAM_COUNT;
-      const expectedX = boardRect.left + ((teamSlot - 1) * columnWidth);
-      const candidates = Array.from(
-        headerRow.querySelectorAll('div, [class*="avatar"]'),
+      const avatars = Array.from(
+        headerRow.querySelectorAll('[class*="avatar"], img, svg'),
       ).filter((element) => {
         if (element.closest(".extension-ui-element")) return false;
         const rect = element.getBoundingClientRect();
-        return Math.abs(rect.left - expectedX) < columnWidth * 0.5 && rect.width > 15;
-      }).sort((left, right) => {
-        const leftDistance = Math.abs(left.getBoundingClientRect().left - expectedX);
-        const rightDistance = Math.abs(right.getBoundingClientRect().left - expectedX);
-        return leftDistance - rightDistance;
+        const style = getComputedStyle(element);
+        return rect.width >= 15 && rect.height > 0 && rect.top >= -20 && rect.top <= 250
+          && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
       });
-      const candidate = candidates[0];
-      if (candidate) {
-        targetContainer = candidate.closest('[class*="column"]') || candidate.parentElement;
+      avatars.sort((left, right) => (
+        left.getBoundingClientRect().left - right.getBoundingClientRect().left
+      ));
+
+      const uniqueColumns = [];
+      avatars.forEach((avatar) => {
+        const rect = avatar.getBoundingClientRect();
+        const cell = avatar.closest('[class*="column"]')
+          || avatar.closest('[class*="cell"]')
+          || avatar.parentElement;
+        if (cell && !uniqueColumns.some((column) => Math.abs(column.x - rect.left) < 20)) {
+          uniqueColumns.push({ cell, x: rect.left });
+        }
+      });
+      if (uniqueColumns[teamSlot - 1]) {
+        targetContainer = uniqueColumns[teamSlot - 1].cell;
       }
     }
 

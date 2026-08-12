@@ -49,6 +49,7 @@ const assistantState = {
   draftPicksError: "",
   draftedCount: 0,
   lastLiveSleeperPicks: [],
+  resolvedUserDraftSlot: null,
   selectedPlayerId: "",
   position: { x: null, y: null },
   size: { width: null, height: null },
@@ -841,6 +842,7 @@ const refreshLocalDraftMetrics = async (rawPicks, { force = false } = {}) => {
       sleeperContext.draftDetails,
       normalizedPicks,
     );
+    assistantState.resolvedUserDraftSlot = resolvedUserDraftSlot;
     const resolvedUserIdentity = resolvedUserDraftSlot
       ? String(resolvedUserDraftSlot)
       : storedUserIdentity;
@@ -926,6 +928,7 @@ const applyDraftPicks = (livePicks, {
   assistantState.draftPicksReady = true;
   assistantState.draftPicksError = "";
   purgeDraftedIdsFromUi(completedIds, names);
+  requestAnimationFrame(injectPlayerListValueBadges);
   chrome.storage.local.set({ [sleeperDraftStorageKey()]: payload });
   if (triggerAdvice) refreshLocalDraftMetrics(completedPicks, { force: manualAdvice });
   return completedPicks;
@@ -1080,6 +1083,20 @@ const factHtml = ({ label, value, sub = "", className = "rank-mid", rank = null 
 
 const selectedPlayer = () => assistantState.players.find((player) => player.id === assistantState.selectedPlayerId);
 
+const sleeperPlayerHeadshotUrl = (player = {}) => {
+  const playerId = String(
+    player.sleeperId || player.sleeper_id || player.player_id || player.id || "",
+  ).trim();
+  return playerId ? `https://sleepercdn.com/content/nfl/players/${encodeURIComponent(playerId)}.jpg` : "";
+};
+
+const playerAvatarHtml = (player = {}) => {
+  const source = sleeperPlayerHeadshotUrl(player) || player.headshotUrl || "";
+  if (!source) return "";
+  const fallback = "https://sleepercdn.com/images/v2/symbols/custom_avatar.png";
+  return `<img class="player-avatar" src="${escapeHtml(source)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${fallback}';">`;
+};
+
 const escapeHtml = (value = "") => String(value)
   .replace(/&/g, "&amp;")
   .replace(/</g, "&lt;")
@@ -1150,7 +1167,7 @@ const styles = `
   }
   .head {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     gap: 6px;
     align-items: center;
     border-bottom: 1px solid #29313a;
@@ -1164,6 +1181,7 @@ const styles = `
     padding: 7px 8px;
   }
   .is-collapsed [data-action="refresh"] { display: none; }
+  .is-collapsed [data-action="share-recap"] { display: none; }
   .title { min-width: 0; }
   .title strong {
     display: block;
@@ -1310,6 +1328,40 @@ const styles = `
     display: block;
     margin-top: 3px;
   }
+  .recap-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, .75);
+    backdrop-filter: blur(5px);
+  }
+  .recap-card {
+    width: min(360px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 18px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 12px;
+    background: #1e293b;
+    color: #e2e8f0;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, .65);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .recap-card h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: .06em; }
+  .recap-grade { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .recap-grade-badge {
+    min-width: 58px; height: 58px; display: grid; place-items: center;
+    border-radius: 999px; color: #fff; font-size: 23px; font-weight: 950;
+  }
+  .recap-highlights { display: grid; gap: 8px; margin-bottom: 14px; font-size: 12px; line-height: 1.4; }
+  .recap-lineup { margin: 0 0 14px; padding: 10px; border-radius: 8px; background: #111827; font-size: 11px; line-height: 1.6; }
+  .recap-actions { display: flex; gap: 8px; }
+  .recap-actions button { flex: 1; }
+  .recap-copy-status { min-height: 16px; margin: 8px 0 0; color: #34d399; font-size: 10px; }
   .team-grade {
     margin-bottom: 7px;
     border: 1px solid #29313a;
@@ -1713,7 +1765,7 @@ const cardHtml = () => {
     <div class="card">
       <div class="card-head">
         <span class="card-player">
-          ${player.headshotUrl ? `<img class="player-avatar" src="${escapeHtml(player.headshotUrl)}" alt="" onerror="this.style.display='none';">` : ""}
+          ${playerAvatarHtml(player)}
           <span>
             <h3>${escapeHtml(player.name)}</h3>
             <small>${player.pos} / ${player.team} · <b class="tier-badge ${tierClass(tier)}">${escapeHtml(tier)}</b></small>
@@ -1757,7 +1809,7 @@ const playerListHtml = (players) => `
   ${players.map((player, index) => `
     <div class="row ${index === 0 ? "best" : ""}" data-player="${escapeHtml(player.id)}">
       <span class="rank">${assistantState.players.findIndex((item) => item.id === player.id) + 1}</span>
-      ${player.headshotUrl ? `<img class="player-avatar" src="${escapeHtml(player.headshotUrl)}" alt="" onerror="this.style.display='none';">` : ""}
+      ${playerAvatarHtml(player)}
       <span class="name">
         ${(() => {
           const tier = playerTier(player, assistantState.players.findIndex((item) => item.id === player.id));
@@ -1938,6 +1990,7 @@ const renderAssistant = () => {
           <strong>Draft Assistant</strong>
           <span data-role="best-player">${assistantState.loading ? "Loading rankings" : best ? `Best: ${escapeHtml(best.name)}` : "No available players"}</span>
         </span>
+        ${assistantState.panelView === "grades" ? `<button data-action="share-recap">Share Recap 📸</button>` : ""}
         <button data-action="refresh">Refresh</button>
         <button data-action="toggle">${assistantState.expanded ? "Hide" : "Show"}</button>
       </div>
@@ -1978,6 +2031,166 @@ const renderAssistant = () => {
     searchInput?.setSelectionRange(priorSearchSelection.start, priorSearchSelection.end);
   }
   updateHeaderOverlayPositions();
+};
+
+const recapStarterLines = (teamPicks = []) => {
+  const limits = { QB: 1, RB: 2, WR: 2, TE: 1 };
+  const starters = [];
+  const remaining = [];
+  teamPicks.forEach((pick) => {
+    const position = String(pick.position || pick.pos || "").toUpperCase();
+    const usedAtPosition = starters.filter((starter) => starter.position === position).length;
+    const entry = { position, name: pick.player_name || pick.name || "Unknown Player" };
+    if (limits[position] && usedAtPosition < limits[position]) starters.push(entry);
+    else remaining.push(entry);
+  });
+  remaining.filter((pick) => ["RB", "WR", "TE"].includes(pick.position)).slice(0, 2)
+    .forEach((pick) => starters.push({ ...pick, position: "FLEX" }));
+  return starters.map((pick) => `${pick.position}: ${pick.name}`);
+};
+
+const resolveRecapTeamSlot = async () => {
+  if (Number.isInteger(assistantState.resolvedUserDraftSlot)) {
+    return assistantState.resolvedUserDraftSlot;
+  }
+  const stored = await chrome.storage.local.get(["sleeperUserOrSlot", "sleeperUserId"]);
+  const identity = String(stored.sleeperUserOrSlot ?? stored.sleeperUserId ?? "").trim();
+  return resolveStoredUserDraftSlot(
+    identity,
+    assistantState.sleeperDraftDetails,
+    normalizedDraftPicks(assistantState.lastLiveSleeperPicks),
+  ) || 1;
+};
+
+const copyTextToClipboard = async (text) => {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+};
+
+const copyRecapImageToClipboard = async ({ teamName, grade, score, bestName, bestValue, efficiency, lineup }) => {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+    throw new Error("Image clipboard is unavailable in this browser");
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = 720;
+  canvas.height = 760;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#0f172a";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "#334155";
+  context.lineWidth = 3;
+  context.strokeRect(18, 18, canvas.width - 36, canvas.height - 36);
+  context.fillStyle = "#e2e8f0";
+  context.font = "800 30px system-ui";
+  context.fillText(`DRAFT RECAP • ${teamName}`, 48, 72);
+  context.fillStyle = teamGradeBadgeColor(grade);
+  context.beginPath();
+  context.arc(110, 170, 58, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = "#ffffff";
+  context.font = "900 42px system-ui";
+  context.textAlign = "center";
+  context.fillText(grade, 110, 185);
+  context.textAlign = "left";
+  context.fillStyle = "#e2e8f0";
+  context.font = "800 28px system-ui";
+  context.fillText(`${score}/100`, 190, 165);
+  context.font = "600 22px system-ui";
+  context.fillText(`Best Steal: ${bestName}`, 48, 275);
+  context.fillText(`Value: ${bestValue}`, 48, 315);
+  context.fillText(`Value Efficiency: ${efficiency}%`, 48, 355);
+  context.font = "800 22px system-ui";
+  context.fillText("STARTING ROSTER PREVIEW", 48, 415);
+  context.font = "600 19px system-ui";
+  (lineup.length ? lineup : ["No drafted starters yet."]).slice(0, 10)
+    .forEach((line, index) => context.fillText(line, 58, 458 + (index * 28)));
+  context.fillStyle = "#38bdf8";
+  context.font = "700 17px system-ui";
+  context.fillText("Powered by Sleeper Draft Assistant Extension", 48, 710);
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((result) => (result ? resolve(result) : reject(new Error("Could not render recap image"))), "image/png");
+  });
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+};
+
+const showDraftRecapModal = async (shadowRoot) => {
+  calculateAllDraftGrades();
+  const teamSlot = await resolveRecapTeamSlot();
+  const team = window.calculatedTeamGrades?.[teamSlot];
+  const picks = Array.isArray(team?.teamPicks) ? team.teamPicks : [];
+  const bestSteal = picks.reduce((best, pick) => (
+    !best || Number(pick.delta) > Number(best.delta) ? pick : best
+  ), null);
+  const valuePickCount = picks.filter((pick) => Number(pick.delta) > 0).length;
+  const efficiency = picks.length ? Math.round((valuePickCount / picks.length) * 100) : 0;
+  const score = Number.isFinite(Number(team?.teamScore)) ? Math.round(team.teamScore) : 0;
+  const grade = team?.teamLetterGrade || "N/A";
+  const teamName = `Team ${teamSlot}`;
+  const bestName = bestSteal?.player_name || bestSteal?.name || "No picks yet";
+  const bestDelta = Number(bestSteal?.delta);
+  const bestValue = Number.isFinite(bestDelta) ? `${bestDelta >= 0 ? "+" : ""}${bestDelta.toFixed(1)} Value` : "N/A";
+  const lineup = recapStarterLines(picks);
+  const summary = [
+    `🏈 2026 Draft Recap - ${teamName}`,
+    `📊 Grade: ${grade} (${score}/100)`,
+    `🔥 Best Steal: ${bestName} (${bestValue})`,
+    `🎯 Value Efficiency: ${efficiency}%`,
+    "⚡ Powered by Sleeper Draft Assistant Extension",
+  ].join("\n");
+
+  shadowRoot.querySelector(".recap-modal")?.remove();
+  const modal = document.createElement("div");
+  modal.className = "recap-modal";
+  modal.innerHTML = `
+    <section class="recap-card" role="dialog" aria-modal="true" aria-labelledby="draft-recap-title">
+      <h2 id="draft-recap-title">DRAFT RECAP • ${escapeHtml(teamName)}</h2>
+      <div class="recap-grade">
+        <div class="recap-grade-badge" style="background:${teamGradeBadgeColor(grade)}">${escapeHtml(grade)}</div>
+        <div><strong>${score}/100</strong><br><small>${picks.length} picks graded</small></div>
+      </div>
+      <div class="recap-highlights">
+        <div>👑 <strong>Best Steal:</strong> ${escapeHtml(bestName)} (${escapeHtml(bestValue)})</div>
+        <div>🎯 <strong>Value Efficiency:</strong> ${efficiency}% of picks beat the blended value target.</div>
+      </div>
+      <div class="recap-lineup"><strong>Starting Roster Preview</strong><br>${lineup.length ? lineup.map(escapeHtml).join("<br>") : "No drafted starters yet."}</div>
+      <div class="recap-actions">
+        <button data-action="copy-recap-image">Copy Image</button>
+        <button data-action="copy-recap">Copy Text Summary</button>
+        <button data-action="close-recap">Close</button>
+      </div>
+      <div class="recap-copy-status" aria-live="polite"></div>
+    </section>
+  `;
+  modal.querySelector("[data-action='close-recap']")?.addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.remove();
+  });
+  modal.querySelector("[data-action='copy-recap']")?.addEventListener("click", async () => {
+    const status = modal.querySelector(".recap-copy-status");
+    try {
+      await copyTextToClipboard(summary);
+      if (status) status.textContent = "Copied to clipboard.";
+    } catch (error) {
+      if (status) status.textContent = `Copy failed: ${error.message || "Clipboard unavailable"}`;
+    }
+  });
+  modal.querySelector("[data-action='copy-recap-image']")?.addEventListener("click", async () => {
+    const status = modal.querySelector(".recap-copy-status");
+    try {
+      await copyRecapImageToClipboard({ teamName, grade, score, bestName, bestValue, efficiency, lineup });
+      if (status) status.textContent = "Recap image copied to clipboard.";
+    } catch (error) {
+      if (status) status.textContent = `Image copy failed: ${error.message || "Clipboard unavailable"}`;
+    }
+  });
+  shadowRoot.appendChild(modal);
 };
 
 const bindAssistantMouseDrag = (panel, handle) => {
@@ -2062,6 +2275,11 @@ const bindAssistant = (shadowRoot) => {
       console.error("[DraftAssistant] Fetch error:", error);
     });
   });
+  shadowRoot.querySelector("[data-action='share-recap']")?.addEventListener("click", () => {
+    showDraftRecapModal(shadowRoot).catch((error) => {
+      console.error("[DraftAssistant] Could not build draft recap:", error);
+    });
+  });
   shadowRoot.querySelector("[data-action='open-board']")?.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "OPEN_BOARD" });
   });
@@ -2134,6 +2352,80 @@ const boardPlayerLookup = () => {
   });
   return { byId, byName };
 };
+
+const ensurePlayerValueBadgeStyles = () => {
+  if (document.getElementById("sleeper-extension-value-badge-styles")) return;
+  const style = document.createElement("style");
+  style.id = "sleeper-extension-value-badge-styles";
+  style.className = "extension-ui-element";
+  style.textContent = `
+    .sleeper-ext-value-badge {
+      display: inline-flex !important;
+      align-items: center !important;
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      padding: 2px 6px !important;
+      border-radius: 4px !important;
+      margin-left: 6px !important;
+      line-height: 1 !important;
+      pointer-events: none !important;
+      white-space: nowrap !important;
+    }
+    .sleeper-ext-value-badge.steal {
+      background-color: rgba(16, 185, 129, .25) !important;
+      color: #34d399 !important;
+      border: 1px solid rgba(52, 211, 153, .4) !important;
+    }
+    .sleeper-ext-value-badge.good {
+      background-color: rgba(59, 130, 246, .2) !important;
+      color: #60a5fa !important;
+      border: 1px solid rgba(96, 165, 250, .3) !important;
+    }
+  `;
+  document.head.appendChild(style);
+};
+
+function injectPlayerListValueBadges() {
+  if (!isSleeperDraft || !document.body) return;
+  ensurePlayerValueBadgeStyles();
+  const rows = Array.from(document.querySelectorAll(
+    '[class*="player-row"], [class*="playerRow"], [class*="player-list-item"], [class*="playerListItem"]',
+  )).filter((row) => !row.closest(".extension-ui-element"));
+  if (!rows.length) return;
+
+  const currentPickNumber = assistantState.draftedCount + 1;
+  const rankedPlayers = customRankingPlayers()
+    .filter((player) => player?.name && !assistantState.draftedPlayerIds.has(String(player.player_id)))
+    .map((player, index) => ({
+      ...player,
+      normalizedName: normalizePlayerName(player.name),
+      personalRank: Number(player.custom_rank) || index + 1,
+    }))
+    .sort((left, right) => right.normalizedName.length - left.normalizedName.length);
+
+  rows.forEach((row) => {
+    row.querySelectorAll(".sleeper-ext-value-badge").forEach((badge) => badge.remove());
+    const normalizedRowText = normalizePlayerName(row.textContent || "");
+    const player = rankedPlayers.find((candidate) => (
+      candidate.normalizedName && normalizedRowText.includes(candidate.normalizedName)
+    ));
+    if (!player) return;
+
+    const valueDelta = Math.floor(currentPickNumber - player.personalRank);
+    if (valueDelta < 6) return;
+    const textNodes = Array.from(row.querySelectorAll("span, div, p"));
+    const nameNode = textNodes.find((element) => {
+      if (element.children.length > 2) return false;
+      const normalizedText = normalizePlayerName(element.textContent || "");
+      return normalizedText === player.normalizedName || normalizedText.includes(player.normalizedName);
+    }) || row;
+    const badge = document.createElement("span");
+    badge.className = `sleeper-ext-value-badge ${valueDelta >= 12 ? "steal" : "good"} extension-ui-element`;
+    badge.textContent = `${valueDelta >= 12 ? "🔥" : "✨"} +${valueDelta} VAL`;
+    badge.title = `Current pick ${currentPickNumber} · Your rank ${player.personalRank} · +${valueDelta} value`;
+    nameNode.appendChild(badge);
+  });
+}
 
 const DRAFT_TEAM_COUNT = 12;
 const calculateAllDraftGrades = () => {
@@ -2381,6 +2673,7 @@ function bindHeaderWindowListeners() {
     headerScrollPending = true;
     requestAnimationFrame(() => {
       renderHeaderBadges();
+      injectPlayerListValueBadges();
       headerScrollPending = false;
     });
   }, { passive: true, capture: true });
@@ -2399,7 +2692,10 @@ function observeHeaderLayoutChanges() {
         !(node instanceof Element) || !node.closest(".extension-ui-element")
       ));
     });
-    if (hasSleeperMutation) renderHeaderBadges();
+    if (hasSleeperMutation) {
+      renderHeaderBadges();
+      injectPlayerListValueBadges();
+    }
   });
   headerLayoutObserver.observe(document.body, { childList: true, subtree: true });
 }
@@ -2534,9 +2830,11 @@ const initSleeperAssistant = async () => {
   await loadOverlayPrefs();
   await loadCustomRankings();
   renderAssistant();
+  injectPlayerListValueBadges();
   updateHeaderOverlayPositions();
   await loadStoredDraftPicks();
   await loadRankings();
+  injectPlayerListValueBadges();
   try {
     await syncRankingsFromBoardTab({ silent: true });
   } catch (error) {

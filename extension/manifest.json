@@ -39,6 +39,7 @@
     "http://localhost:3000/*",
     "http://127.0.0.1:3000/*",
     "https://api.sleeper.app/*",
+    "https://sleepercdn.com/*",
     "https://sleeper.com/*",
     "https://*.sleeper.com/*",
     "https://sleeper.app/*",

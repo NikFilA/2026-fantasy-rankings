@@ -26,6 +26,7 @@ if (typeof window.activeDraftAlertHtml === "undefined") {
 if (!window.calculatedTeamGrades) {
   window.calculatedTeamGrades = {};
 }
+const expandedTeamSlots = new Set();
 
 const assistantState = {
   players: [],
@@ -1679,14 +1680,14 @@ const teamGradesHtml = () => {
           return `<details class="team-grade"><summary>Team ${teamSlot} | N/A - No picks yet</summary></details>`;
         }
         return `
-          <details class="team-grade">
+          <details class="team-grade" data-team-slot="${teamSlot}" ${expandedTeamSlots.has(teamSlot) ? "open" : ""}>
             <summary>Team ${teamSlot} | Grade: ${escapeHtml(team.teamLetterGrade)} (${Math.round(team.teamScore)}/100) | ${picks.length} Picks</summary>
             <ol class="team-grade-list">
               ${picks.map((pick) => {
                 const delta = Number(pick.delta);
                 const shownDelta = Number.isFinite(delta) ? `${delta > 0 ? "+" : ""}${delta.toFixed(1)}` : "N/A";
                 const color = pick.gradeColor || letterGradeFromPickScore(pick.pickScore).color;
-                return `<li>Rd ${pick.round} (#${pick.pick_no}): ${escapeHtml(pick.player_name || pick.name)} - <span class="pick-grade-chip" style="background:${color}">${escapeHtml(pick.letterGrade)}</span> (ADP: ${formatGradeNumber(pick.playerADP)}, Delta: ${shownDelta})</li>`;
+                return `<li>Rd ${pick.round} (#${pick.pick_no}): ${escapeHtml(pick.player_name || pick.name)} - Grade: <span class="pick-grade-chip" style="background:${color}">${escapeHtml(pick.letterGrade)}</span> | ADP: ${formatGradeNumber(pick.marketADP)} | Rank: ${formatGradeNumber(pick.personalRank)} | Delta: ${shownDelta}</li>`;
               }).join("")}
             </ol>
           </details>
@@ -1705,6 +1706,17 @@ const bindPlayerRows = (shadowRoot) => {
   });
 };
 
+const bindTeamGradeAccordions = (shadowRoot) => {
+  shadowRoot.querySelectorAll("details.team-grade[data-team-slot]").forEach((drawer) => {
+    drawer.addEventListener("toggle", () => {
+      const teamSlot = Number(drawer.dataset.teamSlot);
+      if (!Number.isInteger(teamSlot)) return;
+      if (drawer.open) expandedTeamSlots.add(teamSlot);
+      else expandedTeamSlots.delete(teamSlot);
+    });
+  });
+};
+
 const updateListUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
   const list = shadowRoot?.querySelector(".list");
   if (!list) return;
@@ -1714,6 +1726,7 @@ const updateListUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadow
     : playerListHtml(visiblePlayers());
   list.scrollTop = previousScrollTop;
   if (assistantState.panelView === "board") bindPlayerRows(shadowRoot);
+  else bindTeamGradeAccordions(shadowRoot);
 };
 
 const updatePanelStateUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
@@ -1897,6 +1910,7 @@ const bindAssistant = (shadowRoot) => {
     renderAssistant();
   });
   bindPlayerRows(shadowRoot);
+  bindTeamGradeAccordions(shadowRoot);
   const handle = shadowRoot.querySelector("[data-drag-handle]");
   const panel = shadowRoot.querySelector(".panel");
   if (handle && panel) {
@@ -1991,6 +2005,9 @@ const calculateAllDraftGrades = () => {
     };
     const grade = calculatePickGrade(recognizedPick);
     recognizedPick.playerADP = grade.playerADP;
+    recognizedPick.marketADP = grade.marketADP;
+    recognizedPick.personalRank = grade.personalRank;
+    recognizedPick.compositeTarget = grade.compositeTarget;
     recognizedPick.valueDelta = grade.delta;
     recognizedPick.delta = grade.delta;
     recognizedPick.pickScore = grade.pickScore;
@@ -2001,6 +2018,8 @@ const calculateAllDraftGrades = () => {
       pickScore: grade.pickScore,
       delta: grade.delta,
       playerADP: grade.playerADP,
+      marketADP: grade.marketADP,
+      personalRank: grade.personalRank,
       playerName: recognizedPick.player_name || recognizedPick.name,
     };
     const normalizedPlayerName = normalizePlayerName(gradeEntry.playerName);
@@ -2012,6 +2031,9 @@ const calculateAllDraftGrades = () => {
       calculatedRound: round,
       teamSlot,
       playerADP: grade.playerADP,
+      marketADP: grade.marketADP,
+      personalRank: grade.personalRank,
+      compositeTarget: grade.compositeTarget,
       valueDelta: grade.delta,
       delta: grade.delta,
       pickScore: grade.pickScore,
@@ -2059,8 +2081,7 @@ const overallAdpForPickGrade = (player) => {
   }
   const numeric = Number(raw);
   if (Number.isFinite(numeric) && numeric > 0 && numeric < 500) return numeric;
-  const boardRank = Number(player?.custom_rank);
-  return Number.isFinite(boardRank) && boardRank > 0 ? boardRank : null;
+  return null;
 };
 
 const letterGradeFromPickScore = (score) => {
@@ -2075,18 +2096,36 @@ const letterGradeFromPickScore = (score) => {
 };
 
 const calculatePickGrade = (pick) => {
-  const playerADP = overallAdpForPickGrade(pick);
   const pickSpot = Number(pick.pick_no);
-  const delta = playerADP === null ? 0 : pickSpot - playerADP;
-  const round = Number(pick.round) || 1;
-  const roundWeight = round <= 3 ? 3.5 : (round <= 8 ? 2 : 1);
-  const pickScore = Math.min(100, Math.max(50, 80 + delta * roundWeight));
+  const parsedMarketADP = overallAdpForPickGrade(pick);
+  const parsedPersonalRank = Number(pick.custom_rank);
+  const marketADP = Number.isFinite(parsedMarketADP) && parsedMarketADP > 0
+    ? parsedMarketADP
+    : Number.isFinite(parsedPersonalRank) && parsedPersonalRank > 0 ? parsedPersonalRank : pickSpot;
+  const personalRank = Number.isFinite(parsedPersonalRank) && parsedPersonalRank > 0
+    ? parsedPersonalRank
+    : marketADP;
+  const compositeTarget = (0.6 * personalRank) + (0.4 * marketADP);
+  const delta = pickSpot - compositeTarget;
+  const round = Math.ceil(pickSpot / DRAFT_TEAM_COUNT);
+  let capitalMultiplier = 1;
+  if (round === 1) capitalMultiplier = 4.5;
+  else if (round === 2) capitalMultiplier = 3.8;
+  else if (round === 3) capitalMultiplier = 3;
+  else if (round <= 6) capitalMultiplier = 2;
+  else if (round <= 10) capitalMultiplier = 1.2;
+  else capitalMultiplier = 0.8;
+  const rawScore = 80 + (delta * capitalMultiplier);
+  const pickScore = Math.min(100, Math.max(40, rawScore));
   return {
-    playerADP,
+    playerADP: marketADP,
+    marketADP,
+    personalRank,
+    compositeTarget,
     pickSpot,
     delta,
     round,
-    roundWeight,
+    capitalMultiplier,
     pickScore,
     ...letterGradeFromPickScore(pickScore),
   };

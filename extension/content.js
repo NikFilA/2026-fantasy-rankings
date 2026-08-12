@@ -2022,7 +2022,7 @@ const strictSnakePickNumber = (round, teamSlot) => (
     : ((round - 1) * DRAFT_TEAM_COUNT) + (13 - teamSlot)
 );
 
-const visibleDraftCellMap = (board) => {
+const visibleDraftCellMap = (board, processedPicks) => {
   if (!board) return new Map();
   const cellSelector = [
     ".draft-cell",
@@ -2058,6 +2058,10 @@ const visibleDraftCellMap = (board) => {
     }
     return null;
   };
+  const pickById = new Map(processedPicks.map((pick) => [String(pick.player_id), pick]));
+  const pickByName = new Map(processedPicks.flatMap((pick) => (
+    playerAliases(pick).map((alias) => [alias, pick])
+  )));
   const cellCoordinates = (cell) => {
     const explicitPickNumber = Number(
       cell.getAttribute("data-pick-number")
@@ -2067,7 +2071,6 @@ const visibleDraftCellMap = (board) => {
     );
     let round = positiveIntAttribute(cell, ["data-round", "data-round-number", "aria-rowindex"]);
     let teamSlot = positiveIntAttribute(cell, [
-      "data-draft-slot",
       "data-team-slot",
       "data-slot",
       "data-column",
@@ -2076,6 +2079,33 @@ const visibleDraftCellMap = (board) => {
     if ((!round || !teamSlot) && Number.isInteger(explicitPickNumber) && explicitPickNumber > 0) {
       round ||= Math.floor((explicitPickNumber - 1) / DRAFT_TEAM_COUNT) + 1;
       teamSlot ||= teamSlotFromPickNumber(explicitPickNumber, round);
+    }
+    const idNode = cell.matches("[data-player-id], [data-player_id], [data-playerid]")
+      ? cell
+      : cell.querySelector("[data-player-id], [data-player_id], [data-playerid]");
+    const playerId = idNode?.getAttribute("data-player-id")
+      || idNode?.getAttribute("data-player_id")
+      || idNode?.getAttribute("data-playerid");
+    const cellText = String(cell.textContent || "");
+    const labelMatch = cellText.match(/(?:^|\s)(\d{1,2})\.(\d{1,2})(?:\s|$)/);
+    if ((!round || !teamSlot) && labelMatch) {
+      const labelRound = Number(labelMatch[1]);
+      const labelPosition = Number(labelMatch[2]);
+      if (labelRound > 0 && labelPosition >= 1 && labelPosition <= DRAFT_TEAM_COUNT) {
+        round ||= labelRound;
+        teamSlot ||= labelRound % 2 === 1 ? labelPosition : 13 - labelPosition;
+      }
+    }
+    if (!round || !teamSlot) {
+      const textNodes = [cell, ...cell.querySelectorAll("span, p")];
+      const matchedPick = pickById.get(String(playerId || ""))
+        || textNodes.map((node) => (
+          pickByName.get(normalizePlayerName(node.textContent)) || pickByName.get(normalize(node.textContent))
+        )).find(Boolean);
+      if (matchedPick) {
+        round ||= matchedPick.round;
+        teamSlot ||= matchedPick.teamSlot;
+      }
     }
     const computed = getComputedStyle(cell);
     const gridRow = Number.parseInt(computed.gridRowStart, 10);
@@ -2103,23 +2133,16 @@ const calculateAllDraftGrades = () => {
   const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
     ? assistantState.lastLiveSleeperPicks
     : [];
-  const picksByNumber = new Map(trackedPicks.map((pick, index) => [
-    Number(pick?.pick_no) || index + 1,
-    pick || {},
-  ]));
-  const totalDraftedCount = Math.max(Number(assistantState.draftedCount) || 0, trackedPicks.length);
   const recognizedPicks = [];
-  for (let sequence = 1; sequence <= totalDraftedCount; sequence += 1) {
-    const pick = picksByNumber.get(sequence) || {};
+  trackedPicks.forEach((rawPick, index) => {
+    const pick = rawPick || {};
+    const sequence = index + 1;
     const pickNumber = Number(pick.pick_no) || sequence;
     const round = Math.ceil(pickNumber / 12);
     const remainder = pickNumber % 12;
     const slotInRound = remainder === 0 ? 12 : remainder;
     const isOddRound = round % 2 === 1;
-    const nativeDraftSlot = Number(pick.draft_slot ?? pick.metadata?.draft_slot);
-    const teamSlot = nativeDraftSlot >= 1 && nativeDraftSlot <= 12
-      ? nativeDraftSlot
-      : (isOddRound ? slotInRound : 13 - slotInRound);
+    const teamSlot = isOddRound ? slotInRound : 13 - slotInRound;
     const playerId = String(pick.player_id || "");
     const trackedName = pickPlayerName(pick);
     const player = byId.get(playerId)
@@ -2138,7 +2161,6 @@ const calculateAllDraftGrades = () => {
       player_name: trackedName || player.name,
       pick_no: pickNumber,
       round,
-      draft_slot: teamSlot,
       teamSlot,
     };
     const grade = calculatePickGrade(recognizedPick);
@@ -2159,7 +2181,7 @@ const calculateAllDraftGrades = () => {
       gradeColor: grade.color,
     });
     recognizedPicks.push(recognizedPick);
-  }
+  });
   const calculatedTeamGrades = {};
   for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
     const teamPicks = recognizedPicks.filter((pick) => pick.teamSlot === teamSlot);
@@ -2256,9 +2278,8 @@ const calculateWeightedTeamGrade = (teamPicks) => {
 
 const draftSlotForHeader = (header, fallbackIndex, teamCount) => {
   const explicit = Number(
-    header?.getAttribute("data-draft-slot")
-    || header?.getAttribute("data-slot")
-    || header?.closest("[data-draft-slot]")?.getAttribute("data-draft-slot"),
+    header?.getAttribute("data-team-slot")
+    || header?.getAttribute("data-slot"),
   );
   if (explicit >= 1 && explicit <= teamCount) return explicit;
   const labelSlot = Number(String(header?.textContent || "").match(/(?:team|slot)\s*(\d{1,2})/i)?.[1]);
@@ -2270,7 +2291,7 @@ const boardTeamColumns = (headers, picks, teamCount) => {
   const columns = Array.from({ length: teamCount }, (_, index) => ({
     slot: index + 1,
     header: null,
-    picks: picks.filter((pick) => Number(pick.draft_slot) === index + 1),
+    picks: picks.filter((pick) => Number(pick.teamSlot) === index + 1),
   }));
   headers.forEach((header, index) => {
     const slot = draftSlotForHeader(header, index, teamCount);
@@ -2407,7 +2428,7 @@ const renderLiveDraftGrades = () => {
   const board = draftBoardElement();
   if (!board) return;
   cleanupBrokenGradeInjections();
-  const visibleCells = visibleDraftCellMap(board);
+  const visibleCells = visibleDraftCellMap(board, processedPicks);
   const headers = draftTeamHeaders(board, DRAFT_TEAM_COUNT);
   const columns = boardTeamColumns(headers, processedPicks, DRAFT_TEAM_COUNT);
   renderIndividualPickGrades(board, processedPicks, visibleCells);

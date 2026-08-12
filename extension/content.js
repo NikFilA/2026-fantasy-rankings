@@ -2160,37 +2160,6 @@ function getOrCreateOverlay() {
   return overlay;
 }
 
-function getActiveHeaderColumns() {
-  const candidates = Array.from(document.querySelectorAll(
-    '.draftboard-header > div, .sticky-header > div, '
-    + '[class*="draftboard-header"] > div, [class*="sticky-header"] > div',
-  ));
-  const validColumns = candidates.filter((element) => {
-    if (element.closest(".extension-ui-element")) return false;
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return rect.width >= 35
-      && rect.width <= 250
-      && rect.height >= 20
-      && rect.top >= -20
-      && rect.top <= 250
-      && style.display !== "none"
-      && style.visibility !== "hidden";
-  });
-  validColumns.sort((left, right) => (
-    left.getBoundingClientRect().left - right.getBoundingClientRect().left
-  ));
-  const uniqueColumns = [];
-  validColumns.forEach((column) => {
-    const rect = column.getBoundingClientRect();
-    const duplicate = uniqueColumns.some((existing) => (
-      Math.abs(existing.getBoundingClientRect().left - rect.left) < 15
-    ));
-    if (!duplicate) uniqueColumns.push(column);
-  });
-  return uniqueColumns.slice(0, DRAFT_TEAM_COUNT);
-}
-
 function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   document.querySelectorAll(
@@ -2198,16 +2167,31 @@ function updateTeamHeaderGradeBadges() {
   ).forEach((element) => element.remove());
   const overlay = getOrCreateOverlay();
   overlay.innerHTML = "";
-  const columns = getActiveHeaderColumns();
-  columns.forEach((column, index) => {
-    const teamSlot = index + 1;
+
+  const boardElement = document.querySelector(
+    '.draftboard, [class*="draftboard"], .draftboard-container',
+  );
+  if (!boardElement) return;
+  const boardRect = boardElement.getBoundingClientRect();
+  if (boardRect.width <= 0) return;
+
+  const allAvatars = Array.from(document.querySelectorAll(
+    '[class*="avatar"] img, [class*="avatar"] svg, .cell-avatar img, img[src*="avatar"]',
+  )).filter((element) => !element.closest(".extension-ui-element"));
+  const headerAvatars = allAvatars.filter((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.top >= boardRect.top - 50
+      && rect.top <= boardRect.top + 120
+      && rect.width > 15;
+  });
+  headerAvatars.sort((left, right) => (
+    left.getBoundingClientRect().left - right.getBoundingClientRect().left
+  ));
+
+  const appendBadge = (teamSlot, left, top) => {
     const team = window.calculatedTeamGrades?.[teamSlot];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
     if (!hasPicks || !team.teamLetterGrade || team.teamLetterGrade === "N/A") return;
-
-    const avatar = column.querySelector('img, svg, [class*="avatar"]');
-    const targetRect = avatar?.getBoundingClientRect() || column.getBoundingClientRect();
-
     const badge = document.createElement("div");
     badge.className = "sleeper-extension-grade-badge extension-ui-element";
     badge.dataset.teamGradeSlot = String(teamSlot);
@@ -2215,8 +2199,8 @@ function updateTeamHeaderGradeBadges() {
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
       "position:fixed",
-      `left:${targetRect.right - 12}px`,
-      `top:${targetRect.top - 4}px`,
+      `left:${left}px`,
+      `top:${top}px`,
       "z-index:999999",
       "pointer-events:none",
       "min-width:22px",
@@ -2234,7 +2218,22 @@ function updateTeamHeaderGradeBadges() {
       "box-sizing:border-box",
     ].join(";");
     overlay.appendChild(badge);
-  });
+  };
+
+  if (headerAvatars.length >= 8) {
+    headerAvatars.slice(0, DRAFT_TEAM_COUNT).forEach((avatar, index) => {
+      const rect = avatar.getBoundingClientRect();
+      appendBadge(index + 1, rect.right - 10, rect.top - 2);
+    });
+    return;
+  }
+
+  const columnWidth = boardRect.width / DRAFT_TEAM_COUNT;
+  const headerY = Math.max(10, boardRect.top + 35);
+  for (let index = 0; index < DRAFT_TEAM_COUNT; index += 1) {
+    const leftPosition = boardRect.left + (index * columnWidth) + (columnWidth * 0.65);
+    appendBadge(index + 1, leftPosition, headerY);
+  }
 }
 
 let headerOverlayAnimationFrame = 0;

@@ -2133,8 +2133,22 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function sleeperTeamHeaderElements() {
-  const exactAvatars = [...document.querySelectorAll(
-    '.draftboard-header [class*="avatar"], .sticky-header [class*="avatar"], .team-avatar, [class*="team-header"] [class*="avatar"]',
+  const stickyHeader = [...document.querySelectorAll(".sticky-header")].find((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return rect.height > 0
+      && rect.width > 0
+      && rect.bottom > 0
+      && rect.top < window.innerHeight
+      && style.display !== "none"
+      && style.visibility !== "hidden";
+  });
+  const headerScope = stickyHeader || document.querySelector(
+    '.draftboard-header, .draft-board-header, [class*="draftboard-header"], [class*="draft-board-header"]',
+  );
+  if (!headerScope) return [];
+  const exactAvatars = [...headerScope.querySelectorAll(
+    '[class*="avatar"], .team-avatar, [class*="team-header"] [class*="avatar"]',
   )]
     .filter((element) => !element.closest(".extension-ui-element"))
     .filter((element) => {
@@ -2190,35 +2204,27 @@ function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   removeNestedTeamHeaderBadges();
   const container = headerGradeOverlayContainer();
+  container.replaceChildren();
   const headers = sleeperTeamHeaderElements();
   if (headers.length !== DRAFT_TEAM_COUNT) {
-    container.replaceChildren();
     console.warn("[DraftAssistant] Expected exactly 12 Sleeper team headers; found:", headers.length);
     return;
   }
 
-  const activeSlots = new Set();
   headers.forEach((headerEl, index) => {
     const teamSlot = index + 1;
     const team = window.calculatedTeamGrades?.[teamSlot];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
-    let badge = container.querySelector(`[data-team-grade-slot="${teamSlot}"]`);
-    if (!hasPicks) {
-      badge?.remove();
-      return;
-    }
+    if (!hasPicks) return;
 
     const avatarEl = headerEl.querySelector(
       'img, .avatar, [class*="avatar-image"], [class*="avatar"]',
     ) || headerEl;
     const rect = avatarEl.getBoundingClientRect();
-    if (!badge) {
-      badge = document.createElement("span");
-      badge.className = "team-header-grade-badge";
-      badge.dataset.teamGradeSlot = String(teamSlot);
-      container.appendChild(badge);
-    }
-    activeSlots.add(teamSlot);
+    const badge = document.createElement("span");
+    badge.className = "team-header-grade-badge";
+    badge.dataset.teamGradeSlot = String(teamSlot);
+    container.appendChild(badge);
     badge.textContent = team.teamLetterGrade;
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
@@ -2244,9 +2250,6 @@ function updateTeamHeaderGradeBadges() {
     ].join(";");
   });
 
-  container.querySelectorAll("[data-team-grade-slot]").forEach((badge) => {
-    if (!activeSlots.has(Number(badge.dataset.teamGradeSlot))) badge.remove();
-  });
 }
 
 let headerOverlayAnimationFrame = 0;

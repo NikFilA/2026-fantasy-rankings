@@ -2149,9 +2149,11 @@ function updateTeamHeaderGradeBadges() {
   const pickCells = Array.from(document.querySelectorAll("div, span")).filter((element) => {
     if (element.closest(".extension-ui-element")) return false;
     const text = element.textContent?.trim() || "";
-    return /^1\.(1[0-2]|[1-9])$/.test(text);
+    const rect = element.getBoundingClientRect();
+    return /^1\.(1[0-2]|[1-9])$/.test(text)
+      && rect.bottom > 0
+      && rect.top < window.innerHeight;
   });
-  if (!pickCells.length) return;
 
   const mappedColumns = [];
   pickCells.forEach((pickCell) => {
@@ -2163,34 +2165,52 @@ function updateTeamHeaderGradeBadges() {
     while (column && column.parentElement && column.getBoundingClientRect().top > 120) {
       column = column.parentElement;
     }
-    if (column && !mappedColumns.some(({ teamSlot }) => teamSlot === pickNumber)) {
-      mappedColumns.push({ teamSlot: pickNumber, element: column });
+    if (column && !mappedColumns.some(({ teamNum }) => teamNum === pickNumber)) {
+      mappedColumns.push({ teamNum: pickNumber, element: column });
     }
   });
 
-  if (!mappedColumns.length) {
-    const avatars = Array.from(document.querySelectorAll('[class*="avatar"], img, svg'))
+  if (mappedColumns.length < DRAFT_TEAM_COUNT) {
+    const stickyAvatars = Array.from(document.querySelectorAll('[class*="avatar"], img, svg'))
       .filter((element) => {
         if (element.closest(".extension-ui-element")) return false;
         const rect = element.getBoundingClientRect();
-        return rect.top >= 20 && rect.top <= 140 && rect.width >= 20 && rect.width <= 70;
+        const style = getComputedStyle(element);
+        return rect.top >= -5
+          && rect.top <= 90
+          && rect.width >= 18
+          && rect.width <= 75
+          && rect.height >= 18
+          && rect.height <= 75
+          && style.display !== "none"
+          && style.visibility !== "hidden"
+          && style.opacity !== "0";
       });
-    avatars.sort((left, right) => (
+    stickyAvatars.sort((left, right) => (
       left.getBoundingClientRect().left - right.getBoundingClientRect().left
     ));
-    avatars.forEach((avatar) => {
+
+    const uniqueSticky = [];
+    stickyAvatars.forEach((avatar) => {
       const x = avatar.getBoundingClientRect().left;
-      if (!mappedColumns.some(({ element }) => (
-        Math.abs(element.getBoundingClientRect().left - x) < 20
+      if (!uniqueSticky.some((existing) => (
+        Math.abs(existing.getBoundingClientRect().left - x) < 20
       ))) {
-        mappedColumns.push({ teamSlot: mappedColumns.length + 1, element: avatar });
+        uniqueSticky.push(avatar);
+      }
+    });
+
+    uniqueSticky.slice(0, DRAFT_TEAM_COUNT).forEach((avatar, index) => {
+      const teamNum = index + 1;
+      if (!mappedColumns.some((mapped) => mapped.teamNum === teamNum)) {
+        mappedColumns.push({ teamNum, element: avatar });
       }
     });
   }
 
-  mappedColumns.forEach(({ teamSlot, element }) => {
-    if (teamSlot < 1 || teamSlot > DRAFT_TEAM_COUNT) return;
-    const team = window.calculatedTeamGrades?.[teamSlot];
+  mappedColumns.forEach(({ teamNum, element }) => {
+    if (teamNum < 1 || teamNum > DRAFT_TEAM_COUNT) return;
+    const team = window.calculatedTeamGrades?.[teamNum];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
     if (!hasPicks || !team.teamLetterGrade || team.teamLetterGrade === "N/A") return;
 
@@ -2202,9 +2222,9 @@ function updateTeamHeaderGradeBadges() {
 
     const badge = document.createElement("div");
     badge.className = "sleeper-extension-grade-badge sleeper-extension-injected-badge extension-ui-element";
-    badge.dataset.teamGradeSlot = String(teamSlot);
+    badge.dataset.teamGradeSlot = String(teamNum);
     badge.innerText = team.teamLetterGrade;
-    badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
+    badge.title = `Team ${teamNum}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
       "position:absolute",
       "top:-4px",

@@ -148,6 +148,7 @@ const customRankingPlayers = () => {
       custom_rank: index + 1,
       tier: player.tierLabel || playerTier(player, index),
       sleeper_adp: player.sleeperAdp,
+      sleeper_pick: player.sleeperPick,
       sleeper_var: player.sleeperVar,
       espn_var: player.espnVar,
       flock_var: player.flockVar,
@@ -162,6 +163,7 @@ const customRankingPlayers = () => {
       sleeper_adp: Number.isFinite(Number(ranking.sleeper_adp ?? ranking.sleeperAdp))
         ? Number(ranking.sleeper_adp ?? ranking.sleeperAdp)
         : Number(player?.sleeperAdp),
+      sleeper_pick: ranking.sleeper_pick ?? ranking.sleeperPick ?? player?.sleeperPick ?? "",
       sleeper_var: ranking.sleeper_var ?? ranking.sleeperVar ?? player?.sleeperVar ?? null,
       espn_var: ranking.espn_var ?? ranking.espnVar ?? player?.espnVar ?? null,
       flock_var: ranking.flock_var ?? ranking.flockVar ?? player?.flockVar ?? null,
@@ -2033,7 +2035,7 @@ const readDraftPicksFromBoard = (board) => {
     .filter((cell) => !cell.closest(".extension-ui-element"))
     .filter((cell) => !cell.parentElement?.closest(canonicalCellSelector));
   const { byId, byName } = boardPlayerLookup();
-  const teamCount = Number(assistantState.sleeperDraftDetails?.settings?.teams) || 12;
+  const teamCount = 12;
   const strictSnakePickNumber = (round, teamSlot) => {
     if (!(round > 0) || !(teamSlot >= 1 && teamSlot <= teamCount)) return null;
     const isOddRound = round % 2 === 1;
@@ -2093,42 +2095,62 @@ const readDraftPicksFromBoard = (board) => {
   });
 
   const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
-    ? assistantState.lastLiveSleeperPicks
+    ? assistantState.lastLiveSleeperPicks.filter(Boolean)
     : [];
-  return trackedPicks.filter((pick) => pick?.player_id).map((pick) => {
-    const officialPickNumber = Number(pick.pick_no);
-    let round = Number(pick.round);
-    const explicitSlot = Number(pick.draft_slot ?? pick.metadata?.draft_slot);
-    if (!round && officialPickNumber > 0) round = Math.floor((officialPickNumber - 1) / teamCount) + 1;
-    const teamSlot = explicitSlot >= 1 && explicitSlot <= teamCount
-      ? explicitSlot
-      : (officialPickNumber > 0 && round > 0 ? teamSlotFromPickNumber(officialPickNumber, round) : null);
-    const pickNumber = strictSnakePickNumber(round, teamSlot);
-    if (!pickNumber) return null;
-    const playerId = String(pick.player_id);
+  const trackedByPickNumber = new Map(trackedPicks.map((pick, index) => [
+    Number(pick.pick_no) || index + 1,
+    pick,
+  ]));
+  const totalDraftedCount = Math.max(
+    Number(assistantState.draftedCount) || 0,
+    trackedByPickNumber.size,
+  );
+  const recognizedPicks = [];
+  for (let pickNumber = 1; pickNumber <= totalDraftedCount; pickNumber += 1) {
+    const pick = trackedByPickNumber.get(pickNumber) || trackedPicks[pickNumber - 1];
+    if (!pick) continue;
+    const round = Math.ceil(pickNumber / 12);
+    const positionInRound = ((pickNumber - 1) % 12) + 1;
+    const isOddRound = round % 2 === 1;
+    const teamSlot = isOddRound ? positionInRound : 13 - positionInRound;
+    const playerId = String(pick.player_id || "");
     const trackedName = pickPlayerName(pick);
     const player = byId.get(playerId)
       || byName.get(normalizePlayerName(trackedName))
       || byName.get(normalize(trackedName))
       || {
-        player_id: playerId,
+        player_id: playerId || `pick-${pickNumber}`,
         name: trackedName || `Player ${playerId}`,
         position: String(pick.metadata?.position || pick.position || "").toUpperCase(),
         custom_rank: null,
         sleeper_adp: pick.metadata?.adp ?? null,
       };
-    return {
+    const recognizedPick = {
       ...player,
-      player_id: playerId,
+      player_id: playerId || `pick-${pickNumber}`,
       cell: cellByRoundAndSlot.get(`${round}:${teamSlot}`) || null,
       pick_no: pickNumber,
       round,
       draft_slot: teamSlot,
+      teamSlot,
     };
-  }).filter(Boolean).sort((a, b) => a.pick_no - b.pick_no);
+    const grade = calculatePickGrade(recognizedPick);
+    recognizedPick.playerADP = grade.playerADP;
+    recognizedPick.valueDelta = grade.delta;
+    recognizedPick.pickScore = grade.pickScore;
+    recognizedPick.letterGrade = grade.grade;
+    recognizedPick.gradeColor = grade.color;
+    recognizedPicks.push(recognizedPick);
+  }
+  return recognizedPicks;
 };
 
 const overallAdpForPickGrade = (player) => {
+  const roundPick = player?.sleeper_pick ?? player?.sleeperPick;
+  if (typeof roundPick === "string" && /^\d+\.\d{1,2}$/.test(roundPick.trim())) {
+    const [round, pick] = roundPick.trim().split(".").map(Number);
+    return ((round - 1) * 12) + pick;
+  }
   const raw = player?.sleeper_adp;
   if (typeof raw === "string" && /^\d+\.\d{1,2}$/.test(raw.trim())) {
     const [round, pick] = raw.trim().split(".").map(Number);
@@ -2143,14 +2165,10 @@ const overallAdpForPickGrade = (player) => {
 const letterGradeFromPickScore = (score) => {
   if (score >= 93) return { grade: "A+", color: "#16a34a" };
   if (score >= 90) return { grade: "A", color: "#22c55e" };
-  if (score >= 85) return { grade: "A-", color: "#4ade80" };
-  if (score >= 80) return { grade: "B+", color: "#2563eb" };
+  if (score >= 85) return { grade: "B+", color: "#2563eb" };
   if (score >= 75) return { grade: "B", color: "#3b82f6" };
-  if (score >= 72) return { grade: "B-", color: "#60a5fa" };
-  if (score >= 68) return { grade: "C+", color: "#ca8a04" };
   if (score >= 65) return { grade: "C", color: "#eab308" };
-  if (score >= 60) return { grade: "C-", color: "#facc15" };
-  if (score >= 55) return { grade: "D", color: "#f97316" };
+  if (score >= 60) return { grade: "D", color: "#f97316" };
   return { grade: "F", color: "#ef4444" };
 };
 
@@ -2178,10 +2196,13 @@ const calculateWeightedTeamGrade = (teamPicks) => {
     return { teamScore: pickScore, totalWeight: 0, ...letterGradeFromPickScore(pickScore) };
   }
   const weighted = teamPicks.reduce((totals, pick) => {
-    const pickResult = calculatePickGrade(pick);
-    const weight = 1 / Math.sqrt(Math.max(1, pickResult.round));
+    const pickScore = Number.isFinite(Number(pick.pickScore))
+      ? Number(pick.pickScore)
+      : calculatePickGrade(pick).pickScore;
+    const round = Number(pick.round) || 1;
+    const weight = 1 / Math.sqrt(Math.max(1, round));
     return {
-      score: totals.score + pickResult.pickScore * weight,
+      score: totals.score + pickScore * weight,
       weight: totals.weight + weight,
     };
   }, { score: 0, weight: 0 });
@@ -2225,7 +2246,14 @@ const renderIndividualPickGrades = (board, columns) => {
       const cell = pick.cell;
       if (Number(pick.pick_no) > Number(assistantState.draftedCount)) return;
       if (!(cell instanceof Element) || !board.contains(cell)) return;
-      const result = calculatePickGrade(pick);
+      const result = {
+        playerADP: pick.playerADP,
+        delta: pick.valueDelta,
+        pickScore: pick.pickScore,
+        grade: pick.letterGrade,
+        color: pick.gradeColor,
+        pickSpot: Number(pick.pick_no),
+      };
       if (getComputedStyle(cell).position === "static") cell.style.setProperty("position", "relative");
       let badge = cell.querySelector(":scope > .pick-grade");
       if (!badge) {
@@ -2321,7 +2349,7 @@ const renderLiveDraftGrades = () => {
   const board = draftBoardElement();
   if (!board) return;
   cleanupBrokenGradeInjections();
-  const teamCount = Number(assistantState.sleeperDraftDetails?.settings?.teams) || 12;
+  const teamCount = 12;
   const picks = readDraftPicksFromBoard(board);
   const headers = draftTeamHeaders(board, teamCount);
   const columns = boardTeamColumns(headers, picks, teamCount);
@@ -2349,7 +2377,7 @@ const renderLiveDraftGrades = () => {
     badge.textContent = result.grade;
     badge.setAttribute(
       "title",
-      `Team Grade: ${result.grade}\n• Weighted Score: ${Math.round(result.teamScore)}/100\n• Total Picks Made: ${teamPicks.length}\n• Formula: Decay-weighted average of individual pick values`,
+      `Team Grade: ${result.grade}\n• Weighted Score: ${Math.round(result.teamScore)}/100\n• Total Picks Recognized: ${teamPicks.length}\n• Picks Breakdown: ${teamPicks.map((pick) => pick.letterGrade).join(", ") || "None"}`,
     );
     badge.style.cssText = [
       "position:absolute",

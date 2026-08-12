@@ -34,6 +34,7 @@ const assistantState = {
   source: "Loading rankings",
   filters: [],
   search: "",
+  panelView: "board",
   expanded: true,
   loading: true,
   error: "",
@@ -100,34 +101,6 @@ const normalizePlayerName = (value = "") => {
   return normalize(parts.join(" "));
 };
 
-const CUSTOM_TIER_STYLE_ID = "ff-custom-tier-styles";
-const CUSTOM_TIER_BADGE_CLASS = "ff-custom-tier-badge";
-
-const ensureCustomTierStyles = () => {
-  if (document.getElementById(CUSTOM_TIER_STYLE_ID)) return;
-  const style = document.createElement("style");
-  style.id = CUSTOM_TIER_STYLE_ID;
-  style.textContent = `
-    .${CUSTOM_TIER_BADGE_CLASS} {
-      display:inline-flex!important;align-items:center!important;gap:4px!important;
-      margin-left:6px!important;padding:2px 7px!important;border:1px solid!important;
-      border-radius:999px!important;font:800 10px/1.4 Inter,system-ui,sans-serif!important;
-      letter-spacing:.02em!important;white-space:nowrap!important;vertical-align:middle!important;
-    }
-    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="1"] { color:#fde047!important;background:#713f12!important;border-color:#facc15!important; }
-    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="2"] { color:#e9d5ff!important;background:#581c87!important;border-color:#c084fc!important; }
-    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="3"] { color:#bfdbfe!important;background:#1e3a8a!important;border-color:#60a5fa!important; }
-    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="4"] { color:#bbf7d0!important;background:#14532d!important;border-color:#4ade80!important; }
-    .${CUSTOM_TIER_BADGE_CLASS}[data-tier="other"] { color:#e2e8f0!important;background:#334155!important;border-color:#94a3b8!important; }
-  `;
-  document.documentElement.appendChild(style);
-};
-
-const normalizedTierNumber = (tier) => {
-  const match = String(tier ?? "").match(/\d+/);
-  return match ? match[0] : "other";
-};
-
 const loadCustomRankings = async () => {
   const { userRankings } = await chrome.storage.local.get(["userRankings"]);
   assistantState.customRankings = Array.isArray(userRankings)
@@ -171,54 +144,6 @@ const customRankingPlayers = () => {
       espn_var: ranking.espn_var ?? ranking.espnVar ?? player?.espnVar ?? null,
       flock_var: ranking.flock_var ?? ranking.flockVar ?? player?.flockVar ?? null,
     };
-  });
-};
-
-const upsertCustomTierBadge = (target, ranking) => {
-  if (!target || target.closest(`#${ASSISTANT_ID}`)) return;
-  let badge = target.querySelector(`:scope > .${CUSTOM_TIER_BADGE_CLASS}`);
-  if (!badge) {
-    badge = document.createElement("span");
-    badge.className = `${CUSTOM_TIER_BADGE_CLASS} extension-ui-element`;
-    target.appendChild(badge);
-  }
-  const tier = normalizedTierNumber(ranking.tier);
-  badge.dataset.tier = ["1", "2", "3", "4"].includes(tier) ? tier : "other";
-  badge.dataset.playerId = ranking.player_id;
-  badge.textContent = `#${ranking.custom_rank} · Tier ${tier === "other" ? ranking.tier || "—" : tier}`;
-};
-
-const decorateSleeperPlayerCards = () => {
-  if (!isSleeperDraft) return;
-  if (!assistantState.customRankings.length) {
-    document.querySelectorAll(`.${CUSTOM_TIER_BADGE_CLASS}`).forEach((badge) => badge.remove());
-    return;
-  }
-  ensureCustomTierStyles();
-  const rankings = customRankingPlayers();
-  const rankingById = new Map(rankings.map((ranking) => [String(ranking.player_id), ranking]));
-  document.querySelectorAll("[data-player-id], [data-player_id], [data-playerid]").forEach((node) => {
-    const playerId = node.getAttribute("data-player-id")
-      || node.getAttribute("data-player_id")
-      || node.getAttribute("data-playerid");
-    const ranking = rankingById.get(String(playerId));
-    if (!ranking) return;
-    upsertCustomTierBadge(node, ranking);
-  });
-
-  const rankingByName = new Map(
-    rankings.filter((ranking) => ranking.name && ranking.name !== "Unknown Player")
-      .map((ranking) => [normalize(ranking.name), ranking]),
-  );
-  document.querySelectorAll("span, p").forEach((node) => {
-    if (node.children.length || node.closest(`#${ASSISTANT_ID}`)) return;
-    const ranking = rankingByName.get(normalize(node.textContent));
-    if (!ranking) return;
-    upsertCustomTierBadge(node.parentElement || node, ranking);
-  });
-
-  document.querySelectorAll(`.${CUSTOM_TIER_BADGE_CLASS}`).forEach((badge) => {
-    if (!rankingById.has(String(badge.dataset.playerId))) badge.remove();
   });
 };
 
@@ -942,82 +867,6 @@ const refreshLocalDraftMetrics = async (rawPicks, { force = false } = {}) => {
   }
 };
 
-const sleeperDomFallbackPicks = () => {
-  const board = document.querySelector([
-    ".draft-board",
-    ".draft-board-container",
-    "[data-testid='draft-board']",
-    "[class*='DraftBoard']",
-    "[class*='draftBoard']",
-    "[class*='draft-board']",
-    "[id*='draft-board']",
-  ].join(","));
-  if (!board || board.closest(".extension-ui-element")) return [];
-
-  const filledCells = [...board.querySelectorAll([
-    ".pick-cell[data-player-id]",
-    ".pick-cell [data-player-id]",
-    ".pick-cell.filled",
-    ".pick-cell[class*='filled']",
-    "[data-pick-no][data-player-id]",
-    "[data-pick-no][class*='filled']",
-    "[data-pick-number][data-player-id]",
-    "[data-pick-number][class*='filled']",
-    "[data-testid='pick-cell'][data-player-id]",
-    "[data-testid='pick-cell']:has([data-player-id])",
-    "[data-testid='pick-cell'][class*='filled']",
-    "[class*='PickCell'][data-player-id]",
-    "[class*='PickCell']:has([data-player-id])",
-    "[class*='pickCell'][data-player-id]",
-    "[class*='pickCell']:has([data-player-id])",
-  ].join(","))].filter((cell) => !cell.closest(".extension-ui-element"));
-  if (!filledCells.length) return [];
-
-  const rankings = customRankingPlayers();
-  const byId = new Map(rankings.map((player) => [String(player.player_id), player]));
-  const byName = new Map(rankings.flatMap((player) => (
-    [normalizePlayerName(player.name), ...playerAliases(player)].map((alias) => [alias, player])
-  )));
-  const detected = [];
-  const detectedIds = new Set();
-  const addPlayer = (player) => {
-    const playerId = String(player?.player_id || "");
-    if (!playerId || detectedIds.has(playerId)) return;
-    detectedIds.add(playerId);
-    detected.push({
-      player_id: playerId,
-      pick_no: detected.length + 1,
-      round: 0,
-      position: player.position,
-      metadata: { player_name: player.name, position: player.position },
-      _domFallback: true,
-    });
-  };
-
-  filledCells.forEach((cell) => {
-    const idNodes = cell.matches("[data-player-id], [data-player_id], [data-playerid]")
-      ? [cell]
-      : [...cell.querySelectorAll("[data-player-id], [data-player_id], [data-playerid]")];
-    idNodes.forEach((node) => {
-      const playerId = node.getAttribute("data-player-id")
-        || node.getAttribute("data-player_id")
-        || node.getAttribute("data-playerid");
-      addPlayer(byId.get(String(playerId)));
-    });
-  });
-
-  filledCells.forEach((cell) => {
-    const textNodes = [...cell.querySelectorAll("span, p")];
-    textNodes.forEach((node) => {
-      if (node.children.length || node.closest(".extension-ui-element")) return;
-      const normalizedName = normalizePlayerName(node.textContent);
-      const compactName = normalize(node.textContent);
-      if (normalizedName || compactName) addPlayer(byName.get(normalizedName) || byName.get(compactName));
-    });
-  });
-  return detected;
-};
-
 const fetchLiveSleeperPicks = async (draftId) => {
   const result = await chrome.runtime.sendMessage({
     type: "FETCH_SLEEPER_DRAFT_PICKS",
@@ -1067,6 +916,8 @@ const applyDraftPicks = (livePicks, {
     source,
     updatedAt: new Date().toISOString(),
   };
+  assistantState.lastLiveSleeperPicks = completedPicks;
+  calculateAllDraftGrades();
   setDraftedFromPayload(payload);
   assistantState.draftPicksReady = true;
   assistantState.draftPicksError = "";
@@ -1090,16 +941,9 @@ const syncDraftPicks = async ({ manualAdvice = false } = {}) => {
       officialCount: apiPicks.length,
     });
   } catch (error) {
-    console.warn("[DraftAssistant] Sleeper API unavailable; using strict board-cell fallback:", error?.message || error);
-    const domPicks = sleeperDomFallbackPicks();
-    const fallbackPicks = domPicks.length >= assistantState.lastLiveSleeperPicks.length
-      ? domPicks
-      : assistantState.lastLiveSleeperPicks;
-    applyDraftPicks(fallbackPicks, {
-      source: "sleeper-dom-fallback",
-      triggerAdvice: true,
-      manualAdvice,
-    });
+    assistantState.draftPicksError = error?.message || "Sleeper picks unavailable";
+    console.warn("[DraftAssistant] Sleeper API unavailable; preserving last official state:", assistantState.draftPicksError);
+    updatePanelStateUI();
   }
 };
 
@@ -1358,6 +1202,60 @@ const styles = `
   .filters button.active {
     border-color: #38bdf8;
     color: #38bdf8;
+  }
+  .view-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 8px 9px 0;
+  }
+  .view-tabs button.active {
+    border-color: #38bdf8;
+    background: rgba(56, 189, 248, .12);
+    color: #38bdf8;
+  }
+  .view-hidden { display: none !important; }
+  .team-grades {
+    flex: 1 1 auto;
+    min-height: 112px;
+    overflow-y: auto;
+    padding: 8px 9px 10px;
+  }
+  .team-grade {
+    margin-bottom: 7px;
+    border: 1px solid #29313a;
+    border-radius: 8px;
+    background: #14191e;
+  }
+  .team-grade summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px;
+    cursor: pointer;
+    color: #eef2f6;
+    font-size: 11px;
+    font-weight: 900;
+    list-style-position: inside;
+  }
+  .team-grade-list {
+    margin: 0;
+    padding: 0 9px 9px 25px;
+    color: #b8c2cc;
+    font-size: 10px;
+    font-weight: 750;
+    line-height: 1.45;
+  }
+  .team-grade-list li { margin-top: 5px; }
+  .pick-grade-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 950;
+    line-height: 1;
+    padding: 3px 6px;
   }
   input {
     width: 100%;
@@ -1639,6 +1537,8 @@ const styles = `
     text-align: center;
   }
   .collapsed .toolbar,
+  .collapsed .view-tabs,
+  .collapsed .team-grades,
   .collapsed .filters,
   .collapsed .status,
   .collapsed .tier-cliff-alert,
@@ -1763,6 +1663,39 @@ const playerListHtml = (players) => `
   `).join("")}
 `;
 
+const formatGradeNumber = (value, digits = 1) => (
+  Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "N/A"
+);
+
+const teamGradesHtml = () => {
+  const teamGrades = window.calculatedTeamGrades || {};
+  return `
+    <div class="team-grades" data-role="team-grades">
+      ${Array.from({ length: DRAFT_TEAM_COUNT }, (_, index) => {
+        const teamSlot = index + 1;
+        const team = teamGrades[teamSlot] || { teamPicks: [], teamScore: null, teamLetterGrade: "N/A" };
+        const picks = Array.isArray(team.teamPicks) ? team.teamPicks : [];
+        if (!picks.length) {
+          return `<details class="team-grade"><summary>Team ${teamSlot} | N/A - No picks yet</summary></details>`;
+        }
+        return `
+          <details class="team-grade">
+            <summary>Team ${teamSlot} | Grade: ${escapeHtml(team.teamLetterGrade)} (${Math.round(team.teamScore)}/100) | ${picks.length} Picks</summary>
+            <ol class="team-grade-list">
+              ${picks.map((pick) => {
+                const delta = Number(pick.delta);
+                const shownDelta = Number.isFinite(delta) ? `${delta > 0 ? "+" : ""}${delta.toFixed(1)}` : "N/A";
+                const color = pick.gradeColor || letterGradeFromPickScore(pick.pickScore).color;
+                return `<li>Rd ${pick.round} (#${pick.pick_no}): ${escapeHtml(pick.player_name || pick.name)} - <span class="pick-grade-chip" style="background:${color}">${escapeHtml(pick.letterGrade)}</span> (ADP: ${formatGradeNumber(pick.playerADP)}, Delta: ${shownDelta})</li>`;
+              }).join("")}
+            </ol>
+          </details>
+        `;
+      }).join("")}
+    </div>
+  `;
+};
+
 const bindPlayerRows = (shadowRoot) => {
   shadowRoot.querySelectorAll("[data-player]").forEach((row) => {
     row.addEventListener("click", () => {
@@ -1776,9 +1709,11 @@ const updateListUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadow
   const list = shadowRoot?.querySelector(".list");
   if (!list) return;
   const previousScrollTop = list.scrollTop;
-  list.innerHTML = playerListHtml(visiblePlayers());
+  list.innerHTML = assistantState.panelView === "grades"
+    ? teamGradesHtml()
+    : playerListHtml(visiblePlayers());
   list.scrollTop = previousScrollTop;
-  bindPlayerRows(shadowRoot);
+  if (assistantState.panelView === "board") bindPlayerRows(shadowRoot);
 };
 
 const updatePanelStateUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
@@ -1843,11 +1778,15 @@ const renderAssistant = () => {
         <button data-action="toggle">${assistantState.expanded ? "Hide" : "Show"}</button>
       </div>
       <div class="strategy-alerts" data-role="strategy-alerts">${window.activeDraftAlertHtml || ""}</div>
-      <div class="toolbar">
+      <nav class="view-tabs" aria-label="Assistant view">
+        <button data-view="board" class="${assistantState.panelView === "board" ? "active" : ""}">Board</button>
+        <button data-view="grades" class="${assistantState.panelView === "grades" ? "active" : ""}">Team Grades</button>
+      </nav>
+      <div class="toolbar ${assistantState.panelView === "grades" ? "view-hidden" : ""}">
         <input id="draft-assistant-search" value="${escapeHtml(assistantState.search)}" placeholder="Search player">
         <button data-action="open-board">Board</button>
       </div>
-      <div class="filters">
+      <div class="filters ${assistantState.panelView === "grades" ? "view-hidden" : ""}">
         <button data-filter="ALL" class="${assistantState.filters.length === 0 ? "active" : ""}">ALL</button>
         ${POSITIONS.map((pos) => `<button data-filter="${pos}" class="${assistantState.filters.includes(pos) ? "active" : ""}">${pos}</button>`).join("")}
       </div>
@@ -1856,7 +1795,7 @@ const renderAssistant = () => {
       </div>
       ${cardHtml()}
       <div class="list">
-        ${playerListHtml(players)}
+        ${assistantState.panelView === "grades" ? teamGradesHtml() : playerListHtml(players)}
       </div>
     </section>
   `;
@@ -1915,6 +1854,13 @@ const bindAssistantMouseDrag = (panel, handle) => {
 };
 
 const bindAssistant = (shadowRoot) => {
+  shadowRoot.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      assistantState.panelView = button.dataset.view === "grades" ? "grades" : "board";
+      assistantState.selectedPlayerId = "";
+      renderAssistant();
+    });
+  });
   shadowRoot.querySelectorAll("[data-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       const filter = button.dataset.filter;
@@ -1992,16 +1938,6 @@ const bindAssistant = (shadowRoot) => {
   }
 };
 
-const draftBoardElement = () => document.querySelector([
-  ".draft-board",
-  ".draft-board-container",
-  "[data-testid='draft-board']",
-  "[class*='DraftBoard']",
-  "[class*='draftBoard']",
-  "[class*='draft-board']",
-  "[id*='draft-board']",
-].join(","));
-
 const boardPlayerLookup = () => {
   const rankings = customRankingPlayers();
   const byId = new Map();
@@ -2016,31 +1952,6 @@ const boardPlayerLookup = () => {
 };
 
 const DRAFT_TEAM_COUNT = 12;
-const visibleDraftCells = (board) => {
-  if (!board) return [];
-  const cellSelector = [
-    ".draft-cell",
-    ".pick-cell",
-    "[data-pick-number]",
-    "[data-pick-no]",
-    "[data-testid='pick-cell']",
-    "[class*='draft-cell']",
-    "[class*='PickCell']",
-    "[class*='pickCell']",
-  ].join(",");
-  const canonicalCellSelector = [
-    ".draft-cell",
-    ".pick-cell",
-    "[data-pick-number]",
-    "[data-pick-no]",
-    "[data-testid='pick-cell']",
-  ].join(",");
-  const cells = [...board.querySelectorAll(cellSelector)]
-    .filter((cell) => !cell.closest(".extension-ui-element"))
-    .filter((cell) => !cell.parentElement?.closest(canonicalCellSelector));
-  return cells;
-};
-
 const calculateAllDraftGrades = () => {
   const { byId, byName } = boardPlayerLookup();
   const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
@@ -2205,253 +2116,6 @@ const calculateWeightedTeamGrade = (teamPicks) => {
   };
 };
 
-const draftSlotForHeader = (header, fallbackIndex, teamCount) => {
-  const explicit = Number(
-    header?.getAttribute("data-team-slot")
-    || header?.getAttribute("data-slot"),
-  );
-  if (explicit >= 1 && explicit <= teamCount) return explicit;
-  const labelSlot = Number(String(header?.textContent || "").match(/(?:team|slot)\s*(\d{1,2})/i)?.[1]);
-  if (labelSlot >= 1 && labelSlot <= teamCount) return labelSlot;
-  return fallbackIndex + 1;
-};
-
-const boardTeamColumns = (headers, picks, teamCount) => {
-  const columns = Array.from({ length: teamCount }, (_, index) => ({
-    slot: index + 1,
-    header: null,
-    picks: picks.filter((pick) => Number(pick.teamSlot) === index + 1),
-  }));
-  headers.forEach((header, index) => {
-    const slot = draftSlotForHeader(header, index, teamCount);
-    if (columns[slot - 1] && !columns[slot - 1].header) columns[slot - 1].header = header;
-  });
-  return columns;
-};
-
-const renderIndividualPickGrades = (board, visibleCells) => {
-  const activeBadges = new Set();
-  const aliasMap = window.playerGradeAliasMap instanceof Map
-    ? window.playerGradeAliasMap
-    : new Map(Object.entries(window.playerGradeMap || {}));
-  visibleCells.forEach((cell) => {
-      if (!(cell instanceof Element) || !board.contains(cell)) return;
-      const textCandidates = [cell, ...cell.querySelectorAll("span, p, div")]
-        .map((node) => String(node.textContent || "").trim())
-        .filter(Boolean);
-      const result = textCandidates.map((text) => {
-        const exact = aliasMap.get(normalizePlayerName(text)) || aliasMap.get(normalize(text));
-        if (exact) return exact;
-        const compactText = normalize(text);
-        return [...aliasMap.entries()].find(([alias]) => alias.length >= 4 && compactText.includes(alias))?.[1];
-      }).find(Boolean);
-      if (!result) return;
-      if (getComputedStyle(cell).position === "static") cell.style.setProperty("position", "relative");
-      let badge = cell.querySelector(":scope > .my-pick-badge");
-      if (!badge) {
-        badge = document.createElement("span");
-        badge.className = "my-pick-badge extension-ui-element";
-        cell.appendChild(badge);
-      }
-      activeBadges.add(badge);
-      badge.textContent = result.letterGrade;
-      const roundedDelta = Number(result.delta.toFixed(1));
-      const shownDelta = `${roundedDelta > 0 ? "+" : ""}${roundedDelta}`;
-      badge.setAttribute(
-        "title",
-        `Grade: ${result.letterGrade} | ADP: ${result.playerADP === null ? "N/A" : result.playerADP.toFixed(1)} | Delta: ${shownDelta}`,
-      );
-      badge.style.cssText = [
-        "position:absolute",
-        "top:3px",
-        "right:3px",
-        `background:${letterGradeFromPickScore(result.pickScore).color}`,
-        "color:#fff",
-        "border:1px solid #0f172a",
-        "border-radius:9999px",
-        "padding:1px 4px",
-        "font:800 9px/1.2 system-ui,sans-serif",
-        "z-index:10",
-        "pointer-events:auto",
-        "white-space:nowrap",
-        "box-sizing:border-box",
-        "margin:0",
-      ].join(";");
-  });
-  board.querySelectorAll(".pick-grade, .my-pick-badge").forEach((badge) => {
-    if (!activeBadges.has(badge)) badge.remove();
-  });
-};
-
-const draftTeamHeaders = (board, teamCount) => {
-  const headerScope = board.parentElement || board;
-  const headerRows = [...headerScope.querySelectorAll([
-    ".draft-board-header",
-    "[data-testid='draft-board-header']",
-    "[class*='DraftBoardHeader']",
-    "[class*='draftBoardHeader']",
-    "[class*='draft-board-header']",
-  ].join(","))];
-  for (const row of headerRows) {
-    const directHeaders = [...row.children].filter((element) => (
-      !element.closest(".extension-ui-element")
-      && !element.matches("[data-pick-number], [data-pick-no], .pick-cell")
-      && Boolean(avatarWrapperForHeader(element))
-    ));
-    if (directHeaders.length >= teamCount) return directHeaders.slice(0, teamCount);
-  }
-  const structuralTargets = [...document.querySelectorAll(
-    '.draft-board-header > div, .team-header, [class*="team-header"], [class*="avatar"]',
-  )];
-  const headers = structuralTargets.map((element) => {
-    if (!headerScope.contains(element)) return null;
-    if (element.closest("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return null;
-    if (element.matches('[class*="avatar"]')) {
-      return element.closest('.team-header, [class*="team-header"], .team-slot-header, .cell-header')
-        || element.parentElement;
-    }
-    return element;
-  }).filter(Boolean).filter((element) => !element.closest(".extension-ui-element"));
-  const uniqueHeaders = [...new Set(headers)].filter((candidate, index, all) => (
-    !all.some((other, otherIndex) => otherIndex !== index && other.contains(candidate))
-  ));
-  return uniqueHeaders.sort((left, right) => (
-    left.getBoundingClientRect().left - right.getBoundingClientRect().left
-  ));
-};
-
-const cleanupBrokenGradeInjections = () => {
-  document.querySelectorAll([
-    ".draft-grade-pill",
-    ".draft-grade-tooltip",
-    ".draft-grade-label",
-    ".ff-live-grade-badge",
-    ".ff-live-grade-tooltip",
-  ].join(",")).forEach((element) => element.remove());
-  document.querySelectorAll(".draft-grade-badge").forEach((element) => {
-    if (element.tagName !== "SPAN" || element.children.length > 0) element.remove();
-  });
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  const orphanedGradeText = [];
-  while (walker.nextNode()) {
-    if (/Value Score:.*Starter Completeness:.*Best Pick:/s.test(walker.currentNode.nodeValue || "")) {
-      orphanedGradeText.push(walker.currentNode);
-    }
-  }
-  orphanedGradeText.forEach((textNode) => textNode.remove());
-};
-
-const avatarWrapperForHeader = (header) => {
-  const avatar = header.querySelector([
-    ".avatar",
-    ".user-avatar",
-    ".team-avatar",
-    "[data-testid*='avatar']",
-    "[class*='Avatar']",
-    "[class*='avatar']",
-  ].join(","));
-  if (avatar) return avatar.tagName === "IMG" ? avatar.parentElement : avatar;
-  const image = header.querySelector("img");
-  return image?.parentElement || null;
-};
-
-const renderLiveDraftGrades = () => {
-  restoreActiveDraftAlerts();
-  const processedPicks = calculateAllDraftGrades();
-  const board = draftBoardElement();
-  if (!board) return;
-  cleanupBrokenGradeInjections();
-  const visibleCells = visibleDraftCells(board);
-  const headers = draftTeamHeaders(board, DRAFT_TEAM_COUNT);
-  const columns = boardTeamColumns(headers, processedPicks, DRAFT_TEAM_COUNT);
-  renderIndividualPickGrades(board, visibleCells);
-
-  for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
-    const header = columns[teamSlot - 1]?.header;
-    if (!header) continue;
-    const teamState = window.calculatedTeamGrades[teamSlot];
-    if (!teamState) continue;
-    const teamPicks = teamState.teamPicks;
-    const result = {
-      grade: teamState.teamLetterGrade,
-      teamScore: teamState.teamScore,
-      color: teamState.color,
-    };
-    const avatarWrapper = avatarWrapperForHeader(header);
-    if (!avatarWrapper || avatarWrapper.closest("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) continue;
-    if (avatarWrapper.style.getPropertyValue("position") !== "relative"
-      || avatarWrapper.style.getPropertyPriority("position") !== "important") {
-      avatarWrapper.style.setProperty("position", "relative", "important");
-    }
-    if (avatarWrapper.style.getPropertyValue("overflow") !== "visible"
-      || avatarWrapper.style.getPropertyPriority("overflow") !== "important") {
-      avatarWrapper.style.setProperty("overflow", "visible", "important");
-    }
-    let badge = avatarWrapper.querySelector(":scope > .draft-grade-badge");
-    if (!badge) {
-      badge = document.createElement("span");
-      badge.className = "draft-grade-badge extension-ui-element";
-      avatarWrapper.appendChild(badge);
-    }
-    badge.textContent = result.grade || "—";
-    badge.setAttribute(
-      "title",
-      teamPicks.length
-        ? `Team Grade: ${result.grade}\nWeighted Score: ${Math.round(result.teamScore)}/100\nTotal Picks Recognized: ${teamPicks.length}\nPicks Breakdown: ${teamPicks.map((pick) => pick.letterGrade).join(", ")}`
-        : "Team Grade: N/A\nWeighted Score: N/A\nTotal Picks Recognized: 0\nPicks Breakdown: None",
-    );
-    badge.style.cssText = [
-      "position:absolute",
-      "top:-2px",
-      "right:-2px",
-      `background:${result.color}`,
-      "color:#ffffff",
-      "border:2px solid #0f172a",
-      "border-radius:9999px",
-      "padding:2px 6px",
-      "font-size:10px",
-      "font-weight:800",
-      "font-family:system-ui,sans-serif",
-      "line-height:1.25",
-      "z-index:9999",
-      "box-shadow:0 2px 4px rgba(0,0,0,0.4)",
-      "pointer-events:auto",
-      "white-space:nowrap",
-      "box-sizing:border-box",
-      "margin:0",
-    ].join(";");
-  }
-};
-
-let liveGradeObserver = null;
-let liveGradeFrame = 0;
-let liveGradePollTimer = null;
-const observeLiveDraftGrades = () => {
-  const attach = () => {
-    const board = draftBoardElement();
-    if (!board) return false;
-    liveGradeObserver?.disconnect();
-    liveGradeObserver = new MutationObserver((mutations) => {
-      const externalMutation = mutations.some((mutation) => {
-        const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
-        return target && !target.closest(".extension-ui-element");
-      });
-      if (!externalMutation) return;
-      cancelAnimationFrame(liveGradeFrame);
-      liveGradeFrame = requestAnimationFrame(renderLiveDraftGrades);
-    });
-    liveGradeObserver.observe(board, { childList: true, subtree: true, attributes: true });
-    renderLiveDraftGrades();
-    if (!liveGradePollTimer) liveGradePollTimer = setInterval(renderLiveDraftGrades, 1000);
-    return true;
-  };
-  if (!attach()) {
-    const discoveryTimer = setInterval(() => {
-      if (attach()) clearInterval(discoveryTimer);
-    }, 1000);
-  }
-};
-
 const observeDraftPage = () => {
   setInterval(async () => {
     try {
@@ -2466,7 +2130,6 @@ const observeDraftPage = () => {
   });
   window.addEventListener("resize", () => {
     renderAssistant();
-    renderLiveDraftGrades();
   });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
@@ -2492,8 +2155,6 @@ const initSleeperAssistant = async () => {
   } catch (error) {
     console.error("[DraftAssistant] Rankings sync error (draft polling continues):", error);
   }
-  decorateSleeperPlayerCards();
-  observeLiveDraftGrades();
   assistantState.lastRecommendationPickSignature = "";
   syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
   fetchTeamProjections().then(renderAssistant);
@@ -2505,7 +2166,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || !changes.userRankings) return;
   loadCustomRankings().then(() => {
     assistantState.lastRecommendationPickSignature = "";
-    decorateSleeperPlayerCards();
     syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
     renderAssistant();
   });

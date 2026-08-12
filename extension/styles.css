@@ -1,5 +1,8 @@
 #draft-assistant-panel {
   position: fixed !important;
   max-height: 80vh !important;
-  overflow-y: auto !important;
+  min-width: 260px !important;
+  min-height: 180px !important;
+  resize: both !important;
+  overflow: hidden !important;
 }

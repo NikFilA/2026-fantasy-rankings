@@ -1111,7 +1111,10 @@ const styles = `
   #draft-assistant-panel {
     position: fixed !important;
     max-height: 80vh;
-    overflow-y: auto;
+    min-width: 260px !important;
+    min-height: 180px !important;
+    resize: both !important;
+    overflow: hidden;
   }
   .panel {
     position: fixed;
@@ -1120,12 +1123,12 @@ const styles = `
     z-index: 2147483647;
     width: min(360px, calc(100vw - 28px));
     height: min(720px, calc(100vh - 110px));
-    min-width: 320px;
-    min-height: 400px;
+    min-width: 260px;
+    min-height: 180px;
     max-width: calc(100vw - 16px);
     max-height: calc(100vh - 16px);
-    overflow: auto;
-    resize: both;
+    overflow: hidden;
+    resize: both !important;
     border: 1px solid #29313a;
     border-radius: 8px;
     background: #0f1316;
@@ -1218,7 +1221,8 @@ const styles = `
   .view-hidden { display: none !important; }
   .team-grades {
     flex: 1 1 auto;
-    min-height: 112px;
+    min-height: 0;
+    height: 100%;
     overflow-y: auto;
     padding: 8px 9px 10px;
   }
@@ -1321,8 +1325,10 @@ const styles = `
   .survival-na { border-color: #64748b; background: rgba(30, 41, 59, .75); color: #cbd5e1; }
   .list {
     flex: 1 1 auto;
-    min-height: 112px;
-    overflow: auto;
+    min-height: 0;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
   }
@@ -1720,11 +1726,9 @@ const bindTeamGradeAccordions = (shadowRoot) => {
 const updateListUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
   const list = shadowRoot?.querySelector(".list");
   if (!list) return;
-  const previousScrollTop = list.scrollTop;
   list.innerHTML = assistantState.panelView === "grades"
     ? teamGradesHtml()
     : playerListHtml(visiblePlayers());
-  list.scrollTop = previousScrollTop;
   if (assistantState.panelView === "board") bindPlayerRows(shadowRoot);
   else bindTeamGradeAccordions(shadowRoot);
 };
@@ -1768,8 +1772,6 @@ const renderAssistant = () => {
     root.attachShadow({ mode: "open" });
     document.documentElement.appendChild(root);
   }
-  const previousList = root.shadowRoot.querySelector(".list");
-  const previousScrollTop = previousList?.scrollTop || 0;
   const focusedSearch = root.shadowRoot.activeElement?.id === "draft-assistant-search";
   const priorSearchSelection = focusedSearch
     ? {
@@ -1812,10 +1814,6 @@ const renderAssistant = () => {
       </div>
     </section>
   `;
-  const nextList = root.shadowRoot.querySelector(".list");
-  if (nextList) {
-    nextList.scrollTop = previousScrollTop;
-  }
   bindAssistant(root.shadowRoot);
   restoreActiveDraftAlerts(root.shadowRoot);
   if (focusedSearch) {
@@ -2079,12 +2077,15 @@ function teamGradeBadgeColor(letterGrade) {
 
 function sleeperTeamHeaderElements() {
   const exactAvatars = [...document.querySelectorAll(
-    '.draftboard-header .team-avatar, [class*="team-header"]',
+    '.draftboard-header .avatar, .sticky-header .avatar, [class*="team-avatar"], [class*="avatar"]',
   )]
     .filter((element) => !element.closest(".extension-ui-element"))
     .filter((element) => {
       const rect = element.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0;
+      return rect.width > 0
+        && rect.height > 0
+        && rect.bottom > 0
+        && rect.top < window.innerHeight;
     });
 
   const leafCandidates = exactAvatars.filter((candidate, index, all) => (
@@ -2188,6 +2189,15 @@ function updateTeamHeaderGradeBadges() {
     if (!activeSlots.has(Number(badge.dataset.teamGradeSlot))) badge.remove();
   });
 }
+
+let headerOverlayAnimationFrame = 0;
+function updateHeaderOverlayPositions() {
+  cancelAnimationFrame(headerOverlayAnimationFrame);
+  headerOverlayAnimationFrame = requestAnimationFrame(() => {
+    headerOverlayAnimationFrame = 0;
+    updateTeamHeaderGradeBadges();
+  });
+}
 const overallAdpForPickGrade = (player) => {
   const roundPick = player?.sleeper_pick ?? player?.sleeperPick;
   if (typeof roundPick === "string" && /^\d+\.\d{1,2}$/.test(roundPick.trim())) {
@@ -2289,9 +2299,9 @@ const observeDraftPage = () => {
   });
   window.addEventListener("resize", () => {
     renderAssistant();
-    updateTeamHeaderGradeBadges();
+    updateHeaderOverlayPositions();
   });
-  window.addEventListener("scroll", updateTeamHeaderGradeBadges, { passive: true });
+  window.addEventListener("scroll", updateHeaderOverlayPositions, { passive: true, capture: true });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));

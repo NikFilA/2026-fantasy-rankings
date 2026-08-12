@@ -2140,11 +2140,13 @@ function teamGradeBadgeColor(letterGrade) {
 
 function getTeamAvatarContainers() {
   const targets = Array.from(document.querySelectorAll(
-    '.draftboard-header .avatar, .draftboard-header [class*="avatar"], .draftboard-header img, '
-    + '.sticky-header .avatar, .sticky-header [class*="avatar"], .sticky-header img',
+    '.draftboard-header [class*="avatar"], .draftboard-header img, '
+    + '.sticky-header [class*="avatar"], .sticky-header img, '
+    + '[class*="draftboard"] [class*="header"] [class*="avatar"]',
   ));
 
   const valid = targets.filter((element) => {
+    if (!element.parentElement) return false;
     if (element.closest(".extension-ui-element")) return false;
     if (element.closest(
       '.draft-cell, .pick-cell, [data-pick-number], [data-pick-no], [data-testid="pick-cell"]',
@@ -2152,29 +2154,30 @@ function getTeamAvatarContainers() {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return rect.width >= 16
-      && rect.width <= 80
+      && rect.width <= 90
       && rect.height >= 16
-      && rect.height <= 80
+      && rect.height <= 90
       && rect.top >= -20
       && rect.top <= 140
       && style.display !== "none"
       && style.visibility !== "hidden";
   });
 
-  valid.sort((left, right) => (
+  const wrappers = valid.map((element) => element.parentElement);
+  wrappers.sort((left, right) => (
     left.getBoundingClientRect().left - right.getBoundingClientRect().left
   ));
 
-  const unique = [];
-  valid.forEach((element) => {
-    const rect = element.getBoundingClientRect();
-    const duplicate = unique.some((existing) => (
+  const uniqueWrappers = [];
+  wrappers.forEach((wrapper) => {
+    const rect = wrapper.getBoundingClientRect();
+    const duplicate = uniqueWrappers.some((existing) => (
       Math.abs(existing.getBoundingClientRect().left - rect.left) < 20
     ));
-    if (!duplicate) unique.push(element);
+    if (!duplicate) uniqueWrappers.push(wrapper);
   });
 
-  return unique.slice(0, DRAFT_TEAM_COUNT);
+  return uniqueWrappers.slice(0, DRAFT_TEAM_COUNT);
 }
 
 function cleanupLegacyHeaderGradeUi() {
@@ -2186,17 +2189,16 @@ function cleanupLegacyHeaderGradeUi() {
 function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   cleanupLegacyHeaderGradeUi();
-  const avatars = getTeamAvatarContainers();
+  const wrappers = getTeamAvatarContainers();
 
-  avatars.forEach((avatar, index) => {
+  wrappers.forEach((wrapper, index) => {
     const teamSlot = index + 1;
     const team = window.calculatedTeamGrades?.[teamSlot];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
     if (!hasPicks) return;
 
-    const container = avatar.parentElement || avatar;
-    container.style.setProperty("position", "relative", "important");
-    container.style.setProperty("overflow", "visible", "important");
+    wrapper.style.setProperty("position", "relative", "important");
+    wrapper.style.setProperty("overflow", "visible", "important");
     const badge = document.createElement("div");
     badge.className = "sleeper-extension-grade-badge extension-ui-element";
     badge.dataset.teamGradeSlot = String(teamSlot);
@@ -2222,7 +2224,7 @@ function updateTeamHeaderGradeBadges() {
       "box-shadow:0 2px 5px rgba(0,0,0,.45)",
       "box-sizing:border-box",
     ].join(";");
-    container.appendChild(badge);
+    wrapper.appendChild(badge);
   });
 }
 

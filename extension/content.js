@@ -23,6 +23,9 @@ const isSleeperDraft = /(^|\.)sleeper\.(com|app)$/.test(window.location.hostname
 if (typeof window.activeDraftAlertHtml === "undefined") {
   window.activeDraftAlertHtml = null;
 }
+if (!window.calculatedTeamGrades) {
+  window.calculatedTeamGrades = {};
+}
 
 const assistantState = {
   players: [],
@@ -2012,8 +2015,15 @@ const boardPlayerLookup = () => {
   return { byId, byName };
 };
 
-const readDraftPicksFromBoard = (board) => {
-  if (!board) return [];
+const DRAFT_TEAM_COUNT = 12;
+const strictSnakePickNumber = (round, teamSlot) => (
+  round % 2 === 1
+    ? ((round - 1) * DRAFT_TEAM_COUNT) + teamSlot
+    : ((round - 1) * DRAFT_TEAM_COUNT) + (13 - teamSlot)
+);
+
+const visibleDraftCellMap = (board) => {
+  if (!board) return new Map();
   const cellSelector = [
     ".draft-cell",
     ".pick-cell",
@@ -2034,18 +2044,9 @@ const readDraftPicksFromBoard = (board) => {
   const cells = [...board.querySelectorAll(cellSelector)]
     .filter((cell) => !cell.closest(".extension-ui-element"))
     .filter((cell) => !cell.parentElement?.closest(canonicalCellSelector));
-  const { byId, byName } = boardPlayerLookup();
-  const teamCount = 12;
-  const strictSnakePickNumber = (round, teamSlot) => {
-    if (!(round > 0) || !(teamSlot >= 1 && teamSlot <= teamCount)) return null;
-    const isOddRound = round % 2 === 1;
-    return isOddRound
-      ? ((round - 1) * teamCount) + teamSlot
-      : ((round - 1) * teamCount) + (teamCount + 1 - teamSlot);
-  };
   const teamSlotFromPickNumber = (pickNumber, round) => {
-    const withinRound = ((pickNumber - 1) % teamCount) + 1;
-    return round % 2 === 1 ? withinRound : teamCount + 1 - withinRound;
+    const withinRound = ((pickNumber - 1) % DRAFT_TEAM_COUNT) + 1;
+    return round % 2 === 1 ? withinRound : 13 - withinRound;
   };
   const positiveIntAttribute = (cell, names) => {
     for (const name of names) {
@@ -2073,18 +2074,18 @@ const readDraftPicksFromBoard = (board) => {
       "aria-colindex",
     ]);
     if ((!round || !teamSlot) && Number.isInteger(explicitPickNumber) && explicitPickNumber > 0) {
-      round ||= Math.floor((explicitPickNumber - 1) / teamCount) + 1;
+      round ||= Math.floor((explicitPickNumber - 1) / DRAFT_TEAM_COUNT) + 1;
       teamSlot ||= teamSlotFromPickNumber(explicitPickNumber, round);
     }
     const computed = getComputedStyle(cell);
     const gridRow = Number.parseInt(computed.gridRowStart, 10);
     const gridColumn = Number.parseInt(computed.gridColumnStart, 10);
     if (!round && Number.isInteger(gridRow) && gridRow > 0) round = gridRow;
-    if (!teamSlot && Number.isInteger(gridColumn) && gridColumn >= 1 && gridColumn <= teamCount) {
+    if (!teamSlot && Number.isInteger(gridColumn) && gridColumn >= 1 && gridColumn <= DRAFT_TEAM_COUNT) {
       teamSlot = gridColumn;
     }
-    const pickNumber = strictSnakePickNumber(round, teamSlot);
-    return pickNumber ? { round, teamSlot, pickNumber } : null;
+    if (!(round > 0) || !(teamSlot >= 1 && teamSlot <= DRAFT_TEAM_COUNT)) return null;
+    return { round, teamSlot, pickNumber: strictSnakePickNumber(round, teamSlot) };
   };
   const cellByRoundAndSlot = new Map();
   cells.forEach((cell) => {
@@ -2094,6 +2095,11 @@ const readDraftPicksFromBoard = (board) => {
     if (!cellByRoundAndSlot.has(key)) cellByRoundAndSlot.set(key, cell);
   });
 
+  return cellByRoundAndSlot;
+};
+
+const calculateAllDraftGrades = () => {
+  const { byId, byName } = boardPlayerLookup();
   const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
     ? assistantState.lastLiveSleeperPicks.filter(Boolean)
     : [];
@@ -2107,10 +2113,10 @@ const readDraftPicksFromBoard = (board) => {
   );
   const recognizedPicks = [];
   for (let pickNumber = 1; pickNumber <= totalDraftedCount; pickNumber += 1) {
-    const pick = trackedByPickNumber.get(pickNumber) || trackedPicks[pickNumber - 1];
+    const pick = trackedByPickNumber.get(pickNumber);
     if (!pick) continue;
-    const round = Math.ceil(pickNumber / 12);
-    const positionInRound = ((pickNumber - 1) % 12) + 1;
+    const round = Math.ceil(pickNumber / DRAFT_TEAM_COUNT);
+    const positionInRound = ((pickNumber - 1) % DRAFT_TEAM_COUNT) + 1;
     const isOddRound = round % 2 === 1;
     const teamSlot = isOddRound ? positionInRound : 13 - positionInRound;
     const playerId = String(pick.player_id || "");
@@ -2128,7 +2134,6 @@ const readDraftPicksFromBoard = (board) => {
     const recognizedPick = {
       ...player,
       player_id: playerId || `pick-${pickNumber}`,
-      cell: cellByRoundAndSlot.get(`${round}:${teamSlot}`) || null,
       pick_no: pickNumber,
       round,
       draft_slot: teamSlot,
@@ -2140,8 +2145,30 @@ const readDraftPicksFromBoard = (board) => {
     recognizedPick.pickScore = grade.pickScore;
     recognizedPick.letterGrade = grade.grade;
     recognizedPick.gradeColor = grade.color;
+    Object.assign(pick, {
+      calculatedRound: round,
+      teamSlot,
+      playerADP: grade.playerADP,
+      valueDelta: grade.delta,
+      pickScore: grade.pickScore,
+      letterGrade: grade.grade,
+      gradeColor: grade.color,
+    });
     recognizedPicks.push(recognizedPick);
   }
+  const calculatedTeamGrades = {};
+  for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
+    const teamPicks = recognizedPicks.filter((pick) => pick.teamSlot === teamSlot);
+    const weighted = calculateWeightedTeamGrade(teamPicks);
+    calculatedTeamGrades[teamSlot] = {
+      teamSlot,
+      teamPicks,
+      teamScore: weighted.teamScore,
+      teamLetterGrade: weighted.grade,
+      color: weighted.color,
+    };
+  }
+  window.calculatedTeamGrades = calculatedTeamGrades;
   return recognizedPicks;
 };
 
@@ -2239,12 +2266,10 @@ const boardTeamColumns = (headers, picks, teamCount) => {
   return columns;
 };
 
-const renderIndividualPickGrades = (board, columns) => {
+const renderIndividualPickGrades = (board, processedPicks, visibleCells) => {
   const activeBadges = new Set();
-  columns.forEach((column) => {
-    column.picks.forEach((pick) => {
-      const cell = pick.cell;
-      if (Number(pick.pick_no) > Number(assistantState.draftedCount)) return;
+  processedPicks.forEach((pick) => {
+      const cell = visibleCells.get(`${pick.round}:${pick.teamSlot}`);
       if (!(cell instanceof Element) || !board.contains(cell)) return;
       const result = {
         playerADP: pick.playerADP,
@@ -2285,7 +2310,6 @@ const renderIndividualPickGrades = (board, columns) => {
         "box-sizing:border-box",
         "margin:0",
       ].join(";");
-    });
   });
   board.querySelectorAll(".pick-grade").forEach((badge) => {
     if (!activeBadges.has(badge)) badge.remove();
@@ -2346,20 +2370,28 @@ const avatarWrapperForHeader = (header) => {
 
 const renderLiveDraftGrades = () => {
   restoreActiveDraftAlerts();
+  const processedPicks = calculateAllDraftGrades();
   const board = draftBoardElement();
   if (!board) return;
   cleanupBrokenGradeInjections();
-  const teamCount = 12;
-  const picks = readDraftPicksFromBoard(board);
-  const headers = draftTeamHeaders(board, teamCount);
-  const columns = boardTeamColumns(headers, picks, teamCount);
-  renderIndividualPickGrades(board, columns);
+  const visibleCells = visibleDraftCellMap(board);
+  const headers = draftTeamHeaders(board, DRAFT_TEAM_COUNT);
+  const columns = boardTeamColumns(headers, processedPicks, DRAFT_TEAM_COUNT);
+  renderIndividualPickGrades(board, processedPicks, visibleCells);
 
-  columns.forEach(({ header, picks: teamPicks }) => {
-    if (!header) return;
-    const result = calculateWeightedTeamGrade(teamPicks);
+  for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
+    const header = columns[teamSlot - 1]?.header;
+    if (!header) continue;
+    const teamState = window.calculatedTeamGrades[teamSlot];
+    if (!teamState) continue;
+    const teamPicks = teamState.teamPicks;
+    const result = {
+      grade: teamState.teamLetterGrade,
+      teamScore: teamState.teamScore,
+      color: teamState.color,
+    };
     const avatarWrapper = avatarWrapperForHeader(header);
-    if (!avatarWrapper || avatarWrapper.closest("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) return;
+    if (!avatarWrapper || avatarWrapper.closest("[data-pick-number], [data-pick-no], .pick-cell, [data-testid='pick-cell']")) continue;
     if (avatarWrapper.style.getPropertyValue("position") !== "relative"
       || avatarWrapper.style.getPropertyPriority("position") !== "important") {
       avatarWrapper.style.setProperty("position", "relative", "important");
@@ -2399,7 +2431,7 @@ const renderLiveDraftGrades = () => {
       "box-sizing:border-box",
       "margin:0",
     ].join(";");
-  });
+  }
 };
 
 let liveGradeObserver = null;

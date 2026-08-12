@@ -1758,7 +1758,13 @@ const updateListUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadow
   if (assistantState.panelView === "grades") {
     assistantState.gradesRenderSignature = nextGradesSignature;
     const nextGradesContainer = list.querySelector(".grades-scroll-container");
-    if (nextGradesContainer) nextGradesContainer.scrollTop = assistantState.gradesScrollTop;
+    if (nextGradesContainer) {
+      const lockedGradesScrollTop = assistantState.gradesScrollTop;
+      nextGradesContainer.scrollTop = lockedGradesScrollTop;
+      requestAnimationFrame(() => {
+        if (nextGradesContainer.isConnected) nextGradesContainer.scrollTop = lockedGradesScrollTop;
+      });
+    }
   }
   if (assistantState.panelView === "board") bindPlayerRows(shadowRoot);
   else bindTeamGradeAccordions(shadowRoot);
@@ -2133,42 +2139,28 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function sleeperTeamHeaderElements() {
-  const stickyHeader = [...document.querySelectorAll(".sticky-header")].find((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return rect.height > 0
-      && rect.width > 0
-      && rect.bottom > 0
-      && rect.top < window.innerHeight
-      && style.display !== "none"
-      && style.visibility !== "hidden";
-  });
-  const headerScope = stickyHeader || document.querySelector(
-    '.draftboard-header, .draft-board-header, [class*="draftboard-header"], [class*="draft-board-header"]',
-  );
-  if (!headerScope) return [];
-  const exactAvatars = [...headerScope.querySelectorAll(
-    '[class*="avatar"], .team-avatar, [class*="team-header"] [class*="avatar"]',
-  )]
-    .filter((element) => !element.closest(".extension-ui-element"))
-    .filter((element) => {
-      const rect = element.getBoundingClientRect();
-      return rect.width > 0
-        && rect.height > 0
-        && rect.bottom > 0
-        && rect.top < window.innerHeight;
-    });
+  const allAvatars = Array.from(document.querySelectorAll(
+    '.draftboard-header [class*="avatar"], .team-avatar, [class*="team-header"] [class*="avatar"], .avatar',
+  )).filter((element) => !element.closest(".extension-ui-element"));
 
-  const leafCandidates = exactAvatars.filter((candidate, index, all) => (
+  const visibleAvatars = allAvatars.filter((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0
+      && rect.height > 0
+      && rect.top >= -50
+      && rect.bottom <= window.innerHeight + 50;
+  });
+
+  const leafAvatars = visibleAvatars.filter((candidate, index, all) => (
     !all.some((other, otherIndex) => otherIndex !== index && candidate.contains(other))
   ));
   const uniqueByColumn = [];
-  leafCandidates
+  leafAvatars
     .sort((left, right) => left.getBoundingClientRect().left - right.getBoundingClientRect().left)
     .forEach((candidate) => {
-      const rect = candidate.getBoundingClientRect();
+      const candidateLeft = candidate.getBoundingClientRect().left;
       const duplicate = uniqueByColumn.some((existing) => (
-        Math.abs(existing.getBoundingClientRect().left - rect.left) < 3
+        Math.abs(existing.getBoundingClientRect().left - candidateLeft) < 3
       ));
       if (!duplicate) uniqueByColumn.push(candidate);
     });
@@ -2211,15 +2203,12 @@ function updateTeamHeaderGradeBadges() {
     return;
   }
 
-  headers.forEach((headerEl, index) => {
+  headers.forEach((avatarEl, index) => {
     const teamSlot = index + 1;
     const team = window.calculatedTeamGrades?.[teamSlot];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
     if (!hasPicks) return;
 
-    const avatarEl = headerEl.querySelector(
-      'img, .avatar, [class*="avatar-image"], [class*="avatar"]',
-    ) || headerEl;
     const rect = avatarEl.getBoundingClientRect();
     const badge = document.createElement("span");
     badge.className = "team-header-grade-badge";

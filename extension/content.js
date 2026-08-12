@@ -1232,6 +1232,80 @@ const styles = `
     overflow-y: auto;
     padding: 8px 9px 10px;
   }
+  .team-grades-heading {
+    display: flex;
+    align-items: center;
+    margin: 0 0 8px;
+    color: #eef2f6;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .sleeper-extension-grade-info-wrap {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    margin-left: 6px;
+    cursor: help;
+  }
+  .sleeper-extension-info-icon {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .15);
+    color: #a0aec0;
+    font-size: 11px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .2s ease;
+  }
+  .sleeper-extension-grade-info-wrap:hover .sleeper-extension-info-icon,
+  .sleeper-extension-grade-info-wrap:focus-within .sleeper-extension-info-icon {
+    background: #3182ce;
+    color: #fff;
+  }
+  .sleeper-extension-grade-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    top: 125%;
+    left: 0;
+    width: 260px;
+    max-width: 280px;
+    padding: 10px 12px;
+    background-color: #1a202c;
+    color: #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: normal;
+    text-align: left;
+    text-transform: none;
+    white-space: normal;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .5);
+    z-index: 999999;
+    pointer-events: none;
+    transition: opacity .2s ease, visibility .2s ease;
+  }
+  .sleeper-extension-grade-info-wrap:hover .sleeper-extension-grade-tooltip,
+  .sleeper-extension-grade-info-wrap:focus-within .sleeper-extension-grade-tooltip {
+    visibility: visible;
+    opacity: 1;
+  }
+  .sleeper-extension-grade-tooltip strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #fff;
+  }
+  .sleeper-extension-grade-tooltip span {
+    display: block;
+    margin-top: 3px;
+  }
   .team-grade {
     margin-bottom: 7px;
     border: 1px solid #29313a;
@@ -1686,6 +1760,19 @@ const teamGradesHtml = () => {
   const teamGrades = window.calculatedTeamGrades || {};
   return `
     <div id="team-grades-list" class="team-grades grades-scroll-container" data-role="team-grades">
+      <div class="team-grades-heading">
+        <span>Team Grades</span>
+        <span class="sleeper-extension-grade-info-wrap" tabindex="0" aria-label="How team grades work">
+          <span class="sleeper-extension-info-icon" aria-hidden="true">?</span>
+          <span class="sleeper-extension-grade-tooltip" role="tooltip">
+            <strong>How Team Grades Work:</strong>
+            <span>• Value Target: Blends 60% your custom rankings + 40% market ADP to calculate expected pick value.</span>
+            <span>• Pick Delta: Points awarded for drafted steals vs. penalties for reaches.</span>
+            <span>• Weighted Capital: Early-round picks carry higher weight than late-round picks.</span>
+            <span>• Letter Scale: Overall weighted average determines team grade (A+ to F).</span>
+          </span>
+        </span>
+      </div>
       ${Array.from({ length: DRAFT_TEAM_COUNT }, (_, index) => {
         const teamSlot = index + 1;
         const team = teamGrades[teamSlot] || { teamPicks: [], teamScore: null, teamLetterGrade: "N/A" };

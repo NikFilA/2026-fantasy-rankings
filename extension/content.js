@@ -2101,16 +2101,25 @@ const visibleDraftCellMap = (board) => {
 const calculateAllDraftGrades = () => {
   const { byId, byName } = boardPlayerLookup();
   const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
-    ? assistantState.lastLiveSleeperPicks.filter(Boolean)
+    ? assistantState.lastLiveSleeperPicks
     : [];
+  const picksByNumber = new Map(trackedPicks.map((pick, index) => [
+    Number(pick?.pick_no) || index + 1,
+    pick || {},
+  ]));
+  const totalDraftedCount = Math.max(Number(assistantState.draftedCount) || 0, trackedPicks.length);
   const recognizedPicks = [];
-  trackedPicks.forEach((pick, index) => {
-    const pickNumber = Number(pick.pick_no) || index + 1;
+  for (let sequence = 1; sequence <= totalDraftedCount; sequence += 1) {
+    const pick = picksByNumber.get(sequence) || {};
+    const pickNumber = Number(pick.pick_no) || sequence;
     const round = Math.ceil(pickNumber / 12);
     const remainder = pickNumber % 12;
     const slotInRound = remainder === 0 ? 12 : remainder;
     const isOddRound = round % 2 === 1;
-    const teamSlot = isOddRound ? slotInRound : 13 - slotInRound;
+    const nativeDraftSlot = Number(pick.draft_slot ?? pick.metadata?.draft_slot);
+    const teamSlot = nativeDraftSlot >= 1 && nativeDraftSlot <= 12
+      ? nativeDraftSlot
+      : (isOddRound ? slotInRound : 13 - slotInRound);
     const playerId = String(pick.player_id || "");
     const trackedName = pickPlayerName(pick);
     const player = byId.get(playerId)
@@ -2126,6 +2135,7 @@ const calculateAllDraftGrades = () => {
     const recognizedPick = {
       ...player,
       player_id: playerId || `pick-${pickNumber}`,
+      player_name: trackedName || player.name,
       pick_no: pickNumber,
       round,
       draft_slot: teamSlot,
@@ -2149,7 +2159,7 @@ const calculateAllDraftGrades = () => {
       gradeColor: grade.color,
     });
     recognizedPicks.push(recognizedPick);
-  });
+  }
   const calculatedTeamGrades = {};
   for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
     const teamPicks = recognizedPicks.filter((pick) => pick.teamSlot === teamSlot);
@@ -2158,7 +2168,7 @@ const calculateAllDraftGrades = () => {
       teamSlot,
       teamPicks,
       teamScore: weighted?.teamScore ?? null,
-      teamLetterGrade: weighted?.grade ?? null,
+      teamLetterGrade: weighted?.grade ?? "N/A",
       color: weighted?.color ?? "#64748b",
     };
   }
@@ -2193,10 +2203,11 @@ const overallAdpForPickGrade = (player) => {
 
 const letterGradeFromPickScore = (score) => {
   if (score >= 93) return { grade: "A+", color: "#16a34a" };
-  if (score >= 90) return { grade: "A", color: "#22c55e" };
-  if (score >= 85) return { grade: "B+", color: "#2563eb" };
-  if (score >= 75) return { grade: "B", color: "#3b82f6" };
-  if (score >= 65) return { grade: "C", color: "#eab308" };
+  if (score >= 88) return { grade: "A", color: "#22c55e" };
+  if (score >= 83) return { grade: "B+", color: "#2563eb" };
+  if (score >= 78) return { grade: "B", color: "#3b82f6" };
+  if (score >= 73) return { grade: "C+", color: "#ca8a04" };
+  if (score >= 68) return { grade: "C", color: "#eab308" };
   if (score >= 60) return { grade: "D", color: "#f97316" };
   return { grade: "F", color: "#ef4444" };
 };
@@ -2294,7 +2305,7 @@ const renderIndividualPickGrades = (board, processedPicks, visibleCells) => {
       const shownDelta = `${roundedDelta > 0 ? "+" : ""}${roundedDelta}`;
       badge.setAttribute(
         "title",
-        `Pick #${pick.pick_no} (${pick.name})\n• Pick Spot: ${result.pickSpot} | ADP: ${result.playerADP === null ? "N/A" : result.playerADP.toFixed(1)}\n• Value Delta: ${shownDelta} picks\n• Pick Score: ${Math.round(result.pickScore)}/100 (${result.grade})`,
+        `Pick #${pick.pick_no} (${pick.player_name || pick.name})\n• ADP: ${result.playerADP === null ? "N/A" : result.playerADP.toFixed(1)}\n• Value Delta: ${shownDelta}\n• Pick Score: ${Math.round(result.pickScore)}/100\n• Grade: ${result.grade}`,
       );
       badge.style.cssText = [
         "position:absolute",
@@ -2432,8 +2443,8 @@ const renderLiveDraftGrades = () => {
     badge.setAttribute(
       "title",
       teamPicks.length
-        ? `Team Grade: ${result.grade}\n• Weighted Score: ${Math.round(result.teamScore)}/100\n• Total Picks Recognized: ${teamPicks.length}\n• Picks Breakdown: ${teamPicks.map((pick) => pick.letterGrade).join(", ")}`
-        : "No picks yet",
+        ? `Team Grade: ${result.grade}\nWeighted Score: ${Math.round(result.teamScore)}/100\nTotal Picks Recognized: ${teamPicks.length}\nPicks Breakdown: ${teamPicks.map((pick) => pick.letterGrade).join(", ")}`
+        : "Team Grade: N/A\nWeighted Score: N/A\nTotal Picks Recognized: 0\nPicks Breakdown: None",
     );
     badge.style.cssText = [
       "position:absolute",

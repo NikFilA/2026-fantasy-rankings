@@ -2150,10 +2150,15 @@ function updateTeamHeaderGradeBadges() {
     '[class*="avatar"], img[src*="avatar"]',
   )).filter((element) => {
     if (element.closest(".extension-ui-element")) return false;
+    if (element.closest('[class*="cell"]')
+      || element.closest('[class*="pick"]')
+      || element.closest('[class*="row"]')) {
+      return false;
+    }
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return rect.top >= -5
-      && rect.top <= 120
+      && rect.top <= 90
       && rect.width >= 16
       && rect.width <= 75
       && rect.height >= 16

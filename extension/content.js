@@ -2203,9 +2203,15 @@ function headerGradeOverlayContainer() {
     container = document.createElement("div");
     container.id = "extension-header-overlay-container";
     container.className = "extension-ui-element";
-    container.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;";
     document.body.appendChild(container);
   }
+  container.style.position = "fixed";
+  container.style.top = "0px";
+  container.style.left = "0px";
+  container.style.width = "100vw";
+  container.style.height = "100vh";
+  container.style.pointerEvents = "none";
+  container.style.zIndex = "99999";
   return container;
 }
 
@@ -2231,8 +2237,8 @@ function updateTeamHeaderGradeBadges() {
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
       "position:absolute",
-      `top:${rect.top + window.scrollY - 2}px`,
-      `left:${rect.right + window.scrollX - 16}px`,
+      `top:${rect.top - 2}px`,
+      `left:${rect.right - 16}px`,
       "border-radius:50%",
       "width:22px",
       "height:22px",

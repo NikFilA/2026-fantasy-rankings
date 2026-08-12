@@ -2139,21 +2139,33 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function getActiveHeaderAvatars() {
-  const candidates = Array.from(document.querySelectorAll(
-    '.sticky-header img, .sticky-header [class*="avatar"], '
-    + '.draftboard-header img, .draftboard-header [class*="avatar"], '
-    + '[class*="header"] [class*="avatar"]',
-  )).filter((element) => !element.closest(".extension-ui-element"));
+  const stickyHeader = document.querySelector('.sticky-header, [class*="sticky"]');
+  const stickyRect = stickyHeader?.getBoundingClientRect();
+  const stickyStyle = stickyHeader ? getComputedStyle(stickyHeader) : null;
+  const isStickyActive = Boolean(
+    stickyHeader
+    && stickyRect.height > 0
+    && stickyRect.top >= -10
+    && stickyStyle.display !== "none"
+    && stickyStyle.visibility !== "hidden"
+  );
 
-  const validAvatars = candidates.filter((element) => {
+  const targetContainer = isStickyActive
+    ? stickyHeader
+    : document.querySelector('.draftboard-header, [class*="draftboard"]');
+  if (!targetContainer) return [];
+
+  const rawAvatars = Array.from(
+    targetContainer.querySelectorAll('img, [class*="avatar"]'),
+  ).filter((element) => !element.closest(".extension-ui-element"));
+
+  const validAvatars = rawAvatars.filter((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return rect.width >= 16
       && rect.width <= 90
       && rect.height >= 16
       && rect.height <= 90
-      && rect.top >= -20
-      && rect.top <= 120
       && style.display !== "none"
       && style.visibility !== "hidden"
       && style.opacity !== "0";
@@ -2166,14 +2178,10 @@ function getActiveHeaderAvatars() {
   const unique = [];
   validAvatars.forEach((element) => {
     const rect = element.getBoundingClientRect();
-    const existingIndex = unique.findIndex((existing) => (
-      Math.abs(existing.getBoundingClientRect().left - rect.left) < 20
+    const duplicate = unique.some((existing) => (
+      Math.abs(existing.getBoundingClientRect().left - rect.left) < 15
     ));
-    if (existingIndex === -1) {
-      unique.push(element);
-    } else if (rect.top < unique[existingIndex].getBoundingClientRect().top) {
-      unique[existingIndex] = element;
-    }
+    if (!duplicate) unique.push(element);
   });
 
   return unique.slice(0, DRAFT_TEAM_COUNT);

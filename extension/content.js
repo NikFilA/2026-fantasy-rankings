@@ -37,6 +37,8 @@ const assistantState = {
   search: "",
   panelView: "board",
   listScrollTop: 0,
+  gradesScrollTop: 0,
+  gradesRenderSignature: "",
   expanded: true,
   loading: true,
   error: "",
@@ -1333,6 +1335,7 @@ const styles = `
     overscroll-behavior: contain;
     scrollbar-width: thin;
   }
+  .list:has(.grades-scroll-container) { overflow: hidden; }
   .row {
     display: flex;
     gap: 8px;
@@ -1678,7 +1681,7 @@ const formatGradeNumber = (value, digits = 1) => (
 const teamGradesHtml = () => {
   const teamGrades = window.calculatedTeamGrades || {};
   return `
-    <div class="team-grades" data-role="team-grades">
+    <div id="team-grades-list" class="team-grades grades-scroll-container" data-role="team-grades">
       ${Array.from({ length: DRAFT_TEAM_COUNT }, (_, index) => {
         const teamSlot = index + 1;
         const team = teamGrades[teamSlot] || { teamPicks: [], teamScore: null, teamLetterGrade: "N/A" };
@@ -1714,6 +1717,13 @@ const bindPlayerRows = (shadowRoot) => {
 };
 
 const bindTeamGradeAccordions = (shadowRoot) => {
+  const gradesScrollContainer = shadowRoot.querySelector(".grades-scroll-container");
+  if (gradesScrollContainer) {
+    gradesScrollContainer.scrollTop = assistantState.gradesScrollTop;
+    gradesScrollContainer.addEventListener("scroll", () => {
+      assistantState.gradesScrollTop = gradesScrollContainer.scrollTop;
+    }, { passive: true });
+  }
   shadowRoot.querySelectorAll("details.team-grade[data-team-slot]").forEach((drawer) => {
     drawer.addEventListener("toggle", () => {
       const teamSlot = Number(drawer.dataset.teamSlot);
@@ -1724,14 +1734,32 @@ const bindTeamGradeAccordions = (shadowRoot) => {
   });
 };
 
+const teamGradesRenderSignature = () => Object.values(window.calculatedTeamGrades || {})
+  .flatMap((team) => team?.teamPicks || [])
+  .map((pick) => `${pick.pick_no}:${pick.player_id}:${Number(pick.pickScore).toFixed(2)}`)
+  .join("|");
+
 const updateListUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.shadowRoot) => {
   const list = shadowRoot?.querySelector(".list");
   if (!list) return;
+  const currentGradesContainer = list.querySelector(".grades-scroll-container");
+  if (currentGradesContainer) assistantState.gradesScrollTop = currentGradesContainer.scrollTop;
+  const nextGradesSignature = teamGradesRenderSignature();
+  if (assistantState.panelView === "grades"
+    && currentGradesContainer
+    && assistantState.gradesRenderSignature === nextGradesSignature) {
+    return;
+  }
   assistantState.listScrollTop = list.scrollTop;
   list.innerHTML = assistantState.panelView === "grades"
     ? teamGradesHtml()
     : playerListHtml(visiblePlayers());
   list.scrollTop = assistantState.listScrollTop;
+  if (assistantState.panelView === "grades") {
+    assistantState.gradesRenderSignature = nextGradesSignature;
+    const nextGradesContainer = list.querySelector(".grades-scroll-container");
+    if (nextGradesContainer) nextGradesContainer.scrollTop = assistantState.gradesScrollTop;
+  }
   if (assistantState.panelView === "board") bindPlayerRows(shadowRoot);
   else bindTeamGradeAccordions(shadowRoot);
 };
@@ -1777,6 +1805,8 @@ const renderAssistant = () => {
   }
   const existingScrollContainer = root.shadowRoot.querySelector(".scrollable-list-container");
   if (existingScrollContainer) assistantState.listScrollTop = existingScrollContainer.scrollTop;
+  const existingGradesContainer = root.shadowRoot.querySelector(".grades-scroll-container");
+  if (existingGradesContainer) assistantState.gradesScrollTop = existingGradesContainer.scrollTop;
   const focusedSearch = root.shadowRoot.activeElement?.id === "draft-assistant-search";
   const priorSearchSelection = focusedSearch
     ? {
@@ -1821,6 +1851,11 @@ const renderAssistant = () => {
   `;
   const nextScrollContainer = root.shadowRoot.querySelector(".scrollable-list-container");
   if (nextScrollContainer) nextScrollContainer.scrollTop = assistantState.listScrollTop;
+  if (assistantState.panelView === "grades") {
+    assistantState.gradesRenderSignature = teamGradesRenderSignature();
+    const nextGradesContainer = root.shadowRoot.querySelector(".grades-scroll-container");
+    if (nextGradesContainer) nextGradesContainer.scrollTop = assistantState.gradesScrollTop;
+  }
   bindAssistant(root.shadowRoot);
   restoreActiveDraftAlerts(root.shadowRoot);
   if (focusedSearch) {
@@ -1947,6 +1982,7 @@ const bindAssistant = (shadowRoot) => {
     const resizeObserver = new ResizeObserver(() => {
       if (!assistantState.expanded) return;
       const lockedScrollTop = assistantState.listScrollTop;
+      const lockedGradesScrollTop = assistantState.gradesScrollTop;
       const rect = panel.getBoundingClientRect();
       const sizeChanged = Math.abs(Number(assistantState.size.width) - rect.width) > 1
         || Math.abs(Number(assistantState.size.height) - rect.height) > 1;
@@ -1958,6 +1994,10 @@ const bindAssistant = (shadowRoot) => {
       }
       if (scrollContainer && scrollContainer.scrollTop !== lockedScrollTop) {
         scrollContainer.scrollTop = lockedScrollTop;
+      }
+      const gradesScrollContainer = scrollContainer?.querySelector(".grades-scroll-container");
+      if (gradesScrollContainer && gradesScrollContainer.scrollTop !== lockedGradesScrollTop) {
+        gradesScrollContainer.scrollTop = lockedGradesScrollTop;
       }
     });
     resizeObserver.observe(panel);
@@ -2094,7 +2134,7 @@ function teamGradeBadgeColor(letterGrade) {
 
 function sleeperTeamHeaderElements() {
   const exactAvatars = [...document.querySelectorAll(
-    '.draftboard-header .avatar, .sticky-header .avatar, [class*="team-avatar"], [class*="avatar"]',
+    '.draftboard-header [class*="avatar"], .sticky-header [class*="avatar"], .team-avatar, [class*="team-header"] [class*="avatar"]',
   )]
     .filter((element) => !element.closest(".extension-ui-element"))
     .filter((element) => {
@@ -2119,7 +2159,9 @@ function sleeperTeamHeaderElements() {
       if (!duplicate) uniqueByColumn.push(candidate);
     });
 
-  return uniqueByColumn.length === DRAFT_TEAM_COUNT ? uniqueByColumn : [];
+  return uniqueByColumn.length >= DRAFT_TEAM_COUNT
+    ? uniqueByColumn.slice(0, DRAFT_TEAM_COUNT)
+    : [];
 }
 
 function removeNestedTeamHeaderBadges() {

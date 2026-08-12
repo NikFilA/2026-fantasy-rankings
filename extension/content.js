@@ -2146,30 +2146,45 @@ function updateTeamHeaderGradeBadges() {
   if (!isSleeperDraft || !document.body) return;
   document.getElementById("extension-header-overlay-container")?.remove();
   document.querySelectorAll(".sleeper-extension-injected-badge").forEach((element) => element.remove());
-  const avatarCandidates = Array.from(document.querySelectorAll(
+  const headerContainers = Array.from(document.querySelectorAll(
+    '.draftboard-header, [class*="draftboard-header"], .sticky-header, [class*="sticky-header"]',
+  ));
+  const activeHeader = headerContainers.find((element) => {
+    if (element.closest(".extension-ui-element")) return false;
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return rect.height > 20
+      && rect.top >= -20
+      && rect.top <= 180
+      && rect.width > 300
+      && style.display !== "none"
+      && style.visibility !== "hidden"
+      && style.opacity !== "0";
+  });
+  if (!activeHeader) return;
+
+  const headerAvatars = Array.from(activeHeader.querySelectorAll(
     '[class*="avatar"], [class*="user-icon"], img, svg',
   )).filter((element) => {
     if (element.closest(".extension-ui-element")) return false;
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    return rect.top >= -10
-      && rect.top <= 200
-      && rect.width >= 20
-      && rect.width <= 70
-      && rect.height >= 20
-      && rect.height <= 70
+    return rect.width >= 18
+      && rect.width <= 75
+      && rect.height >= 18
+      && rect.height <= 75
       && style.display !== "none"
       && style.visibility !== "hidden"
       && style.opacity !== "0";
   });
-  avatarCandidates.sort((left, right) => (
+  headerAvatars.sort((left, right) => (
     left.getBoundingClientRect().left - right.getBoundingClientRect().left
   ));
 
   const teamAvatars = [];
-  avatarCandidates.forEach((element) => {
+  headerAvatars.forEach((element) => {
     const x = element.getBoundingClientRect().left;
-    if (!teamAvatars.some((existing) => Math.abs(existing.x - x) < 25)) {
+    if (!teamAvatars.some((existing) => Math.abs(existing.x - x) < 20)) {
       teamAvatars.push({ element, x });
     }
   });
@@ -2195,7 +2210,7 @@ function updateTeamHeaderGradeBadges() {
     badge.title = `Team ${teamSlot}: ${team.teamLetterGrade} (${Math.round(team.teamScore)}/100) · ${team.teamPicks.length} picks`;
     badge.style.cssText = [
       "position:absolute",
-      "top:-6px",
+      "top:-5px",
       "right:-8px",
       "z-index:99999",
       "pointer-events:none",

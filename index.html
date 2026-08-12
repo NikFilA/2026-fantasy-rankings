@@ -2034,7 +2034,7 @@
         </div>
 
         <section class="draft-panel" aria-label="Draft sync">
-            <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or copied Underdog board text" aria-label="Sleeper draft URL or copied Underdog board text" autocomplete="off">
+            <input class="draft-input" id="draftInput" type="text" placeholder="Sleeper draft URL or ESPN League ID / URL" aria-label="Sleeper draft URL or ESPN League ID / URL" autocomplete="off">
             <button class="draft-btn" type="button" id="draftConnectButton">Connect Draft</button>
             <button class="draft-btn secondary" type="button" id="draftStopButton">Stop</button>
             <select class="draft-select" id="mySlotSelect" aria-label="My Sleeper draft slot">
@@ -2046,7 +2046,7 @@
             </label>
             <div class="draft-status" aria-live="polite">
                 <strong id="draftBest">Best available: Off</strong>
-                <span id="draftStatus">Paste a Sleeper draft link or copied Underdog board when you are drafting.</span>
+                <span id="draftStatus">Paste a Sleeper draft link or ESPN League ID / URL when you are drafting.</span>
                 <span class="draft-save-row">Saved: <strong id="saveState">Local</strong></span>
             </div>
             <div class="roster-tracker" id="rosterTracker" aria-live="polite">
@@ -2227,6 +2227,7 @@
                 profileYear: PLAYER_PROFILE_SEASON,
                 playerAssets: {},
                 sleeperKeyById: {},
+                espnKeyById: {},
                 sleeperAdp: { byKey: {}, byNamePos: {}, updatedAt: "", source: "" },
                 espnAdp: { byKey: {}, byNamePos: {}, updatedAt: "", source: "" },
                 visibleMarkets: DEFAULT_MARKET_COLUMNS.slice(),
@@ -5554,6 +5555,7 @@
                     }
                     const byKey = {};
                     const byNamePos = {};
+                    const espnKeyById = {};
                     (payload?.players || []).forEach((player) => {
                         const row = {
                             ...player,
@@ -5566,6 +5568,7 @@
                         const exactKey = `${nameKey(row.name)}|${marketTeam(row.team)}|${String(row.pos || "").toUpperCase()}`;
                         const fallbackKey = `${nameKey(row.name)}|${String(row.pos || "").toUpperCase()}`;
                         byKey[exactKey] = row;
+                        if (player.id) espnKeyById[String(player.id)] = exactKey;
                         if (Object.prototype.hasOwnProperty.call(byNamePos, fallbackKey)) {
                             byNamePos[fallbackKey] = null;
                         } else {
@@ -5578,6 +5581,7 @@
                         updatedAt: payload?.updatedAt || new Date().toISOString(),
                         source: payload?.source || "ESPN",
                     };
+                    state.espnKeyById = espnKeyById;
                     render();
                 } catch (error) {
                     console.warn("Live ESPN PPR ADP could not be loaded.", error);
@@ -5832,30 +5836,29 @@
                 return `${first[0] || ""}|${nameKey(last)}|${marketTeam(player.team)}|${player.pos}`.toLowerCase();
             };
 
-            const keyFromUnderdogPick = (shortName, pos, team) => {
-                const shortParts = String(shortName || "").replace(/\s+/g, " ").trim().split(" ");
-                const initial = String(shortParts[0] || "").replace(/[^A-Za-z]/g, "")[0] || "";
-                const last = shortParts.slice(1).join(" ") || shortParts[0] || "";
-                const lookup = `${initial}|${nameKey(last)}|${marketTeam(team)}|${String(pos || "").toUpperCase()}`.toLowerCase();
-                const player = basePlayers().find((candidate) => playerShortDraftKey(candidate) === lookup);
-                return player ? playerMarketKey(player) : "";
+            const espnLeagueIdFromInput = (value) => {
+                const input = String(value || "").trim();
+                const queryMatch = input.match(/[?&]leagueId=(\d+)/i);
+                if (queryMatch) return queryMatch[1];
+                const pathMatch = input.match(/fantasy\.espn\.com\/football\/(?:draft|league)[^#]*?(?:leagueId[=/])(\d+)/i);
+                if (pathMatch) return pathMatch[1];
+                if (/^\d{1,14}$/.test(input)) return input;
+                return "";
             };
 
-            const underdogDraftUrl = (value) => /app\.underdogsports\.com\/draft\/[0-9a-f-]{20,}/i.test(String(value || ""));
-
-            const underdogDraftKeysFromText = (value) => {
-                const text = String(value || "").replace(/\s+/g, " ");
-                const pattern = /(?:\d+\.\d+\|\d+\s+)([A-Z]\.\s*(?:[A-Z]\.\s*)?[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*){0,2})\s+(QB|RB|WR|TE)\s*-\s*([A-Z]{2,3})/g;
-                const keys = new Set();
-                let match = pattern.exec(text);
-                while (match) {
-                    const key = keyFromUnderdogPick(match[1], match[2], match[3]);
-                    if (key) {
-                        keys.add(key);
-                    }
-                    match = pattern.exec(text);
+            const keyFromEspnPick = (pick) => {
+                const playerId = String(pick.playerId || pick.player_id || pick.id || "");
+                if (playerId && state.espnKeyById[playerId]) return state.espnKeyById[playerId];
+                const name = pick.playerName || pick.fullName || pick.player?.fullName || "";
+                const position = String(pick.position || pick.player?.position || "").toUpperCase();
+                const team = pick.proTeamAbbrev || pick.team || pick.player?.team || "";
+                if (name && position) {
+                    const exact = `${nameKey(name)}|${marketTeam(team)}|${position}`;
+                    if (basePlayers().some((player) => playerMarketKey(player) === exact)) return exact;
+                    const player = basePlayers().find((candidate) => nameKey(candidate.name) === nameKey(name) && candidate.pos === position);
+                    return player ? playerMarketKey(player) : "";
                 }
-                return keys;
+                return "";
             };
 
             const findBestAvailable = () => {
@@ -5875,7 +5878,7 @@
             const updateDraftStatus = () => {
                 if (!state.draft.active) {
                     elements.draftBest.textContent = "Best available: Off";
-                    elements.draftStatus.textContent = "Paste a Sleeper draft link or copied Underdog board when you are drafting.";
+                    elements.draftStatus.textContent = "Paste a Sleeper draft link or ESPN League ID / URL when you are drafting.";
                     elements.draftStatus.className = "";
                     updateRosterTracker();
                     return;
@@ -5890,16 +5893,9 @@
                 const best = findBestAvailable();
                 state.draft.bestAvailableKey = best ? playerMarketKey(best) : "";
                 elements.draftBest.textContent = best ? `Best available: ${best.name}` : "Best available: None";
-                if (state.draft.provider === "underdog") {
-                    const synced = state.draft.lastSync ? state.draft.lastSync.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "not imported";
-                    elements.draftStatus.textContent = `Underdog manual import · ${state.draft.draftedKeys.size} picked · imported ${synced}`;
-                    elements.draftStatus.className = "";
-                    updateRosterTracker();
-                    return;
-                }
                 const picked = state.draft.picks.length;
                 const synced = state.draft.lastSync ? state.draft.lastSync.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : "not synced";
-                elements.draftStatus.textContent = `Draft ${state.draft.id} · ${picked} picked · synced ${synced}`;
+                elements.draftStatus.textContent = `${state.draft.provider === "espn" ? "ESPN League" : "Draft"} ${state.draft.id} · ${picked} picked · synced ${synced}`;
                 elements.draftStatus.className = "";
                 updateRosterTracker();
             };
@@ -5911,27 +5907,53 @@
             };
 
             const refreshDraftPicks = async () => {
-                if (state.draft.provider !== "sleeper" || !state.draft.id || state.draft.loading) {
+                if (!state.draft.id || state.draft.loading) {
                     return;
                 }
                 state.draft.loading = true;
                 try {
-                    const picks = await fetchJson(`${SLEEPER_DRAFT_BASE_URL}/${state.draft.id}/picks`);
+                    const payload = state.draft.provider === "espn"
+                        ? await fetchJson(apiPath(`/api/espn-draft?leagueId=${encodeURIComponent(state.draft.id)}`))
+                        : await fetchJson(`${SLEEPER_DRAFT_BASE_URL}/${state.draft.id}/picks`);
+                    const picks = state.draft.provider === "espn"
+                        ? (payload?.draftDetail?.picks || payload?.picks || [])
+                        : payload;
                     const draftedKeys = new Set();
                     picks.forEach((pick) => {
-                        const key = keyFromDraftPick(pick);
+                        const key = state.draft.provider === "espn" ? keyFromEspnPick(pick) : keyFromDraftPick(pick);
                         if (key) {
                             draftedKeys.add(key);
                         }
                     });
-                    state.draft.picks = picks;
+                    state.draft.picks = state.draft.provider === "espn"
+                        ? picks.map((pick, index) => {
+                            const key = keyFromEspnPick(pick);
+                            const player = basePlayers().find((candidate) => playerMarketKey(candidate) === key);
+                            const overallPick = Number(pick.overallPickNumber || pick.pickNumber || pick.id) || index + 1;
+                            const round = Math.ceil(overallPick / 12);
+                            const positionInRound = ((overallPick - 1) % 12) + 1;
+                            const draftSlot = round % 2 === 1 ? positionInRound : 13 - positionInRound;
+                            return {
+                                ...pick,
+                                pick_no: overallPick,
+                                draft_slot: String(draftSlot),
+                                metadata: {
+                                    player_name: player?.name || pick.playerName || pick.fullName || "",
+                                    position: player?.pos || pick.position || "",
+                                    team: player?.team || pick.proTeamAbbrev || "",
+                                },
+                            };
+                        })
+                        : picks;
                     state.draft.draftedKeys = draftedKeys;
                     populateMySlotOptions();
                     state.draft.error = "";
                     state.draft.lastSync = new Date();
                 } catch (error) {
-                    console.warn("Sleeper draft could not be synced.", error);
-                    state.draft.error = "Could not sync Sleeper draft. Check the draft ID.";
+                    console.warn(`${state.draft.provider} draft could not be synced.`, error);
+                    state.draft.error = state.draft.provider === "espn"
+                        ? "Could not sync ESPN league. Confirm it is public and the League ID is correct."
+                        : "Could not sync Sleeper draft. Check the draft ID.";
                 } finally {
                     state.draft.loading = false;
                     updateDraftStatus();
@@ -5959,67 +5981,43 @@
             };
 
             const startDraftSync = async (rawValue) => {
-                const rawInput = String(rawValue || "").trim();
-                const underdogKeys = underdogDraftKeysFromText(rawInput);
-                if (underdogKeys.size > 0) {
-                    if (draftTimer) {
-                        clearInterval(draftTimer);
-                        draftTimer = null;
-                    }
-                    state.draft.provider = "underdog";
-                    state.draft.id = "underdog-manual";
-                    state.draft.active = true;
-                    state.draft.error = "";
-                    state.draft.details = null;
-                    state.draft.myRosterId = "";
-                    state.draft.picks = [];
-                    state.draft.draftedKeys = underdogKeys;
-                    state.draft.lastSync = new Date();
-                    localStorage.removeItem(DRAFT_STORAGE_KEY);
-                    localStorage.removeItem(MY_SLOT_STORAGE_KEY);
-                    populateMySlotOptions();
-                    updateDraftStatus();
-                    render();
-                    return;
-                }
-                if (underdogDraftUrl(rawInput)) {
-                    if (draftTimer) {
-                        clearInterval(draftTimer);
-                        draftTimer = null;
-                    }
-                    state.draft.provider = "underdog";
-                    state.draft.id = "underdog-url";
-                    state.draft.active = true;
-                    state.draft.error = "Underdog links are not supported. Paste copied draft-board text from the Underdog room to import picks.";
-                    state.draft.draftedKeys = new Set();
-                    state.draft.bestAvailableKey = "";
-                    localStorage.removeItem(DRAFT_STORAGE_KEY);
-                    populateMySlotOptions();
-                    updateDraftStatus();
-                    render();
-                    return;
-                }
-                const draftId = draftIdFromInput(rawValue);
-                if (!draftId) {
+                const storedInput = String(rawValue || "").trim();
+                const storedProviderMatch = storedInput.match(/^(sleeper|espn):(\d+)$/i);
+                const rawInput = storedProviderMatch ? storedProviderMatch[2] : storedInput;
+                const looksLikeEspn = /espn\.com/i.test(rawInput) || /^\d{1,14}$/.test(rawInput);
+                const espnLeagueId = storedProviderMatch?.[1].toLowerCase() === "espn"
+                    ? rawInput
+                    : looksLikeEspn ? espnLeagueIdFromInput(rawInput) : "";
+                const sleeperDraftId = storedProviderMatch?.[1].toLowerCase() === "sleeper"
+                    ? rawInput
+                    : !looksLikeEspn ? draftIdFromInput(rawInput) : "";
+                const provider = espnLeagueId ? "espn" : sleeperDraftId ? "sleeper" : "";
+                const draftId = espnLeagueId || sleeperDraftId;
+                if (!provider || !draftId) {
                     state.draft.provider = "sleeper";
                     state.draft.active = true;
-                    state.draft.error = "Paste a valid Sleeper draft URL or ID.";
+                    state.draft.error = "Please enter a valid Sleeper Draft URL or ESPN League ID.";
                     updateDraftStatus();
                     return;
                 }
                 if (draftTimer) {
                     clearInterval(draftTimer);
                 }
-                state.draft.provider = "sleeper";
+                state.draft.provider = provider;
                 state.draft.id = draftId;
                 state.draft.active = true;
                 state.draft.error = "";
                 elements.draftInput.value = draftId;
-                localStorage.setItem(DRAFT_STORAGE_KEY, draftId);
-                try {
-                    await refreshDraftDetails();
-                } catch (error) {
-                    console.warn("Sleeper draft details could not be loaded.", error);
+                localStorage.setItem(DRAFT_STORAGE_KEY, `${provider}:${draftId}`);
+                if (provider === "sleeper") {
+                    try {
+                        await refreshDraftDetails();
+                    } catch (error) {
+                        console.warn("Sleeper draft details could not be loaded.", error);
+                    }
+                } else {
+                    state.draft.details = { settings: { teams: 12 }, provider: "espn" };
+                    populateMySlotOptions();
                 }
                 await refreshDraftPicks();
                 draftTimer = setInterval(refreshDraftPicks, DRAFT_REFRESH_MS);

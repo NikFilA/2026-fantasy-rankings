@@ -2142,25 +2142,24 @@ function getTeamAvatarContainers() {
   const targets = Array.from(document.querySelectorAll(
     '.draftboard-header [class*="avatar"], .draftboard-header img, '
     + '.sticky-header [class*="avatar"], .sticky-header img, '
-    + '[class*="draftboard"] [class*="header"] [class*="avatar"]',
+    + '.team-header [class*="avatar"], .team-header img',
   ));
 
   const valid = targets.filter((element) => {
     if (!element.parentElement) return false;
     if (element.closest(".extension-ui-element")) return false;
-    if (element.closest(
-      '.draft-cell, .pick-cell, [data-pick-number], [data-pick-no], [data-testid="pick-cell"]',
-    )) return false;
+    if (element.closest('.cell, .pick, [class*="cell"], [class*="pick"], [class*="board-row"]')) return false;
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return rect.width >= 16
       && rect.width <= 90
       && rect.height >= 16
       && rect.height <= 90
-      && rect.top >= -20
+      && rect.top >= -30
       && rect.top <= 140
       && style.display !== "none"
-      && style.visibility !== "hidden";
+      && style.visibility !== "hidden"
+      && style.opacity !== "0";
   });
 
   const wrappers = valid.map((element) => element.parentElement);

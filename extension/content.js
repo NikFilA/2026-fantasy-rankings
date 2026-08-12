@@ -19,6 +19,9 @@ const isRankingsHost = (hostname) => (
 const isAppPage = isRankingsHost(window.location.hostname);
 const isSleeperDraft = /(^|\.)sleeper\.(com|app)$/.test(window.location.hostname)
   && /\/draft\/nfl\//.test(window.location.pathname);
+const isESPNFantasy = window.location.hostname.includes("espn.com")
+  && /fantasy|draft/i.test(`${window.location.hostname}${window.location.pathname}${window.location.hash}`);
+const isSupportedDraft = isSleeperDraft || isESPNFantasy;
 
 if (typeof window.activeDraftAlertHtml === "undefined") {
   window.activeDraftAlertHtml = null;
@@ -819,6 +822,29 @@ const loadSleeperDraftContext = async () => {
   };
 };
 
+const loadESPNDraftContext = () => {
+  if (!assistantState.leagueSettings) {
+    assistantState.leagueSettings = {
+      total_rosters: 12,
+      draft_rounds: 16,
+      scoring_settings: { rec: 1, pass_td: 4 },
+      roster_positions: ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "FLEX", "BN", "BN", "BN", "BN", "BN", "BN", "BN", "BN"],
+      draft_settings: { teams: 12, rounds: 16 },
+    };
+  }
+  if (!assistantState.sleeperDraftDetails) {
+    assistantState.sleeperDraftDetails = {
+      type: "snake",
+      settings: { teams: 12, rounds: 16 },
+      metadata: { scoring_type: "ppr", source: "espn-dom" },
+    };
+  }
+  return {
+    leagueSettings: assistantState.leagueSettings,
+    draftDetails: assistantState.sleeperDraftDetails,
+  };
+};
+
 const updateMainPanelUI = (availablePlayers, contextPayload, { updateAlerts = true, pickSignature: alertSignature = "" } = {}) => {
   const purgedAvailablePlayers = availablePlayers.filter(
     (player) => !assistantState.draftedPlayerIds.has(String(player.player_id))
@@ -857,7 +883,7 @@ const refreshLocalDraftMetrics = async (rawPicks, { force = false } = {}) => {
   try {
     const [sleeperSettings, sleeperContext, modules] = await Promise.all([
       chrome.storage.local.get(["sleeperUserOrSlot", "sleeperUserId"]),
-      loadSleeperDraftContext(),
+      isESPNFantasy ? Promise.resolve(loadESPNDraftContext()) : loadSleeperDraftContext(),
       loadAiModules(),
     ]);
     const savedUserIdentity = String(
@@ -868,11 +894,9 @@ const refreshLocalDraftMetrics = async (rawPicks, { force = false } = {}) => {
       ...pick,
       pick_no: pick.pick_no || index + 1,
     }));
-    const resolvedUserDraftSlot = resolveStoredUserDraftSlot(
-      storedUserIdentity,
-      sleeperContext.draftDetails,
-      normalizedPicks,
-    );
+    const resolvedUserDraftSlot = isESPNFantasy
+      ? (/^\d{1,2}$/.test(storedUserIdentity) ? Number(storedUserIdentity) : 1)
+      : resolveStoredUserDraftSlot(storedUserIdentity, sleeperContext.draftDetails, normalizedPicks);
     assistantState.resolvedUserDraftSlot = resolvedUserDraftSlot;
     const resolvedUserIdentity = resolvedUserDraftSlot
       ? String(resolvedUserDraftSlot)
@@ -2006,7 +2030,7 @@ const updatePanelStateUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.
 };
 
 const renderAssistant = () => {
-  if (!isSleeperDraft) {
+  if (!isSupportedDraft) {
     return;
   }
   let root = document.getElementById(ASSISTANT_ID);
@@ -2319,7 +2343,10 @@ const bindAssistant = (shadowRoot) => {
     renderAssistant();
   });
   shadowRoot.querySelector("[data-action='refresh']")?.addEventListener("click", () => {
-    syncDraftPicks({ manualAdvice: true }).catch((error) => {
+    const refreshPromise = isESPNFantasy
+      ? syncESPNDraftState({ force: true })
+      : syncDraftPicks({ manualAdvice: true });
+    refreshPromise.catch((error) => {
       console.error("[DraftAssistant] Fetch error:", error);
     });
   });
@@ -2434,10 +2461,10 @@ const ensurePlayerValueBadgeStyles = () => {
 };
 
 function injectPlayerListValueBadges() {
-  if (!isSleeperDraft || !document.body) return;
+  if (!isSupportedDraft || !document.body) return;
   ensurePlayerValueBadgeStyles();
   const rows = Array.from(document.querySelectorAll(
-    '[class*="player-row"], [class*="playerRow"], [class*="player-list-item"], [class*="playerListItem"]',
+    '[class*="player-row"], [class*="playerRow"], [class*="player-list-item"], [class*="playerListItem"], .player-table tbody tr, .Table__TR',
   )).filter((row) => !row.closest(".extension-ui-element"));
   if (!rows.length) return;
 
@@ -2867,6 +2894,111 @@ const observeDraftPage = () => {
   });
 };
 
+const espnPlayerFromText = (text, lookupPlayers) => {
+  const normalizedText = normalizePlayerName(text);
+  return lookupPlayers.find((player) => (
+    player.normalizedName && normalizedText.includes(player.normalizedName)
+  )) || null;
+};
+
+function getESPNDraftState() {
+  const lookupPlayers = customRankingPlayers()
+    .filter((player) => player?.name)
+    .map((player, index) => ({
+      ...player,
+      normalizedName: normalizePlayerName(player.name),
+      custom_rank: Number(player.custom_rank) || index + 1,
+    }))
+    .sort((left, right) => right.normalizedName.length - left.normalizedName.length);
+
+  const draftedSelectors = [
+    '[class*="draft-board"] [class*="pick"]',
+    '[class*="draftBoard"] [class*="pick"]',
+    '[class*="draft-results"] [class*="pick"]',
+    '[class*="draftResults"] [class*="pick"]',
+    '[class*="pick-history"] [class*="pick"]',
+    '[class*="pickHistory"] [class*="pick"]',
+    '[data-testid*="draft-pick"]',
+  ];
+  const draftedNodes = Array.from(document.querySelectorAll(draftedSelectors.join(",")))
+    .filter((node) => !node.closest(".extension-ui-element"));
+  const drafted = [];
+  const seenDraftedNames = new Set();
+  draftedNodes.forEach((node) => {
+    const player = espnPlayerFromText(node.textContent || "", lookupPlayers);
+    if (!player || seenDraftedNames.has(player.normalizedName)) return;
+    seenDraftedNames.add(player.normalizedName);
+    const pickNumberText = (node.textContent || "").match(/(?:pick\s*#?\s*|#)(\d+)/i)?.[1];
+    const pickNumber = Number(pickNumberText) || drafted.length + 1;
+    drafted.push({
+      player_id: String(player.player_id || player.id || player.normalizedName),
+      player_name: player.name,
+      pick_no: pickNumber,
+      round: Math.ceil(pickNumber / DRAFT_TEAM_COUNT),
+      draft_slot: ((pickNumber - 1) % DRAFT_TEAM_COUNT) + 1,
+      metadata: { player_name: player.name, position: player.position || player.pos || "", team: player.team || "" },
+    });
+  });
+  drafted.sort((left, right) => Number(left.pick_no) - Number(right.pick_no));
+
+  const availableSelectors = [
+    '.player-table tbody tr',
+    '[class*="player-table"] [class*="player"]',
+    '[class*="available"] [class*="player"]',
+    '[class*="player-list"] [class*="player"]',
+    '.Table__TR',
+  ];
+  const availableNames = [];
+  const seenAvailableNames = new Set();
+  Array.from(document.querySelectorAll(availableSelectors.join(","))).forEach((node) => {
+    if (node.closest(".extension-ui-element")) return;
+    const player = espnPlayerFromText(node.textContent || "", lookupPlayers);
+    if (!player || seenDraftedNames.has(player.normalizedName) || seenAvailableNames.has(player.normalizedName)) return;
+    seenAvailableNames.add(player.normalizedName);
+    availableNames.push(player.name);
+  });
+  return { picks: drafted, availableNames };
+}
+window.getESPNDraftState = getESPNDraftState;
+
+let lastESPNSyncSignature = "";
+const syncESPNDraftState = async ({ force = false } = {}) => {
+  const state = getESPNDraftState();
+  const signature = pickSignature(state.picks);
+  if (!force && signature === lastESPNSyncSignature) {
+    injectPlayerListValueBadges();
+    return state;
+  }
+  lastESPNSyncSignature = signature;
+  applyDraftPicks(state.picks, {
+    source: "espn-live-dom",
+    triggerAdvice: true,
+    manualAdvice: force,
+    officialCount: state.picks.length,
+  });
+  assistantState.source = "ESPN live draft room";
+  updatePanelStateUI();
+  injectPlayerListValueBadges();
+  return state;
+};
+
+let espnDraftObserver = null;
+const observeESPNDraftPage = () => {
+  window.setInterval(() => {
+    syncESPNDraftState().catch((error) => console.warn("[DraftAssistant] ESPN sync error:", error));
+  }, 1500);
+  if (!espnDraftObserver && document.body) {
+    espnDraftObserver = new MutationObserver((mutations) => {
+      const externalMutation = mutations.some((mutation) => {
+        const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+        return target && !target.closest(".extension-ui-element");
+      });
+      if (externalMutation) requestAnimationFrame(() => syncESPNDraftState().catch(() => {}));
+    });
+    espnDraftObserver.observe(document.body, { childList: true, subtree: true });
+  }
+};
+
 const initSleeperAssistant = async () => {
   const activeDraftId = sleeperDraftId();
   console.log("[DraftAssistant] Active Draft ID:", activeDraftId);
@@ -2895,11 +3027,33 @@ const initSleeperAssistant = async () => {
   observeDraftPage();
 };
 
+const initESPNAssistant = async () => {
+  await loadOverlayPrefs();
+  await loadCustomRankings();
+  loadESPNDraftContext();
+  assistantState.source = "ESPN draft room · loading rankings";
+  renderAssistant();
+  await loadRankings();
+  try {
+    await syncRankingsFromBoardTab({ silent: true });
+  } catch (error) {
+    console.warn("[DraftAssistant] ESPN rankings sync fallback:", error);
+  }
+  assistantState.loading = false;
+  assistantState.source = "ESPN live draft room";
+  renderAssistant();
+  await syncESPNDraftState({ force: true });
+  fetchTeamProjections().then(renderAssistant);
+  loadMarketData().then(renderAssistant);
+  observeESPNDraftPage();
+};
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || !changes.userRankings) return;
   loadCustomRankings().then(() => {
     assistantState.lastRecommendationPickSignature = "";
-    syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
+    const sync = isESPNFantasy ? syncESPNDraftState({ force: true }) : syncDraftPicks();
+    sync.catch((error) => console.error("[DraftAssistant] Fetch error:", error));
     renderAssistant();
   });
 });
@@ -2933,7 +3087,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "UPDATE_SLEEPER_USER_OR_SLOT") {
     assistantState.lastRecommendationPickSignature = "";
-    syncDraftPicks()
+    const sync = isESPNFantasy ? syncESPNDraftState({ force: true }) : syncDraftPicks();
+    sync
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: error.message || "Slot update failed." }));
     return true;
@@ -2948,4 +3103,10 @@ if (isSleeperDraft) {
     initializeHeaderBadgeRendering();
   }
   initSleeperAssistant();
+} else if (isESPNFantasy) {
+  initESPNAssistant().catch((error) => {
+    assistantState.error = error?.message || "Could not initialize ESPN Draft Assistant";
+    assistantState.loading = false;
+    renderAssistant();
+  });
 }

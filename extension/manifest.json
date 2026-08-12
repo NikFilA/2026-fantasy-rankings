@@ -22,6 +22,7 @@
         "https://football.fantasysports.yahoo.com/*",
         "https://*.fantasysports.yahoo.com/*",
         "https://fantasy.espn.com/*",
+        "https://*.espn.com/*",
         "https://*.espn.com/fantasy/*",
         "https://2026-fantasy-rankings.vercel.app/*",
         "https://*.vercel.app/*",
@@ -55,7 +56,7 @@
   "web_accessible_resources": [
     {
       "resources": ["draftEngine.js"],
-      "matches": ["https://sleeper.com/*", "https://*.sleeper.com/*", "https://sleeper.app/*", "https://*.sleeper.app/*"]
+      "matches": ["https://sleeper.com/*", "https://*.sleeper.com/*", "https://sleeper.app/*", "https://*.sleeper.app/*", "https://fantasy.espn.com/*", "https://*.espn.com/*"]
     }
   ],
   "permissions": ["activeTab", "scripting", "storage", "tabs"]

@@ -277,6 +277,9 @@ const clonePlayer = (player, index) => ({
     }
     return Number.isFinite(Number(raw)) ? Number(raw) : 999;
   })(),
+  sleeperRank: Number.isFinite(Number(player.sleeperRank ?? player.sleeper_rank))
+    ? Number(player.sleeperRank ?? player.sleeper_rank)
+    : null,
   sleeperPick: String(player.sleeperPick || ""),
   sleeperVar: Number.isFinite(Number(player.sleeperVar ?? player.sleeper_var))
     ? Number(player.sleeperVar ?? player.sleeper_var)
@@ -501,6 +504,17 @@ const mergeLiveWebsiteMarkets = async (basePlayers) => {
   ]));
   const playerByKey = new Map(livePlayerRows.map((player) => [liveMarketKey(player), player]));
 
+  const sleeperRankByKey = new Map(sleeperRows
+    .filter((player) => Number.isFinite(Number(player.adp)) && Number(player.adp) !== 999)
+    .slice()
+    .sort((a, b) => Number(a.adp) - Number(b.adp) || String(a.name).localeCompare(String(b.name)))
+    .map((player, index) => [liveMarketKey(player), index + 1]));
+  const espnRankByKey = new Map(espnRows
+    .filter((player) => Number.isFinite(Number(player.adp)) && Number(player.adp) > 0)
+    .slice()
+    .sort((a, b) => Number(a.adp) - Number(b.adp) || String(a.name).localeCompare(String(b.name)))
+    .map((player, index) => [liveMarketKey(player), index + 1]));
+
   return basePlayers.map((basePlayer, index) => {
     const key = liveMarketKey(basePlayer);
     const sleeper = sleeperByKey.get(key);
@@ -511,9 +525,10 @@ const mergeLiveWebsiteMarkets = async (basePlayers) => {
       ...basePlayer,
       sleeperAdp: Number.isFinite(Number(sleeper?.adp)) ? Number(sleeper.adp) : basePlayer.sleeperAdp,
       sleeperPick: sleeper?.pick || basePlayer.sleeperPick,
+      sleeperRank: sleeperRankByKey.get(key) ?? basePlayer.sleeperRank,
       espnAdp: Number.isFinite(Number(espn?.adp)) ? Number(espn.adp) : basePlayer.espnAdp,
       espnPick: espn?.pick || basePlayer.espnPick,
-      espnRank: Number.isFinite(Number(espn?.pprRank)) ? Number(espn.pprRank) : basePlayer.espnRank,
+      espnRank: espnRankByKey.get(key) ?? basePlayer.espnRank,
       // The live Flock response is already in Expert Average order. Its
       // 1-based array index is the rank; never use secondary OVR/ADP fields.
       flockRank: Number.isFinite(Number(flock?.flockRank)) ? Number(flock.flockRank) : basePlayer.flockRank,
@@ -1840,11 +1855,11 @@ const cardHtml = () => {
   const props = playerProps(player).slice(0, 3);
   // Always derive variance from the current personal-board position. Stored
   // variance values become stale whenever the user reorders their rankings.
-  const sleeperVariance = Number.isFinite(player.sleeperAdp) && player.sleeperAdp !== 999
-    ? Math.round(player.sleeperAdp - (index + 1))
+  const sleeperVariance = Number.isFinite(player.sleeperRank)
+    ? player.sleeperRank - (index + 1)
     : null;
-  const espnVariance = Number.isFinite(player.espnAdp) && player.espnAdp !== 999
-    ? Math.round(player.espnAdp - (index + 1))
+  const espnVariance = Number.isFinite(player.espnRank)
+    ? player.espnRank - (index + 1)
     : null;
   const flockVariance = Number.isFinite(player.flockRank)
     ? Math.round(player.flockRank - (index + 1))
@@ -1866,9 +1881,9 @@ const cardHtml = () => {
   const facts = [
     { label: "My Rank", value: String(index + 1), className: rankClass(index + 1, assistantState.players.length) },
     { label: "My Tier", value: tier, className: tierClass(tier) },
-    { label: "Sleeper", value: formatAdpWithPick(player.sleeperAdp, player.sleeperPick), className: rankClass(player.sleeperAdp, assistantState.players.length) },
+    { label: "Sleeper", value: formatAdpWithPick(player.sleeperRank, player.sleeperPick), className: rankClass(player.sleeperRank, assistantState.players.length) },
     { label: "Sleeper Var", value: sleeperVariance === null ? "N/A" : `${sleeperVariance > 0 ? "+" : ""}${sleeperVariance}`, className: varianceClass(sleeperVariance) },
-    { label: "ESPN", value: formatAdpWithPick(player.espnAdp, player.espnPick), className: rankClass(player.espnAdp, assistantState.players.length) },
+    { label: "ESPN", value: formatAdpWithPick(player.espnRank, player.espnPick), className: rankClass(player.espnRank, assistantState.players.length) },
     { label: "ESPN Var", value: espnVariance === null ? "N/A" : `${espnVariance > 0 ? "+" : ""}${espnVariance}`, className: varianceClass(espnVariance) },
     ...(Number.isFinite(player.flockRank) ? [
       { label: "Flock Rank", value: String(player.flockRank), className: rankClass(player.flockRank, assistantState.players.length) },

@@ -3032,42 +3032,40 @@
                 return `${round}.${String(slot).padStart(2, "0")}`;
             };
 
-            const formatAdp = (adp, pickLabel, wholeNumber = false) => {
-                if (adp === 999) {
+            const formatAdp = (rank, pickLabel) => {
+                if (!Number.isFinite(rank) || rank === 999) {
                     return "N/A";
                 }
-                const displayAdp = wholeNumber ? Math.round(adp) : adp;
-                const base = Number.isInteger(displayAdp) ? String(displayAdp) : displayAdp.toFixed(1);
-                const normalizedPick = pickLabelFromAdp(displayAdp);
-                return normalizedPick ? `${base} (${normalizedPick})` : base;
+                const base = String(Math.round(rank));
+                return pickLabel ? `${base} (${pickLabel})` : base;
             };
 
             const effectiveSleeperMarket = (player) => {
                 const live = state.sleeperAdp.byKey[playerMarketKey(player)]
                     || state.sleeperAdp.byNamePos[playerNamePosKey(player)];
                 if (live && Number.isFinite(live.adp) && live.adp !== 999) {
-                    return { adp: live.adp, pick: live.pick || pickLabelFromAdp(live.adp), source: "Sleeper live" };
+                    return { rank: live.rank, adp: live.adp, pick: live.pick || pickLabelFromAdp(live.adp), source: "Sleeper live" };
                 }
-                return { adp: 999, pick: "", source: "" };
+                return { rank: 999, adp: 999, pick: "", source: "" };
             };
 
             const effectiveEspnMarket = (player) => {
                 const live = state.espnAdp.byKey[playerMarketKey(player)]
                     || state.espnAdp.byNamePos[playerNamePosKey(player)];
                 if (live && Number.isFinite(live.adp) && live.adp !== 999) {
-                    return { adp: live.adp, pick: live.pick || pickLabelFromAdp(live.adp), source: "ESPN live" };
+                    return { rank: live.rank, adp: live.adp, pick: live.pick || pickLabelFromAdp(live.adp), source: "ESPN live" };
                 }
-                return { adp: 999, pick: "", source: "" };
+                return { rank: 999, adp: 999, pick: "", source: "" };
             };
 
             const marketValueForPlayer = (player, marketId) => {
                 if (marketId === "sleeper") {
                     const sleeper = effectiveSleeperMarket(player);
-                    return { rank: sleeper.adp, pick: sleeper.pick };
+                    return { rank: sleeper.rank, pick: sleeper.pick };
                 }
                 if (marketId === "espn") {
                     const espn = effectiveEspnMarket(player);
-                    return { rank: espn.adp, pick: espn.pick };
+                    return { rank: espn.rank, pick: espn.pick };
                 }
                 if (marketId === "flock") {
                     return { rank: flockRankForPlayer(player), pick: "" };
@@ -3077,7 +3075,7 @@
 
             const formatSleeperMarket = (player) => {
                 const market = effectiveSleeperMarket(player);
-                return formatAdp(market.adp, market.pick, true);
+                return formatAdp(market.rank, market.pick);
             };
 
             const formatAmericanOdds = (value) => {
@@ -3657,7 +3655,7 @@
                     const variance = formatVariance(rank, myRank);
                     const rankLabel = marketId === "flock"
                         ? formatMarketRank(market.rank)
-                        : formatAdp(rank, market.pick, marketId === "sleeper" || marketId === "espn");
+                        : formatAdp(rank, market.pick);
                     return [
                         createCell("num", rankLabel),
                         createCell(`variance num ${variance.className}`, variance.label),
@@ -4972,9 +4970,9 @@
                 const flockRank = flockRankForPlayer(player);
                 const flockDetail = flockDetailForPlayer(player);
                 const sleeperMarket = effectiveSleeperMarket(player);
-                const sleeperVariance = formatVariance(sleeperMarket.adp, myRank);
+                const sleeperVariance = formatVariance(sleeperMarket.rank, myRank);
                 const espnMarket = effectiveEspnMarket(player);
-                const espnVariance = formatVariance(espnMarket.adp, myRank);
+                const espnVariance = formatVariance(espnMarket.rank, myRank);
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
 
@@ -4999,9 +4997,9 @@
                 myGrid.append(
                     detailCard("My Rank", String(myRank)),
                     detailCard("My Pos Rank", posRanks[player.id] || "N/A"),
-                    detailCard("Sleeper ADP", formatAdp(sleeperMarket.adp, sleeperMarket.pick, true)),
+                    detailCard("Sleeper ADP", formatAdp(sleeperMarket.rank, sleeperMarket.pick)),
                     detailCard("Sleeper Var", sleeperVariance.label, sleeperVariance.className),
-                    detailCard("ESPN ADP", formatAdp(espnMarket.adp, espnMarket.pick, true)),
+                    detailCard("ESPN ADP", formatAdp(espnMarket.rank, espnMarket.pick)),
                     detailCard("ESPN Var", espnVariance.label, espnVariance.className),
                     detailCard("Flock Rank", formatMarketRank(flockRank)),
                     detailCard("Flock Var", flockVariance.label, flockVariance.className)
@@ -5481,11 +5479,17 @@
                             };
                         })
                         : (payload?.players || []);
+                    const rankedPlayers = players
+                        .filter((player) => Number.isFinite(Number(player.adp)) && Number(player.adp) !== 999)
+                        .slice()
+                        .sort((a, b) => Number(a.adp) - Number(b.adp) || String(a.name).localeCompare(String(b.name)))
+                        .map((player, index) => ({ ...player, rank: index + 1, sleeperRank: index + 1 }));
                     const byKey = {};
                     const byNamePos = {};
-                    players.forEach((player) => {
+                    rankedPlayers.forEach((player) => {
                         const row = {
                             ...player,
+                            rank: Number(player.rank),
                             adp: Number(player.adp),
                             pick: player.pick || pickLabelFromAdp(Number(player.adp)),
                         };
@@ -5567,9 +5571,15 @@
                     const byKey = {};
                     const byNamePos = {};
                     const espnKeyById = {};
-                    (payload?.players || []).forEach((player) => {
+                    const rankedPlayers = (payload?.players || [])
+                        .filter((player) => Number.isFinite(Number(player.adp)) && Number(player.adp) > 0 && Number(player.adp) !== 999)
+                        .slice()
+                        .sort((a, b) => Number(a.adp) - Number(b.adp) || String(a.name).localeCompare(String(b.name)))
+                        .map((player, index) => ({ ...player, rank: index + 1, espnRank: index + 1 }));
+                    rankedPlayers.forEach((player) => {
                         const row = {
                             ...player,
+                            rank: Number(player.rank),
                             adp: Number(player.adp),
                             pick: player.pick || pickLabelFromAdp(Number(player.adp)),
                         };

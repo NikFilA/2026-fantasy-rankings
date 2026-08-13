@@ -59,7 +59,9 @@ export default async function handler(request, response) {
                 pprRank: Number(player.draftRanksByRankType?.PPR?.rank),
                 updatedAt: player.ownership?.date ? new Date(player.ownership.date).toISOString() : null,
             };
-        }).filter((player) => player.id && player.name && player.team && player.pos && Number.isFinite(player.adp) && player.adp > 0);
+        }).filter((player) => player.id && player.name && player.team && player.pos && Number.isFinite(player.adp) && player.adp > 0)
+            .sort((a, b) => a.adp - b.adp || a.name.localeCompare(b.name))
+            .map((player, index) => ({ ...player, rank: index + 1, espnRank: index + 1 }));
         response.status(200).json({ source: ESPN_URL, updatedAt: new Date().toISOString(), players });
     } catch (error) {
         response.status(500).json({ error: "Unable to load ESPN ADP" });

@@ -55,7 +55,9 @@ export default async function handler(request, response) {
                     updatedAt: row.last_modified || row.updated_at || null,
                 };
             })
-            .filter((player) => player.id && player.name && POSITIONS.has(player.pos) && Number.isFinite(player.adp) && player.adp < 999);
+            .filter((player) => player.id && player.name && POSITIONS.has(player.pos) && Number.isFinite(player.adp) && player.adp < 999)
+            .sort((a, b) => a.adp - b.adp || a.name.localeCompare(b.name))
+            .map((player, index) => ({ ...player, rank: index + 1, sleeperRank: index + 1 }));
 
         response.status(200).json({
             source: SLEEPER_PROJECTIONS_URL,

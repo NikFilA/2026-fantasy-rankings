@@ -5,6 +5,7 @@ const PLAYER_PROPS_URL = `${APP_ORIGIN}/api/bettingpros-player-futures`;
 const TEAM_FUTURES_URL = `${APP_ORIGIN}/api/bettingpros-team-futures`;
 const LIVE_SLEEPER_ADP_URL = `${APP_ORIGIN}/api/sleeper-adp`;
 const LIVE_ESPN_ADP_URL = `${APP_ORIGIN}/api/espn-adp`;
+const LIVE_FLOCK_RANKINGS_URL = `${APP_ORIGIN}/api/flock-rankings`;
 const ESPN_DRAFT_PROXY_URL = `${APP_ORIGIN}/api/espn-draft`;
 const LIVE_SLEEPER_PLAYERS_URL = `${APP_ORIGIN}/api/sleeper-players`;
 const ASSISTANT_ID = "ff-draft-assistant-root";
@@ -454,9 +455,10 @@ const fetchFreshWebsiteJson = async (url) => {
 const liveMarketKey = (player) => `${normalizePlayerName(player?.name)}|${String(player?.pos || player?.position || "").toUpperCase()}`;
 
 const mergeLiveWebsiteMarkets = async (basePlayers) => {
-  const [sleeperResult, espnResult, playersResult] = await Promise.allSettled([
+  const [sleeperResult, espnResult, flockResult, playersResult] = await Promise.allSettled([
     fetchFreshWebsiteJson(LIVE_SLEEPER_ADP_URL),
     fetchFreshWebsiteJson(LIVE_ESPN_ADP_URL),
+    fetchFreshWebsiteJson(LIVE_FLOCK_RANKINGS_URL),
     fetchFreshWebsiteJson(LIVE_SLEEPER_PLAYERS_URL),
   ]);
   const sleeperRows = sleeperResult.status === "fulfilled"
@@ -465,6 +467,10 @@ const mergeLiveWebsiteMarkets = async (basePlayers) => {
   const espnRows = espnResult.status === "fulfilled"
     ? (espnResult.value?.players || espnResult.value || [])
     : [];
+  const rawFlockRows = flockResult.status === "fulfilled"
+    ? (flockResult.value?.data || flockResult.value || [])
+    : [];
+  const flockRows = Array.isArray(rawFlockRows) ? rawFlockRows : [];
   const rawLivePlayerRows = playersResult.status === "fulfilled"
     ? (playersResult.value?.players || playersResult.value || [])
     : [];
@@ -486,12 +492,20 @@ const mergeLiveWebsiteMarkets = async (basePlayers) => {
   });
   const sleeperByKey = new Map(sleeperRows.map((player) => [liveMarketKey(player), player]));
   const espnByKey = new Map(espnRows.map((player) => [liveMarketKey(player), player]));
+  const flockByKey = new Map(flockRows.map((player, index) => [
+    liveMarketKey({
+      name: player?.playerName || player?.player_name || player?.name,
+      pos: player?.position || player?.pos,
+    }),
+    { ...player, flockRank: index + 1 },
+  ]));
   const playerByKey = new Map(livePlayerRows.map((player) => [liveMarketKey(player), player]));
 
   return basePlayers.map((basePlayer, index) => {
     const key = liveMarketKey(basePlayer);
     const sleeper = sleeperByKey.get(key);
     const espn = espnByKey.get(key);
+    const flock = flockByKey.get(key);
     const livePlayer = playerByKey.get(key);
     return clonePlayer({
       ...basePlayer,
@@ -500,6 +514,9 @@ const mergeLiveWebsiteMarkets = async (basePlayers) => {
       espnAdp: Number.isFinite(Number(espn?.adp)) ? Number(espn.adp) : basePlayer.espnAdp,
       espnPick: espn?.pick || basePlayer.espnPick,
       espnRank: Number.isFinite(Number(espn?.pprRank)) ? Number(espn.pprRank) : basePlayer.espnRank,
+      // The live Flock response is already in Expert Average order. Its
+      // 1-based array index is the rank; never use secondary OVR/ADP fields.
+      flockRank: Number.isFinite(Number(flock?.flockRank)) ? Number(flock.flockRank) : basePlayer.flockRank,
       sleeperId: livePlayer?.sleeperId
         || livePlayer?.sleeper_id
         || livePlayer?.player_id

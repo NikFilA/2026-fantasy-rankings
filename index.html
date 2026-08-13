@@ -2236,7 +2236,7 @@
                 activeTeam: "ALL",
                 searchQuery: "",
                 availableOnly: false,
-                sort: { key: "", direction: "" },
+                sort: { key: "myRank", direction: "asc" },
                 selectedPlayerId: "",
                 draggedItemId: null,
                 lab: {
@@ -2971,7 +2971,7 @@
                 state.activeTeam = "ALL";
                 state.searchQuery = "";
                 state.availableOnly = false;
-                state.sort = { key: "", direction: "" };
+                state.sort = { key: "myRank", direction: "asc" };
                 state.lab.metrics = [];
                 state.lab.filters = {};
                 elements.playerSearch.value = "";
@@ -5423,23 +5423,9 @@
 
             const normalizeFlockRankings = (payload) => {
                 const rows = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.data) ? payload.data : []);
-                const flockSortedPlayers = rows
-                    .map((row, sourceIndex) => ({
-                        row,
-                        sourceIndex,
-                        rawRank: Number(row.overallAverageRank ?? row.averageRank ?? row.rawFlockRank),
-                    }))
-                    .sort((left, right) => {
-                        const leftHasRank = Number.isFinite(left.rawRank);
-                        const rightHasRank = Number.isFinite(right.rawRank);
-                        if (leftHasRank && rightHasRank && left.rawRank !== right.rawRank) {
-                            return left.rawRank - right.rawRank;
-                        }
-                        if (leftHasRank !== rightHasRank) return leftHasRank ? -1 : 1;
-                        return left.sourceIndex - right.sourceIndex;
-                    });
-                return flockSortedPlayers.reduce((result, entry, index) => {
-                    const { row, rawRank } = entry;
+                // Preserve Flock's primary Expert Average list order exactly.
+                // overallAverageRank/averageRank are secondary OVR/ADP fields.
+                return rows.reduce((result, row, index) => {
                     const name = row.playerName || row.player_name || row.name;
                     const team = row.team || row.teamAbbr || row.team_abbr || "";
                     const pos = row.position || row.pos || "";
@@ -5449,7 +5435,7 @@
                     const key = `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`;
                     const namePosKey = `${nameKey(name)}|${String(pos).toUpperCase()}`;
                     const rank = index + 1;
-                    const detail = { ...row, rawFlockRank: Number.isFinite(rawRank) ? rawRank : null, listRank: rank, flockRank: rank };
+                    const detail = { ...row, expertAverageRank: rank, listRank: rank, flockRank: rank };
                     result.ranks[key] = rank;
                     result.details[key] = detail;
                     if (Object.prototype.hasOwnProperty.call(result.ranksByNamePos, namePosKey)) {

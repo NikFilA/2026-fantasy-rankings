@@ -29,27 +29,15 @@ export default async function handler(request, response) {
         const rows = Array.isArray(payload)
             ? payload
             : (payload && Array.isArray(payload.data) ? payload.data : []);
-        const rankedRows = rows
-            .map((player, sourceIndex) => ({
-                player,
-                sourceIndex,
-                rawRank: Number(player.overallAverageRank ?? player.averageRank ?? player.rawFlockRank)
-            }))
-            .sort((left, right) => {
-                const leftHasRank = Number.isFinite(left.rawRank);
-                const rightHasRank = Number.isFinite(right.rawRank);
-                if (leftHasRank && rightHasRank && left.rawRank !== right.rawRank) {
-                    return left.rawRank - right.rawRank;
-                }
-                if (leftHasRank !== rightHasRank) return leftHasRank ? -1 : 1;
-                return left.sourceIndex - right.sourceIndex;
-            })
-            .map(({ player, rawRank }, index) => ({
-                ...player,
-                rawFlockRank: Number.isFinite(rawRank) ? rawRank : null,
-                flockRank: index + 1,
-                listRank: index + 1
-            }));
+        // The Flock API's array order is the primary Expert Average board.
+        // Secondary fields such as overallAverageRank are separate ADP/OVR
+        // metrics and must never be used to reorder this list.
+        const rankedRows = rows.map((player, index) => ({
+            ...player,
+            expertAverageRank: index + 1,
+            flockRank: index + 1,
+            listRank: index + 1
+        }));
 
         response.status(200).json(Array.isArray(payload)
             ? rankedRows

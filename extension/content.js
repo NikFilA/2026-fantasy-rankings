@@ -1419,40 +1419,71 @@ const styles = `
     letter-spacing: .06em;
     text-transform: uppercase;
   }
-  .grade-overlay-toggle {
+  .toggle-container {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    width: 100%;
+    gap: 14px;
     margin: 0 0 10px;
-    padding: 8px 10px;
+    padding: 9px 10px;
     border: 1px solid #303946;
     border-radius: 8px;
-    background: rgba(255,255,255,.035);
-    color: #dbe4ee;
-    font-size: 11px;
-    font-weight: 800;
+    background: #181e25;
+    box-sizing: border-box;
+    cursor: pointer;
+    user-select: none;
   }
-  .grade-overlay-toggle input { position: absolute; opacity: 0; pointer-events: none; }
-  .grade-overlay-switch {
-    width: 34px;
-    height: 18px;
-    padding: 2px;
-    border-radius: 999px;
-    background: #475569;
-    transition: background .18s ease;
+  .toggle-label {
+    color: #d8dee7;
+    font: 700 11px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: .01em;
   }
-  .grade-overlay-switch::after {
+  .toggle-switch {
+    position: relative;
+    width: 40px;
+    height: 20px;
+    flex: 0 0 40px;
+  }
+  .toggle-switch input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    opacity: 0;
+  }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    border: 1px solid #58616d;
+    border-radius: 20px;
+    background: #343b44;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.35);
+    transition: background-color .2s ease, border-color .2s ease;
+  }
+  .toggle-slider::before {
     content: "";
-    display: block;
+    position: absolute;
+    top: 2px;
+    left: 2px;
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: #fff;
-    transition: transform .18s ease;
+    background: #eef2f6;
+    box-shadow: 0 1px 3px rgba(0,0,0,.55);
+    transition: transform .2s ease;
   }
-  .grade-overlay-toggle input:checked + .grade-overlay-switch { background: #16a34a; }
-  .grade-overlay-toggle input:checked + .grade-overlay-switch::after { transform: translateX(16px); }
+  .toggle-switch input:checked + .toggle-slider {
+    border-color: #45a049;
+    background: #4caf50;
+  }
+  .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+  }
+  .toggle-switch input:focus-visible + .toggle-slider {
+    outline: 2px solid #38bdf8;
+    outline-offset: 2px;
+  }
   .board-list-heading {
     padding: 8px 9px 0;
   }
@@ -2030,11 +2061,11 @@ const teamGradesHtml = () => {
           </span>
         </span>
       </div>
-      <label class="grade-overlay-toggle">
-        <span>Show Grade Overlays</span>
-        <span>
-          <input type="checkbox" data-action="grade-overlays" ${assistantState.showGradeOverlays ? "checked" : ""}>
-          <span class="grade-overlay-switch" aria-hidden="true"></span>
+      <label class="toggle-container" for="toggleGrades">
+        <span class="toggle-label">Show Grade Overlays</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="toggleGrades" data-action="grade-overlays" ${assistantState.showGradeOverlays ? "checked" : ""}>
+          <span class="toggle-slider" aria-hidden="true"></span>
         </span>
       </label>
       ${Array.from({ length: DRAFT_TEAM_COUNT }, (_, index) => {

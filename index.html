@@ -3440,7 +3440,7 @@
             };
 
             const canReorderBoard = () => (
-                !state.sort.key
+                (!state.sort.key || (state.sort.key === "myRank" && state.sort.direction === "asc"))
                 && state.selectedPositions.size === 0
                 && state.activeTeam === "ALL"
                 && !state.searchQuery.trim()
@@ -3905,8 +3905,13 @@
                     && Number.isFinite(flockRank);
             };
 
+            // My Rank ascending is the board's native order. Treat it like an
+            // unsorted view so structural tier marker rows stay in the list.
+            const isNaturalBoardSort = () => !state.sort.key
+                || (state.sort.key === "myRank" && state.sort.direction === "asc");
+
             const sortedVisibleItems = (visibleItems, posRanks) => {
-                if (!state.sort.key) {
+                if (isNaturalBoardSort()) {
                     return visibleItems;
                 }
                 const direction = state.sort.direction === "desc" ? -1 : 1;
@@ -5032,7 +5037,12 @@
                 const byId = playersById();
                 const searchQuery = normalizeSearch(state.searchQuery);
                 const hasLabFilter = hasLabCriteria();
-                const showTierRows = state.selectedPositions.size === 0 && state.activeTeam === "ALL" && !searchQuery && !state.availableOnly && !state.sort.key && !hasLabFilter;
+                const showTierRows = state.selectedPositions.size === 0
+                    && state.activeTeam === "ALL"
+                    && !searchQuery
+                    && !state.availableOnly
+                    && isNaturalBoardSort()
+                    && !hasLabFilter;
                 let playerIndex = 0;
                 let currentTierLabel = "";
 

@@ -32,12 +32,19 @@ export default async function handler(request, response) {
         // The Flock API's array order is the primary Expert Average board.
         // Secondary fields such as overallAverageRank are separate ADP/OVR
         // metrics and must never be used to reorder this list.
-        const rankedRows = rows.map((player, index) => ({
-            ...player,
-            expertAverageRank: index + 1,
-            flockRank: index + 1,
-            listRank: index + 1
-        }));
+        const rankedRows = rows.map((player, index) => {
+            // Variance depends on each user's mutable personal rank, so the
+            // shared endpoint must not forward a stale/precomputed sign.
+            const ranking = { ...player };
+            delete ranking.flockVar;
+            delete ranking.flock_var;
+            return {
+                ...ranking,
+                expertAverageRank: index + 1,
+                flockRank: index + 1,
+                listRank: index + 1
+            };
+        });
 
         response.status(200).json(Array.isArray(payload)
             ? rankedRows

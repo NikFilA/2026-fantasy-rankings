@@ -3405,19 +3405,6 @@
                 return { label: `${prefix}${variance}`, className: varianceClass(variance) };
             };
 
-            // Flock variance is intentionally expressed from the user's board:
-            // positive means the user ranks the player later than Flock does.
-            const formatFlockVariance = (flockRank, myRank) => {
-                if (!Number.isFinite(flockRank) || flockRank === 999) {
-                    return { label: "N/A", className: "neutral" };
-                }
-                const variance = myRank - flockRank;
-                return {
-                    label: `${variance > 0 ? "+" : ""}${variance}`,
-                    className: varianceClass(variance),
-                };
-            };
-
             const getPositionRanks = () => {
                 const counters = { QB: 0, RB: 0, WR: 0, TE: 0 };
                 return orderedPlayers().reduce((ranks, player) => {
@@ -3667,9 +3654,7 @@
                 const marketCells = state.visibleMarkets.flatMap((marketId) => {
                     const market = marketValueForPlayer(player, marketId);
                     const rank = Number.isFinite(market.rank) ? market.rank : 999;
-                    const variance = marketId === "flock"
-                        ? formatFlockVariance(rank, myRank)
-                        : formatVariance(rank, myRank);
+                    const variance = formatVariance(rank, myRank);
                     const rankLabel = marketId === "flock"
                         ? formatMarketRank(market.rank)
                         : formatAdp(rank, market.pick, marketId === "sleeper" || marketId === "espn");
@@ -3904,9 +3889,7 @@
                     const [, marketId, field] = state.sort.key.split(":");
                     const rank = marketValueForPlayer(player, marketId).rank;
                     value = Number.isFinite(rank) && rank !== 999
-                        ? (field === "variance"
-                            ? (marketId === "flock" ? myRank - rank : rank - myRank)
-                            : rank)
+                        ? (field === "variance" ? rank - myRank : rank)
                         : Number.POSITIVE_INFINITY;
                 } else {
                     value = values[state.sort.key];
@@ -4987,7 +4970,7 @@
                 const sleeperVariance = formatVariance(sleeperMarket.adp, myRank);
                 const espnMarket = effectiveEspnMarket(player);
                 const espnVariance = formatVariance(espnMarket.adp, myRank);
-                const flockVariance = formatFlockVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
+                const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
 
                 const head = document.createElement("div");

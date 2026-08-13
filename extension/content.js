@@ -1838,20 +1838,16 @@ const cardHtml = () => {
   const future = teamFuture(player.team);
   const share = ["RB", "WR", "TE"].includes(player.pos) ? teamTargetShare(projection, player.pos) : null;
   const props = playerProps(player).slice(0, 3);
-  const sleeperVariance = Number.isFinite(player.sleeperVar)
-    ? player.sleeperVar
-    : Number.isFinite(player.sleeperAdp) && player.sleeperAdp !== 999
-      ? Math.round(player.sleeperAdp - (index + 1))
-      : null;
-  const espnVariance = Number.isFinite(player.espnVar)
-    ? player.espnVar
-    : Number.isFinite(player.espnAdp) && player.espnAdp !== 999
-      ? Math.round(player.espnAdp - (index + 1))
-      : null;
-  // Always derive Flock VAR from the current personal-board position so a
-  // stored value cannot become stale after rankings are reordered.
+  // Always derive variance from the current personal-board position. Stored
+  // variance values become stale whenever the user reorders their rankings.
+  const sleeperVariance = Number.isFinite(player.sleeperAdp) && player.sleeperAdp !== 999
+    ? Math.round(player.sleeperAdp - (index + 1))
+    : null;
+  const espnVariance = Number.isFinite(player.espnAdp) && player.espnAdp !== 999
+    ? Math.round(player.espnAdp - (index + 1))
+    : null;
   const flockVariance = Number.isFinite(player.flockRank)
-    ? Math.round((index + 1) - player.flockRank)
+    ? Math.round(player.flockRank - (index + 1))
     : null;
   const teamWinsValue = Number.isFinite(player.teamWins) ? player.teamWins : future?.line;
   const shareValue = Number.isFinite(player.targetShare)

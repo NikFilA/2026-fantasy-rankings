@@ -270,7 +270,7 @@ const clonePlayer = (player, index) => ({
   udAdp: Number.isFinite(Number(player.udAdp)) ? Number(player.udAdp) : 999,
   udPick: String(player.udPick || ""),
   sleeperAdp: (() => {
-    const raw = player.sleeperPick || player.sleeperAdp;
+    const raw = player.sleeperAdp ?? player.sleeperPick;
     if (typeof raw === "string" && /^\d+\.\d{1,2}$/.test(raw.trim())) {
       const [round, pick] = raw.trim().split(".").map(Number);
       return ((round - 1) * 12) + pick;
@@ -524,10 +524,10 @@ const mergeLiveWebsiteMarkets = async (basePlayers) => {
     return clonePlayer({
       ...basePlayer,
       sleeperAdp: Number.isFinite(Number(sleeper?.adp)) ? Number(sleeper.adp) : basePlayer.sleeperAdp,
-      sleeperPick: sleeper?.pick || basePlayer.sleeperPick,
+      sleeperPick: getDraftPickString(sleeperRankByKey.get(key) ?? basePlayer.sleeperRank),
       sleeperRank: sleeperRankByKey.get(key) ?? basePlayer.sleeperRank,
       espnAdp: Number.isFinite(Number(espn?.adp)) ? Number(espn.adp) : basePlayer.espnAdp,
-      espnPick: espn?.pick || basePlayer.espnPick,
+      espnPick: getDraftPickString(espnRankByKey.get(key) ?? basePlayer.espnRank),
       espnRank: espnRankByKey.get(key) ?? basePlayer.espnRank,
       // The live Flock response is already in Expert Average order. Its
       // 1-based array index is the rank; never use secondary OVR/ADP fields.
@@ -1192,13 +1192,18 @@ const formatWhole = (value) => Number.isFinite(Number(value)) ? Math.round(Numbe
 
 const formatLine = (prop) => `${prop.label}: ${formatWhole(prop.line)}`;
 
-const formatAdpWithPick = (adp, pick) => {
-  const overall = Number.isFinite(Number(adp)) && Number(adp) !== 999 ? Math.round(Number(adp)) : null;
-  const match = String(pick || "").match(/^(\d+)\.(\d{1,2})$/);
-  const roundPick = match ? `${match[1]}.${match[2].padStart(2, "0")}` : "";
-  if (overall !== null && roundPick) return `${overall} (${roundPick})`;
-  if (overall !== null) return String(overall);
-  return roundPick || "N/A";
+const getDraftPickString = (rank, leagueSize = 12) => {
+  if (!Number.isFinite(Number(rank)) || Number(rank) < 1) return "";
+  const pick = Math.max(1, Math.round(Number(rank)));
+  const round = Math.ceil(pick / leagueSize);
+  const pickInRound = ((pick - 1) % leagueSize) + 1;
+  return `${round}.${String(pickInRound).padStart(2, "0")}`;
+};
+
+const formatAdpWithPick = (rank) => {
+  if (!Number.isFinite(Number(rank)) || Number(rank) === 999) return "N/A";
+  const ordinalRank = Math.round(Number(rank));
+  return `${ordinalRank} (${getDraftPickString(ordinalRank)})`;
 };
 
 const rankChip = (rank) => rank ? `<em class="rank-chip">${rank.rank}/${rank.total}</em>` : "";
@@ -1881,9 +1886,9 @@ const cardHtml = () => {
   const facts = [
     { label: "My Rank", value: String(index + 1), className: rankClass(index + 1, assistantState.players.length) },
     { label: "My Tier", value: tier, className: tierClass(tier) },
-    { label: "Sleeper", value: formatAdpWithPick(player.sleeperRank, player.sleeperPick), className: rankClass(player.sleeperRank, assistantState.players.length) },
+    { label: "Sleeper", value: formatAdpWithPick(player.sleeperRank), className: rankClass(player.sleeperRank, assistantState.players.length) },
     { label: "Sleeper Var", value: sleeperVariance === null ? "N/A" : `${sleeperVariance > 0 ? "+" : ""}${sleeperVariance}`, className: varianceClass(sleeperVariance) },
-    { label: "ESPN", value: formatAdpWithPick(player.espnRank, player.espnPick), className: rankClass(player.espnRank, assistantState.players.length) },
+    { label: "ESPN", value: formatAdpWithPick(player.espnRank), className: rankClass(player.espnRank, assistantState.players.length) },
     { label: "ESPN Var", value: espnVariance === null ? "N/A" : `${espnVariance > 0 ? "+" : ""}${espnVariance}`, className: varianceClass(espnVariance) },
     ...(Number.isFinite(player.flockRank) ? [
       { label: "Flock Rank", value: String(player.flockRank), className: rankClass(player.flockRank, assistantState.players.length) },

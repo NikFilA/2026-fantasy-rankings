@@ -1,10 +1,10 @@
 const SLEEPER_PROJECTIONS_URL = "https://api.sleeper.com/projections/nfl/2026";
 const POSITIONS = new Set(["QB", "RB", "WR", "TE"]);
 
-const pickLabel = (adp) => {
-    const pick = Math.max(1, Math.round(Number(adp)));
-    const round = Math.floor((pick - 1) / 12) + 1;
-    const slot = ((pick - 1) % 12) + 1;
+const getDraftPickString = (rank, leagueSize = 12) => {
+    const pick = Math.max(1, Math.round(Number(rank)));
+    const round = Math.ceil(pick / leagueSize);
+    const slot = ((pick - 1) % leagueSize) + 1;
     return `${round}.${String(slot).padStart(2, "0")}`;
 };
 
@@ -51,13 +51,18 @@ export default async function handler(request, response) {
                     team: String(row.player?.team || row.team || "").toUpperCase(),
                     pos: position,
                     adp,
-                    pick: pickLabel(adp),
+                    pick: "",
                     updatedAt: row.last_modified || row.updated_at || null,
                 };
             })
             .filter((player) => player.id && player.name && POSITIONS.has(player.pos) && Number.isFinite(player.adp) && player.adp < 999)
             .sort((a, b) => a.adp - b.adp || a.name.localeCompare(b.name))
-            .map((player, index) => ({ ...player, rank: index + 1, sleeperRank: index + 1 }));
+            .map((player, index) => ({
+                ...player,
+                rank: index + 1,
+                sleeperRank: index + 1,
+                pick: getDraftPickString(index + 1),
+            }));
 
         response.status(200).json({
             source: SLEEPER_PROJECTIONS_URL,

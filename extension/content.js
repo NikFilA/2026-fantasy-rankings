@@ -101,8 +101,12 @@ const FIRST_NAME_ALIASES = {
 };
 
 const normalizePlayerName = (value = "") => {
-  const parts = String(value)
-    .replace(/[.,'’\-]/g, " ")
+  const cleaned = String(value)
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const parts = cleaned
     .split(/\s+/)
     .filter(Boolean)
     .filter((part) => !["jr", "sr", "ii", "iii", "iv", "v"].includes(part.toLowerCase()));
@@ -2911,32 +2915,61 @@ function getESPNDraftState() {
     }))
     .sort((left, right) => right.normalizedName.length - left.normalizedName.length);
 
-  const draftedSelectors = [
+  const boardSelectors = [
+    '.draft-board-cell',
+    '.pick-card',
+    '[class*="draft-board"] [class*="cell"]',
     '[class*="draft-board"] [class*="pick"]',
+    '[class*="draftBoard"] [class*="cell"]',
     '[class*="draftBoard"] [class*="pick"]',
-    '[class*="draft-results"] [class*="pick"]',
-    '[class*="draftResults"] [class*="pick"]',
-    '[class*="pick-history"] [class*="pick"]',
-    '[class*="pickHistory"] [class*="pick"]',
+    '[class*="DraftBoard"] [class*="cell"]',
+    '[class*="DraftBoard"] [class*="pick"]',
     '[data-testid*="draft-pick"]',
   ];
-  const draftedNodes = Array.from(document.querySelectorAll(draftedSelectors.join(",")))
+  const feedSelectors = [
+    '.pick-feed [class*="pick"]',
+    '.pick-history [class*="pick"]',
+    '.pick-item',
+    '[class*="pick-feed"] [class*="pick"]',
+    '[class*="pickFeed"] [class*="pick"]',
+    '[class*="pick-history"] [class*="pick"]',
+    '[class*="pickHistory"] [class*="pick"]',
+    '[class*="draft-results"] [class*="pick"]',
+    '[class*="draftResults"] [class*="pick"]',
+  ];
+  const boardNodes = Array.from(document.querySelectorAll(boardSelectors.join(",")));
+  const feedNodes = Array.from(document.querySelectorAll(feedSelectors.join(",")));
+  const allDraftedNodes = [...new Set([...boardNodes, ...feedNodes])]
     .filter((node) => !node.closest(".extension-ui-element"));
+  const draftedNodes = allDraftedNodes.filter((node) => !allDraftedNodes.some((other) => (
+    other !== node && node.contains(other)
+  )));
   const drafted = [];
   const seenDraftedNames = new Set();
   draftedNodes.forEach((node) => {
-    const player = espnPlayerFromText(node.textContent || "", lookupPlayers);
-    if (!player || seenDraftedNames.has(player.normalizedName)) return;
-    seenDraftedNames.add(player.normalizedName);
-    const pickNumberText = (node.textContent || "").match(/(?:pick\s*#?\s*|#)(\d+)/i)?.[1];
-    const pickNumber = Number(pickNumberText) || drafted.length + 1;
-    drafted.push({
-      player_id: String(player.player_id || player.id || player.normalizedName),
-      player_name: player.name,
-      pick_no: pickNumber,
-      round: Math.ceil(pickNumber / DRAFT_TEAM_COUNT),
-      draft_slot: ((pickNumber - 1) % DRAFT_TEAM_COUNT) + 1,
-      metadata: { player_name: player.name, position: player.position || player.pos || "", team: player.team || "" },
+    const nodeText = node.textContent || "";
+    const normalizedNodeText = normalizePlayerName(nodeText);
+    const matchedPlayers = lookupPlayers.filter((player) => (
+      player.normalizedName && normalizedNodeText.includes(player.normalizedName)
+    ));
+    matchedPlayers.forEach((player) => {
+      if (seenDraftedNames.has(player.normalizedName)) return;
+      seenDraftedNames.add(player.normalizedName);
+      const overallMatch = nodeText.match(/(?:pick\s*#?\s*|#)(\d+)/i);
+      const roundPickMatch = nodeText.match(/\b(\d{1,2})\.(\d{1,2})\b/);
+      const explicitOverall = Number(overallMatch?.[1]);
+      const roundPickOverall = roundPickMatch
+        ? ((Number(roundPickMatch[1]) - 1) * DRAFT_TEAM_COUNT) + Number(roundPickMatch[2])
+        : 0;
+      const pickNumber = explicitOverall || roundPickOverall || drafted.length + 1;
+      drafted.push({
+        player_id: String(player.player_id || player.id || player.normalizedName),
+        player_name: player.name,
+        pick_no: pickNumber,
+        round: Math.ceil(pickNumber / DRAFT_TEAM_COUNT),
+        draft_slot: ((pickNumber - 1) % DRAFT_TEAM_COUNT) + 1,
+        metadata: { player_name: player.name, position: player.position || player.pos || "", team: player.team || "" },
+      });
     });
   });
   drafted.sort((left, right) => Number(left.pick_no) - Number(right.pick_no));

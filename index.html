@@ -2408,6 +2408,25 @@
                 return items;
             };
 
+            const buildCleanSleeperItems = (players = basePlayers()) => players
+                .slice()
+                .sort((a, b) => {
+                    const sleeperA = effectiveSleeperMarket(a);
+                    const sleeperB = effectiveSleeperMarket(b);
+                    const rankA = Number.isFinite(sleeperA.rank) && sleeperA.rank !== 999
+                        ? sleeperA.rank
+                        : (Number.isFinite(a.sleeperAdp) ? a.sleeperAdp : 999);
+                    const rankB = Number.isFinite(sleeperB.rank) && sleeperB.rank !== 999
+                        ? sleeperB.rank
+                        : (Number.isFinite(b.sleeperAdp) ? b.sleeperAdp : 999);
+                    return rankA - rankB || a.name.localeCompare(b.name);
+                })
+                .map((player) => ({
+                    id: `player-${player.id}`,
+                    playerId: player.id,
+                    type: "player",
+                }));
+
             const renumberTiers = () => {
                 let tierNumber = 0;
                 state.items.forEach((item) => {
@@ -2487,7 +2506,11 @@
 
             const localSavedState = () => {
                 try {
-                    const saved = JSON.parse(localStorage.getItem(accountStorageKey()) || localStorage.getItem(STORAGE_KEY) || "null");
+                    // Never seed a new account from a guest/browser board.
+                    const raw = state.auth.user
+                        ? localStorage.getItem(accountStorageKey())
+                        : localStorage.getItem(STORAGE_KEY);
+                    const saved = JSON.parse(raw || "null");
                     return parseSavedState(saved);
                 } catch (error) {
                     console.warn("Saved rankings were ignored because they are not valid JSON.", error);
@@ -2682,6 +2705,32 @@
                 return hydrated.length > 0 ? hydrated : buildDefaultItems(players);
             };
 
+            const initializeCleanSleeperBoard = async ({ persist = false } = {}) => {
+                state.useSleeperDefaultOrder = true;
+                state.items = buildCleanSleeperItems(basePlayers());
+                state.sort = { key: "myRank", direction: "asc" };
+                state.visibleMarkets = DEFAULT_MARKET_COLUMNS.slice();
+                populateTeamFilter();
+                render();
+
+                const payload = currentPayload();
+                localStorage.setItem(accountStorageKey(), JSON.stringify(payload));
+                if (persist && cloudSyncEnabled()) {
+                    await persistRemoteState(payload);
+                    elements.saveState.textContent = "Account";
+                } else {
+                    elements.saveState.textContent = state.auth.user ? "Account" : "Base";
+                }
+                return payload;
+            };
+
+            // Explicit testing/support override. It only runs when invoked and
+            // therefore never resets an existing account automatically.
+            window.resetRankingsToSleeperDefault = async () => {
+                await initializeCleanSleeperBoard({ persist: Boolean(state.auth.user) });
+                updateAuthUi("Rankings reset to the clean Sleeper consensus board.");
+            };
+
             const isUntouchedLegacyBoard = (saved, players) => {
                 const baseOrder = players.map((player) => player.id);
                 if (saved.items) {
@@ -2725,7 +2774,8 @@
                 } else if (saved.order) {
                     state.items = buildDefaultItems(applySavedOrder(players, saved.order));
                 } else {
-                    state.items = buildDefaultItems(players);
+                    state.useSleeperDefaultOrder = true;
+                    state.items = buildCleanSleeperItems(players);
                 }
                 renumberTiers();
                 elements.saveState.textContent = saved.source;
@@ -2797,10 +2847,10 @@
             const reloadSavedBoard = async () => {
                 const saved = await loadSavedState();
                 const hasSavedBoard = Boolean(saved.items || saved.order);
-                if (state.auth.user && !hasSavedBoard && state.items.length) {
+                if (state.auth.user && !hasSavedBoard) {
                     elements.saveState.textContent = "Saving";
-                    savePlayers();
-                    updateAuthUi("No remote rankings found, so your current board was kept and saved to this account.");
+                    await initializeCleanSleeperBoard({ persist: true });
+                    updateAuthUi("New account initialized with the latest clean Sleeper rankings.");
                     return { ...saved, source: "Account" };
                 }
                 applySavedStateToBoard(saved);
@@ -5512,12 +5562,7 @@
                         source: payload?.source || SLEEPER_ADP_DIRECT_URL,
                     };
                     if (state.useSleeperDefaultOrder) {
-                        const sleeperOrderedPlayers = basePlayers().sort((a, b) => {
-                            const adpA = effectiveSleeperMarket(a).adp;
-                            const adpB = effectiveSleeperMarket(b).adp;
-                            return adpA - adpB || a.name.localeCompare(b.name);
-                        });
-                        state.items = buildDefaultItems(sleeperOrderedPlayers);
+                        state.items = buildCleanSleeperItems(basePlayers());
                     }
                     render();
                 } catch (error) {
@@ -6321,7 +6366,11 @@
                 await restoreAuthSession();
                 const saved = await loadSavedState();
                 bindEvents();
-                applySavedStateToBoard(saved);
+                if (state.auth.user && !saved.items && !saved.order) {
+                    await initializeCleanSleeperBoard({ persist: true });
+                } else {
+                    applySavedStateToBoard(saved);
+                }
                 if (initialPlayerParam) {
                     const target = orderedPlayers().find((player) => normalizeSearch(player.name) === normalizeSearch(initialPlayerParam));
                     if (target) {

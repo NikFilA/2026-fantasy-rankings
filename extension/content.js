@@ -5,6 +5,7 @@ const PLAYER_PROPS_URL = `${APP_ORIGIN}/api/bettingpros-player-futures`;
 const TEAM_FUTURES_URL = `${APP_ORIGIN}/api/bettingpros-team-futures`;
 const LIVE_SLEEPER_ADP_URL = `${APP_ORIGIN}/api/sleeper-adp`;
 const LIVE_ESPN_ADP_URL = `${APP_ORIGIN}/api/espn-adp`;
+const ESPN_DRAFT_PROXY_URL = `${APP_ORIGIN}/api/espn-draft`;
 const LIVE_SLEEPER_PLAYERS_URL = `${APP_ORIGIN}/api/sleeper-players`;
 const ASSISTANT_ID = "ff-draft-assistant-root";
 const STORAGE_KEY = "myCustomRankings";
@@ -70,6 +71,7 @@ const assistantState = {
   survivalByPlayerId: {},
   undraftedPlayers: null,
   sleeperPlayerIdByName: new Map(),
+  espnDraftPickByPlayerId: new Map(),
 };
 
 let aiModulesPromise = null;
@@ -166,6 +168,8 @@ const customRankingPlayers = () => {
       sleeper_var: player.sleeperVar,
       espn_var: player.espnVar,
       flock_var: player.flockVar,
+      sleeper_id: player.sleeperId,
+      espn_id: player.espnId,
     }));
   }
   return assistantState.customRankings.map((ranking) => {
@@ -181,6 +185,8 @@ const customRankingPlayers = () => {
       sleeper_var: ranking.sleeper_var ?? ranking.sleeperVar ?? player?.sleeperVar ?? null,
       espn_var: ranking.espn_var ?? ranking.espnVar ?? player?.espnVar ?? null,
       flock_var: ranking.flock_var ?? ranking.flockVar ?? player?.flockVar ?? null,
+      sleeper_id: ranking.sleeper_id ?? ranking.sleeperId ?? player?.sleeperId ?? "",
+      espn_id: ranking.espn_id ?? ranking.espnId ?? player?.espnId ?? "",
     };
   });
 };
@@ -206,6 +212,15 @@ const playerKey = (player) => `${normalize(player.name)}|${marketTeam(player.tea
 const sleeperDraftId = () => {
   const match = window.location.pathname.match(/\/draft\/[^/]+\/([0-9]+)/);
   return match ? match[1] : null;
+};
+
+const espnLeagueId = () => {
+  const sources = [window.location.search, window.location.hash, window.location.href];
+  for (const source of sources) {
+    const match = String(source || "").match(/[?&#]leagueId=(\d+)/i);
+    if (match) return match[1];
+  }
+  return "";
 };
 
 const playerAliases = (player) => {
@@ -2929,6 +2944,73 @@ const espnPlayerFromText = (text, lookupPlayers) => {
   )) || null;
 };
 
+const espnInternalPickArrays = () => {
+  const roots = [];
+  try {
+    roots.push(window.__INITIAL_STATE__, window.__ESPN_DRAFT_STATE__, window.ESPN_DRAFT_STATE, window.espn?.draft);
+  } catch {
+    // Page-owned globals may be hidden from the extension's isolated execution world.
+  }
+  const arrays = [];
+  roots.filter(Boolean).forEach((root) => {
+    [
+      root?.draftDetail?.picks,
+      root?.picks,
+      root?.draft?.draftDetail?.picks,
+      root?.draft?.picks,
+      root?.league?.draftDetail?.picks,
+    ].forEach((value) => {
+      if (Array.isArray(value)) arrays.push(value);
+    });
+  });
+  return arrays;
+};
+
+async function getESPNDraftedPlayerIds() {
+  const pickedById = new Map();
+  const addPick = (pick, fallbackId = "") => {
+    const playerId = String(
+      pick?.playerId || pick?.player_id || pick?.player?.id || pick?.athleteId || fallbackId || "",
+    ).trim();
+    if (!playerId || !/^\d+$/.test(playerId)) return;
+    pickedById.set(playerId, pick || { playerId });
+  };
+
+  espnInternalPickArrays().forEach((picks) => picks.forEach((pick) => addPick(pick)));
+
+  const attributeSelectors = [
+    '[class*="draft"] [class*="pick"] [data-player-id]',
+    '[class*="draft"] [class*="pick"][data-player-id]',
+    '[class*="draft"] [class*="cell"] [data-player-id]',
+    '[class*="draft"] [class*="cell"][data-player-id]',
+    '[class*="roster"] [data-player-id]',
+    '.draft-table-cell[data-id]',
+  ];
+  document.querySelectorAll(attributeSelectors.join(",")).forEach((element) => {
+    if (element.closest(".extension-ui-element")) return;
+    addPick({}, element.getAttribute("data-player-id") || element.getAttribute("data-id"));
+  });
+
+  const leagueId = espnLeagueId();
+  if (leagueId) {
+    try {
+      const response = await fetch(`${ESPN_DRAFT_PROXY_URL}?leagueId=${encodeURIComponent(leagueId)}&_cb=${Date.now()}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`ESPN draft API returned ${response.status}`);
+      const payload = await response.json();
+      const apiPicks = payload?.draftDetail?.picks || payload?.picks || [];
+      if (Array.isArray(apiPicks)) apiPicks.forEach((pick) => addPick(pick));
+    } catch (error) {
+      console.warn("[DraftAssistant] ESPN draft API unavailable; using local state/attributes:", error);
+    }
+  }
+
+  assistantState.espnDraftPickByPlayerId = pickedById;
+  return new Set(pickedById.keys());
+}
+window.getESPNDraftedPlayerIds = getESPNDraftedPlayerIds;
+
 function getESPNDraftState() {
   const lookupPlayers = customRankingPlayers()
     .filter((player) => player?.name)
@@ -3030,22 +3112,63 @@ window.getESPNDraftState = getESPNDraftState;
 let lastESPNSyncSignature = "";
 const syncESPNDraftState = async ({ force = false } = {}) => {
   const state = getESPNDraftState();
-  const signature = pickSignature(state.picks);
+  const draftedESPNIds = await getESPNDraftedPlayerIds();
+  const byEspnId = new Map();
+  const byName = new Map();
+  assistantState.players.forEach((player) => {
+    const espnId = String(player.espnId || player.espn_id || "").trim();
+    if (espnId) byEspnId.set(espnId, player);
+    byName.set(normalizePlayerName(player.name), player);
+  });
+  const apiPicks = [...draftedESPNIds].map((espnId, index) => {
+    const rawPick = assistantState.espnDraftPickByPlayerId.get(espnId) || {};
+    const rawName = rawPick.playerName || rawPick.fullName || rawPick.player?.fullName || "";
+    const player = byEspnId.get(espnId) || byName.get(normalizePlayerName(rawName));
+    const pickNumber = Number(
+      rawPick.overallPickNumber || rawPick.pickNumber || rawPick.pick_no,
+    ) || index + 1;
+    return {
+      player_id: String(player?.id || player?.player_id || espnId),
+      espn_player_id: espnId,
+      player_name: player?.name || rawName,
+      pick_no: pickNumber,
+      round: Number(rawPick.roundId || rawPick.round) || Math.ceil(pickNumber / DRAFT_TEAM_COUNT),
+      draft_slot: Number(rawPick.roundPickNumber || rawPick.draftSlot || rawPick.draft_slot) || null,
+      metadata: {
+        player_name: player?.name || rawName,
+        position: player?.pos || player?.position || rawPick.position || "",
+        team: player?.team || rawPick.proTeamAbbrev || "",
+      },
+    };
+  });
+  const mergedPicks = [...apiPicks];
+  const mergedIds = new Set(apiPicks.map((pick) => String(pick.player_id)));
+  const mergedNames = new Set(apiPicks.map((pick) => normalizePlayerName(pick.player_name)).filter(Boolean));
+  state.picks.forEach((pick) => {
+    const playerId = String(pick.player_id || "");
+    const playerName = normalizePlayerName(pick.player_name || pick.metadata?.player_name || "");
+    if (mergedIds.has(playerId) || (playerName && mergedNames.has(playerName))) return;
+    mergedPicks.push(pick);
+    if (playerId) mergedIds.add(playerId);
+    if (playerName) mergedNames.add(playerName);
+  });
+  mergedPicks.sort((left, right) => Number(left.pick_no) - Number(right.pick_no));
+  const signature = pickSignature(mergedPicks);
   if (!force && signature === lastESPNSyncSignature) {
     injectPlayerListValueBadges();
-    return state;
+    return { ...state, picks: mergedPicks };
   }
   lastESPNSyncSignature = signature;
-  applyDraftPicks(state.picks, {
+  applyDraftPicks(mergedPicks, {
     source: "espn-live-dom",
     triggerAdvice: true,
     manualAdvice: force,
-    officialCount: state.picks.length,
+    officialCount: mergedPicks.length,
   });
   assistantState.source = "ESPN live draft room";
   updatePanelStateUI();
   injectPlayerListValueBadges();
-  return state;
+  return { ...state, picks: mergedPicks };
 };
 
 let espnDraftObserver = null;

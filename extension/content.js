@@ -1831,11 +1831,11 @@ const cardHtml = () => {
     : Number.isFinite(player.espnAdp) && player.espnAdp !== 999
       ? Math.round(player.espnAdp - (index + 1))
       : null;
-  const flockVariance = Number.isFinite(player.flockVar)
-    ? player.flockVar
-    : Number.isFinite(player.flockRank)
-      ? Math.round(player.flockRank - (index + 1))
-      : null;
+  // Always derive Flock VAR from the current personal-board position so a
+  // stored value cannot become stale after rankings are reordered.
+  const flockVariance = Number.isFinite(player.flockRank)
+    ? Math.round((index + 1) - player.flockRank)
+    : null;
   const teamWinsValue = Number.isFinite(player.teamWins) ? player.teamWins : future?.line;
   const shareValue = Number.isFinite(player.targetShare)
     ? (player.targetShare <= 1 ? Math.round(player.targetShare * 100) : Math.round(player.targetShare))
@@ -1858,7 +1858,7 @@ const cardHtml = () => {
     { label: "ESPN", value: formatAdpWithPick(player.espnAdp, player.espnPick), className: rankClass(player.espnAdp, assistantState.players.length) },
     { label: "ESPN Var", value: espnVariance === null ? "N/A" : `${espnVariance > 0 ? "+" : ""}${espnVariance}`, className: varianceClass(espnVariance) },
     ...(Number.isFinite(player.flockRank) ? [
-      { label: "Flock Rank", value: String(Math.round(player.flockRank)), className: rankClass(player.flockRank, assistantState.players.length) },
+      { label: "Flock Rank", value: String(player.flockRank), className: rankClass(player.flockRank, assistantState.players.length) },
       { label: "Flock Var", value: flockVariance === null ? "N/A" : `${flockVariance > 0 ? "+" : ""}${flockVariance}`, className: varianceClass(flockVariance) },
     ] : []),
     ...(player.teamContext ? [{ label: "Team Context", value: player.teamContext, className: "rank-mid" }] : []),

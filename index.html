@@ -3405,6 +3405,19 @@
                 return { label: `${prefix}${variance}`, className: varianceClass(variance) };
             };
 
+            // Flock variance is intentionally expressed from the user's board:
+            // positive means the user ranks the player later than Flock does.
+            const formatFlockVariance = (flockRank, myRank) => {
+                if (!Number.isFinite(flockRank) || flockRank === 999) {
+                    return { label: "N/A", className: "neutral" };
+                }
+                const variance = myRank - flockRank;
+                return {
+                    label: `${variance > 0 ? "+" : ""}${variance}`,
+                    className: varianceClass(variance),
+                };
+            };
+
             const getPositionRanks = () => {
                 const counters = { QB: 0, RB: 0, WR: 0, TE: 0 };
                 return orderedPlayers().reduce((ranks, player) => {
@@ -3654,7 +3667,9 @@
                 const marketCells = state.visibleMarkets.flatMap((marketId) => {
                     const market = marketValueForPlayer(player, marketId);
                     const rank = Number.isFinite(market.rank) ? market.rank : 999;
-                    const variance = formatVariance(rank, myRank);
+                    const variance = marketId === "flock"
+                        ? formatFlockVariance(rank, myRank)
+                        : formatVariance(rank, myRank);
                     const rankLabel = marketId === "flock"
                         ? formatMarketRank(market.rank)
                         : formatAdp(rank, market.pick, marketId === "sleeper" || marketId === "espn");
@@ -3889,7 +3904,9 @@
                     const [, marketId, field] = state.sort.key.split(":");
                     const rank = marketValueForPlayer(player, marketId).rank;
                     value = Number.isFinite(rank) && rank !== 999
-                        ? (field === "variance" ? rank - myRank : rank)
+                        ? (field === "variance"
+                            ? (marketId === "flock" ? myRank - rank : rank - myRank)
+                            : rank)
                         : Number.POSITIVE_INFINITY;
                 } else {
                     value = values[state.sort.key];
@@ -4970,7 +4987,7 @@
                 const sleeperVariance = formatVariance(sleeperMarket.adp, myRank);
                 const espnMarket = effectiveEspnMarket(player);
                 const espnVariance = formatVariance(espnMarket.adp, myRank);
-                const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
+                const flockVariance = formatFlockVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
 
                 const head = document.createElement("div");
@@ -5406,7 +5423,23 @@
 
             const normalizeFlockRankings = (payload) => {
                 const rows = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.data) ? payload.data : []);
-                return rows.reduce((result, row, index) => {
+                const flockSortedPlayers = rows
+                    .map((row, sourceIndex) => ({
+                        row,
+                        sourceIndex,
+                        rawRank: Number(row.overallAverageRank ?? row.averageRank ?? row.rawFlockRank),
+                    }))
+                    .sort((left, right) => {
+                        const leftHasRank = Number.isFinite(left.rawRank);
+                        const rightHasRank = Number.isFinite(right.rawRank);
+                        if (leftHasRank && rightHasRank && left.rawRank !== right.rawRank) {
+                            return left.rawRank - right.rawRank;
+                        }
+                        if (leftHasRank !== rightHasRank) return leftHasRank ? -1 : 1;
+                        return left.sourceIndex - right.sourceIndex;
+                    });
+                return flockSortedPlayers.reduce((result, entry, index) => {
+                    const { row, rawRank } = entry;
                     const name = row.playerName || row.player_name || row.name;
                     const team = row.team || row.teamAbbr || row.team_abbr || "";
                     const pos = row.position || row.pos || "";
@@ -5415,9 +5448,8 @@
                     }
                     const key = `${nameKey(name)}|${marketTeam(team)}|${String(pos).toUpperCase()}`;
                     const namePosKey = `${nameKey(name)}|${String(pos).toUpperCase()}`;
-                    const reportedRank = Number(row.overallAverageRank ?? row.averageRank);
-                    const rank = Number.isFinite(reportedRank) ? reportedRank : index + 1;
-                    const detail = { ...row, listRank: rank };
+                    const rank = index + 1;
+                    const detail = { ...row, rawFlockRank: Number.isFinite(rawRank) ? rawRank : null, listRank: rank, flockRank: rank };
                     result.ranks[key] = rank;
                     result.details[key] = detail;
                     if (Object.prototype.hasOwnProperty.call(result.ranksByNamePos, namePosKey)) {

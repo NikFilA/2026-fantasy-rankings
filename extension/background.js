@@ -19,7 +19,8 @@ const sendTabMessage = (tabId, message) => new Promise((resolve) => {
 const isSupportedDraftTab = (url = "") => {
   try {
     const parsed = new URL(url);
-    return /(^|\.)sleeper\.com$/.test(parsed.hostname) && parsed.pathname.includes("/draft/");
+    return ((/(^|\.)sleeper\.(com|app)$/.test(parsed.hostname) && parsed.pathname.includes("/draft/"))
+      || (parsed.hostname.includes("espn.com") && /fantasy|draft/i.test(`${parsed.hostname}${parsed.pathname}${parsed.hash}`)));
   } catch {
     return false;
   }
@@ -33,7 +34,7 @@ const ensureAssistantOnTab = async (tabId) => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const target = tab?.id === tabId ? tab : await chrome.tabs.get(tabId);
   if (!target?.id || !isSupportedDraftTab(target.url || "")) {
-    return { ok: false, error: "Open a Sleeper draft tab, then click Toggle Assistant." };
+    return { ok: false, error: "Open a Sleeper or ESPN draft tab, then click Show Assistant." };
   }
 
   const existing = await sendTabMessage(target.id, { type: "SHOW_ASSISTANT" });

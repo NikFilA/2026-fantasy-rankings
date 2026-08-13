@@ -41,6 +41,8 @@ const assistantState = {
   filters: [],
   search: "",
   panelView: "board",
+  visible: true,
+  showGradeOverlays: true,
   listScrollTop: 0,
   gradesScrollTop: 0,
   gradesRenderSignature: "",
@@ -592,6 +594,7 @@ const saveOverlayPrefs = () => chrome.storage.local.set({
   assistantExpanded: assistantState.expanded,
   assistantPosition: assistantState.position,
   assistantSize: assistantState.size,
+  showGradeOverlays: assistantState.showGradeOverlays,
 });
 
 const loadOverlayPrefs = async () => {
@@ -601,6 +604,7 @@ const loadOverlayPrefs = async () => {
     "assistantExpanded",
     "assistantPosition",
     "assistantSize",
+    "showGradeOverlays",
   ]);
   assistantState.filters = Array.isArray(prefs.assistantFilters)
     ? prefs.assistantFilters.filter((pos) => POSITIONS.includes(pos))
@@ -608,6 +612,7 @@ const loadOverlayPrefs = async () => {
   assistantState.expanded = prefs.assistantExpanded !== false;
   assistantState.position = prefs.assistantPosition || { x: null, y: null };
   assistantState.size = prefs.assistantSize || { width: null, height: null };
+  assistantState.showGradeOverlays = prefs.showGradeOverlays !== false;
 };
 
 const loadRankings = async ({ forceDefault = false } = {}) => {
@@ -1414,6 +1419,40 @@ const styles = `
     letter-spacing: .06em;
     text-transform: uppercase;
   }
+  .grade-overlay-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border: 1px solid #303946;
+    border-radius: 8px;
+    background: rgba(255,255,255,.035);
+    color: #dbe4ee;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .grade-overlay-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .grade-overlay-switch {
+    width: 34px;
+    height: 18px;
+    padding: 2px;
+    border-radius: 999px;
+    background: #475569;
+    transition: background .18s ease;
+  }
+  .grade-overlay-switch::after {
+    content: "";
+    display: block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .18s ease;
+  }
+  .grade-overlay-toggle input:checked + .grade-overlay-switch { background: #16a34a; }
+  .grade-overlay-toggle input:checked + .grade-overlay-switch::after { transform: translateX(16px); }
   .board-list-heading {
     padding: 8px 9px 0;
   }
@@ -1991,6 +2030,13 @@ const teamGradesHtml = () => {
           </span>
         </span>
       </div>
+      <label class="grade-overlay-toggle">
+        <span>Show Grade Overlays</span>
+        <span>
+          <input type="checkbox" data-action="grade-overlays" ${assistantState.showGradeOverlays ? "checked" : ""}>
+          <span class="grade-overlay-switch" aria-hidden="true"></span>
+        </span>
+      </label>
       ${Array.from({ length: DRAFT_TEAM_COUNT }, (_, index) => {
         const teamSlot = index + 1;
         const team = teamGrades[teamSlot] || { teamPicks: [], teamScore: null, teamLetterGrade: "N/A" };
@@ -2108,6 +2154,10 @@ const updatePanelStateUI = (shadowRoot = document.getElementById(ASSISTANT_ID)?.
 
 const renderAssistant = () => {
   if (!isSupportedDraft) {
+    return;
+  }
+  if (!assistantState.visible) {
+    document.getElementById(ASSISTANT_ID)?.remove();
     return;
   }
   let root = document.getElementById(ASSISTANT_ID);
@@ -2419,6 +2469,11 @@ const bindAssistant = (shadowRoot) => {
     saveOverlayPrefs();
     renderAssistant();
   });
+  shadowRoot.querySelector("[data-action='grade-overlays']")?.addEventListener("change", async (event) => {
+    assistantState.showGradeOverlays = event.target.checked;
+    await saveOverlayPrefs();
+    updateTeamHeaderGradeBadges();
+  });
   shadowRoot.querySelector("[data-action='refresh']")?.addEventListener("click", () => {
     const refreshPromise = isESPNFantasy
       ? syncESPNDraftState({ force: true })
@@ -2691,9 +2746,13 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function updateTeamHeaderGradeBadges() {
-  if (!isSleeperDraft || !document.body) return;
+  if (!isSupportedDraft || !document.body) return;
   document.getElementById("extension-header-overlay-container")?.remove();
   document.querySelectorAll(".sleeper-extension-injected-badge").forEach((element) => element.remove());
+  if (!assistantState.visible || !assistantState.showGradeOverlays) {
+    document.getElementById("sleeper-extension-overlay-bar")?.remove();
+    return;
+  }
   const visibleAvatars = Array.from(document.querySelectorAll(
     '[class*="avatar"], img[src*="avatar"]',
   )).filter((element) => {
@@ -3227,9 +3286,9 @@ const initSleeperAssistant = async () => {
   if (!activeDraftId) {
     console.error("[DraftAssistant] Active Draft ID could not be parsed from URL:", window.location.href);
   }
+  await loadOverlayPrefs();
   ensureHeaderOverlayWatchdog();
   syncDraftPicks().catch((error) => console.error("[DraftAssistant] Fetch error:", error));
-  await loadOverlayPrefs();
   await loadCustomRankings();
   renderAssistant();
   injectPlayerListValueBadges();
@@ -3251,6 +3310,9 @@ const initSleeperAssistant = async () => {
 
 const initESPNAssistant = async () => {
   await loadOverlayPrefs();
+  ensureHeaderOverlayWatchdog();
+  bindHeaderWindowListeners();
+  observeHeaderLayoutChanges();
   await loadCustomRankings();
   loadESPNDraftContext();
   assistantState.source = "ESPN draft room · loading rankings";
@@ -3271,7 +3333,12 @@ const initESPNAssistant = async () => {
 };
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== "local" || !changes.userRankings) return;
+  if (areaName !== "local") return;
+  if (changes.showGradeOverlays) {
+    assistantState.showGradeOverlays = changes.showGradeOverlays.newValue !== false;
+    updateTeamHeaderGradeBadges();
+  }
+  if (!changes.userRankings) return;
   loadCustomRankings().then(() => {
     assistantState.lastRecommendationPickSignature = "";
     const sync = isESPNFantasy ? syncESPNDraftState({ force: true }) : syncDraftPicks();
@@ -3288,17 +3355,35 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message?.type === "TOGGLE_ASSISTANT") {
-    assistantState.expanded = !assistantState.expanded;
+    assistantState.visible = !assistantState.visible;
     saveOverlayPrefs();
     renderAssistant();
-    sendResponse({ ok: true });
+    updateTeamHeaderGradeBadges();
+    sendResponse({ ok: true, visible: assistantState.visible });
     return false;
   }
   if (message?.type === "SHOW_ASSISTANT") {
+    assistantState.visible = true;
     assistantState.expanded = true;
     saveOverlayPrefs();
     renderAssistant();
-    sendResponse({ ok: true });
+    updateTeamHeaderGradeBadges();
+    sendResponse({ ok: true, visible: true });
+    return false;
+  }
+  if (message?.type === "CLOSE_ASSISTANT") {
+    assistantState.visible = false;
+    document.getElementById(ASSISTANT_ID)?.remove();
+    updateTeamHeaderGradeBadges();
+    sendResponse({ ok: true, visible: false });
+    return false;
+  }
+  if (message?.type === "GET_ASSISTANT_STATE") {
+    sendResponse({
+      ok: true,
+      visible: assistantState.visible && Boolean(document.getElementById(ASSISTANT_ID)),
+      showGradeOverlays: assistantState.showGradeOverlays,
+    });
     return false;
   }
   if (message?.type === "REFRESH_ASSISTANT_RANKINGS") {

@@ -34,10 +34,33 @@ const loadAISettings = async () => {
   document.getElementById("sleeperUserIdInput").value = slot ? "" : saved;
 };
 
-document.getElementById("openAssistant").addEventListener("click", async () => {
+const assistantButton = document.getElementById("openAssistant");
+let assistantVisible = false;
+
+const updateAssistantButton = (visible) => {
+  assistantVisible = Boolean(visible);
+  assistantButton.textContent = assistantVisible ? "Close Assistant" : "Show Assistant";
+  assistantButton.dataset.visible = String(assistantVisible);
+};
+
+const refreshAssistantState = async () => {
+  const result = await sendActiveTabMessage({ type: "GET_ASSISTANT_STATE" });
+  updateAssistantButton(Boolean(result.ok && result.visible));
+};
+
+assistantButton.addEventListener("click", async () => {
   const tab = await activeTab();
-  const result = await sendRuntimeMessage({ type: "OPEN_ASSISTANT", tabId: tab?.id });
-  statusNode.textContent = result.ok ? "Assistant shown on this draft tab." : result.error;
+  const result = assistantVisible
+    ? await sendActiveTabMessage({ type: "CLOSE_ASSISTANT" })
+    : await sendRuntimeMessage({ type: "OPEN_ASSISTANT", tabId: tab?.id });
+  if (result.ok) {
+    updateAssistantButton(Boolean(result.visible));
+    statusNode.textContent = assistantVisible
+      ? "Assistant shown on this draft tab."
+      : "Assistant closed on this draft tab.";
+  } else {
+    statusNode.textContent = result.error;
+  }
 });
 
 document.getElementById("refreshRankings").addEventListener("click", async () => {
@@ -71,3 +94,4 @@ document.getElementById("saveAISettings").addEventListener("click", async () => 
 });
 
 loadAISettings();
+refreshAssistantState();

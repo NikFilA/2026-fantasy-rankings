@@ -100,9 +100,10 @@ const FIRST_NAME_ALIASES = {
   chris: "chris",
 };
 
-const normalizePlayerName = (value = "") => {
+const normalizedPlayerWords = (value = "") => {
   const cleaned = String(value)
     .toLowerCase()
+    .replace(/\b(qb|rb|wr|te)\s*[\/-]\s*[a-z]{2,3}\b/gi, " ")
     .replace(/[^a-zA-Z0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -111,7 +112,31 @@ const normalizePlayerName = (value = "") => {
     .filter(Boolean)
     .filter((part) => !["jr", "sr", "ii", "iii", "iv", "v"].includes(part.toLowerCase()));
   if (parts.length) parts[0] = FIRST_NAME_ALIASES[parts[0].toLowerCase()] || parts[0];
-  return normalize(parts.join(" "));
+  return parts;
+};
+
+const normalizePlayerName = (value = "") => normalize(normalizedPlayerWords(value).join(" "));
+
+const isPlayerMatch = (scrapedName, rankedName) => {
+  const scrapedWords = normalizedPlayerWords(scrapedName);
+  const rankedWords = normalizedPlayerWords(rankedName);
+  if (!scrapedWords.length || !rankedWords.length) return false;
+  const normalizedScraped = normalize(scrapedWords.join(" "));
+  const normalizedRanked = normalize(rankedWords.join(" "));
+  if (normalizedScraped === normalizedRanked || normalizedScraped.includes(normalizedRanked)) return true;
+
+  const rankedFirst = rankedWords[0] || "";
+  const rankedLast = rankedWords[rankedWords.length - 1] || "";
+  for (let index = 0; index < scrapedWords.length - 1; index += 1) {
+    const scrapedFirst = scrapedWords[index];
+    const scrapedLast = scrapedWords[index + 1];
+    if (scrapedFirst.length === 1
+      && scrapedFirst === rankedFirst[0]
+      && scrapedLast === rankedLast) {
+      return true;
+    }
+  }
+  return false;
 };
 
 const loadCustomRankings = async () => {
@@ -2899,9 +2924,8 @@ const observeDraftPage = () => {
 };
 
 const espnPlayerFromText = (text, lookupPlayers) => {
-  const normalizedText = normalizePlayerName(text);
   return lookupPlayers.find((player) => (
-    player.normalizedName && normalizedText.includes(player.normalizedName)
+    player.normalizedName && isPlayerMatch(text, player.name)
   )) || null;
 };
 
@@ -2937,9 +2961,19 @@ function getESPNDraftState() {
     '[class*="draft-results"] [class*="pick"]',
     '[class*="draftResults"] [class*="pick"]',
   ];
+  const rosterSelectors = [
+    '.roster-slot',
+    '.player-name',
+    '[class*="roster-slot"]',
+    '[class*="rosterSlot"]',
+    '[class*="team-roster"] [class*="player"]',
+    '[class*="teamRoster"] [class*="player"]',
+    '[class*="lineup"] [class*="player"]',
+  ];
   const boardNodes = Array.from(document.querySelectorAll(boardSelectors.join(",")));
   const feedNodes = Array.from(document.querySelectorAll(feedSelectors.join(",")));
-  const allDraftedNodes = [...new Set([...boardNodes, ...feedNodes])]
+  const rosterNodes = Array.from(document.querySelectorAll(rosterSelectors.join(",")));
+  const allDraftedNodes = [...new Set([...boardNodes, ...feedNodes, ...rosterNodes])]
     .filter((node) => !node.closest(".extension-ui-element"));
   const draftedNodes = allDraftedNodes.filter((node) => !allDraftedNodes.some((other) => (
     other !== node && node.contains(other)
@@ -2948,9 +2982,8 @@ function getESPNDraftState() {
   const seenDraftedNames = new Set();
   draftedNodes.forEach((node) => {
     const nodeText = node.textContent || "";
-    const normalizedNodeText = normalizePlayerName(nodeText);
     const matchedPlayers = lookupPlayers.filter((player) => (
-      player.normalizedName && normalizedNodeText.includes(player.normalizedName)
+      player.normalizedName && isPlayerMatch(nodeText, player.name)
     ));
     matchedPlayers.forEach((player) => {
       if (seenDraftedNames.has(player.normalizedName)) return;

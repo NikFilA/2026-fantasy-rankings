@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - 2026 Fantasy Draft Assistant</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #d1d5db;
+            background-color: #0f172a;
+        }
+
+        h1,
+        h2 {
+            color: #f8fafc;
+            margin-top: 1.5em;
+        }
+
+        h1 {
+            border-bottom: 1px solid #334155;
+            padding-bottom: 10px;
+        }
+
+        a {
+            color: #38bdf8;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        code {
+            color: #e2e8f0;
+            overflow-wrap: anywhere;
+        }
+
+        .container {
+            background-color: #1e293b;
+            padding: 30px;
+            border: 1px solid #334155;
+            border-radius: 12px;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                margin: 20px auto;
+                padding: 0 12px;
+            }
+
+            .container {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Privacy Policy</h1>
+        <p><strong>Effective Date:</strong> August 13, 2026</p>
+
+        <p>This Privacy Policy describes how the <strong>2026 Fantasy Draft Assistant</strong> Chrome extension and associated web application ("we", "our", or "us") handle user data.</p>
+
+        <h2>1. Single Purpose</h2>
+        <p>The single purpose of the 2026 Fantasy Draft Assistant extension is to provide live fantasy football draft recommendations, team grade analysis, and custom ranking overlays directly within active draft rooms on supported platforms (such as Sleeper and ESPN).</p>
+
+        <h2>2. Data Collection &amp; Processing</h2>
+        <p>We are committed to user privacy. The extension operates with the following data parameters:</p>
+        <ul>
+            <li><strong>Page Content:</strong> The extension reads active draft room DOM elements (e.g., player names, pick numbers, roster slots) strictly to render real-time UI overlays and recommendations. This data is processed locally in your browser and is never stored on external servers or sold.</li>
+            <li><strong>User Preferences:</strong> Preferences such as overlay toggle states and account settings are stored locally on your device via <code>chrome.storage.local</code>.</li>
+            <li><strong>Account Data:</strong> If logged into an account on our rankings platform, authentication token and saved board rankings are retrieved via secure API to sync your custom rankings with the draft assistant.</li>
+        </ul>
+
+        <h2>3. Data Sharing &amp; Third Parties</h2>
+        <p>We do not sell, trade, rent, or transfer any user data or personal information to third parties. All draft interactions occur strictly inside the user's browser environment.</p>
+
+        <h2>4. Use of Permissions</h2>
+        <ul>
+            <li><code>activeTab</code> &amp; <code>tabs</code>: Used to detect active fantasy draft rooms and toggle the assistant overlay.</li>
+            <li><code>storage</code>: Used to save UI states and user preferences locally.</li>
+            <li><code>scripting</code> &amp; Host Permissions: Used to render draft assistant UI elements directly inside draft room pages.</li>
+        </ul>
+
+        <h2>5. Contact &amp; Questions</h2>
+        <p>If you have any questions or concerns regarding this Privacy Policy, please contact us at <a href="mailto:nikhilkashyap06@gmail.com">nikhilkashyap06@gmail.com</a>.</p>
+    </div>
+</body>
+</html>

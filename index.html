@@ -274,6 +274,138 @@
             text-transform: uppercase;
         }
 
+        .extension-cta {
+            min-height: 38px;
+            border-color: rgba(250, 204, 21, 0.72);
+            background: linear-gradient(135deg, rgba(250, 204, 21, 0.14), rgba(56, 189, 248, 0.12));
+            color: #f8fafc;
+            white-space: nowrap;
+        }
+
+        .extension-modal-backdrop[hidden] {
+            display: none;
+        }
+
+        .extension-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: grid;
+            place-items: center;
+            overflow-y: auto;
+            background: rgba(2, 6, 23, 0.78);
+            backdrop-filter: blur(8px);
+            padding: 24px;
+            animation: extension-fade-in 180ms ease-out;
+        }
+
+        .extension-dialog {
+            position: relative;
+            width: min(680px, 100%);
+            border: 1px solid #334155;
+            border-radius: 16px;
+            background: #0f172a;
+            box-shadow: 0 30px 90px rgba(0, 0, 0, 0.62);
+            padding: clamp(24px, 5vw, 40px);
+            animation: extension-dialog-in 220ms ease-out;
+        }
+
+        .extension-dialog h2 {
+            max-width: calc(100% - 48px);
+            margin: 0;
+            color: #f8fafc;
+            font-size: clamp(24px, 4vw, 34px);
+            line-height: 1.12;
+        }
+
+        .extension-dialog-intro {
+            margin: 12px 0 22px;
+            color: #aeb9c7;
+            line-height: 1.6;
+        }
+
+        .extension-store-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 50px;
+            border: 1px solid rgba(56, 189, 248, 0.75);
+            border-radius: 10px;
+            background: #0284c7;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 950;
+            letter-spacing: 0.05em;
+            text-decoration: none;
+            text-transform: uppercase;
+            transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
+        }
+
+        .extension-store-btn:hover,
+        .extension-store-btn:focus-visible {
+            background: #0ea5e9;
+            box-shadow: 0 12px 28px rgba(14, 165, 233, 0.24);
+            outline: none;
+            transform: translateY(-1px);
+        }
+
+        .extension-steps {
+            display: grid;
+            gap: 12px;
+            margin: 24px 0 0;
+            padding: 0;
+            list-style: none;
+            counter-reset: extension-step;
+        }
+
+        .extension-steps li {
+            position: relative;
+            min-height: 54px;
+            border: 1px solid #273449;
+            border-radius: 10px;
+            background: #151f30;
+            color: #cbd5e1;
+            padding: 14px 14px 14px 58px;
+            counter-increment: extension-step;
+        }
+
+        .extension-steps li::before {
+            content: counter(extension-step);
+            position: absolute;
+            top: 12px;
+            left: 14px;
+            display: grid;
+            place-items: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: rgba(56, 189, 248, 0.16);
+            color: #7dd3fc;
+            font-weight: 950;
+        }
+
+        .extension-steps strong {
+            color: #f8fafc;
+        }
+
+        @keyframes extension-fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes extension-dialog-in {
+            from { opacity: 0; transform: translateY(12px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .extension-modal-backdrop,
+            .extension-dialog {
+                animation: none;
+            }
+        }
+
         .summary {
             display: grid;
             grid-template-columns: repeat(3, minmax(94px, 1fr));
@@ -1932,6 +2064,20 @@
 
             .account-panel {
                 justify-self: stretch;
+                flex-wrap: wrap;
+            }
+
+            .extension-cta {
+                flex: 1 1 100%;
+            }
+
+            .extension-modal-backdrop {
+                align-items: start;
+                padding: 12px;
+            }
+
+            .extension-dialog {
+                margin: 12px 0;
             }
 
             .compare-panel {
@@ -2010,6 +2156,7 @@
                 </span>
                 <button class="account-btn primary" type="button" id="authOpen">Sign In</button>
                 <button class="account-btn secondary" type="button" id="authSignOut" hidden>Sign Out</button>
+                <button class="account-btn extension-cta" type="button" id="extensionOpen">Get Draft Extension 🧩</button>
             </div>
         </section>
 
@@ -2031,6 +2178,21 @@
                     <span class="auth-status" id="authStatus">Sign in to save rankings to your account.</span>
                 </div>
             </form>
+        </div>
+
+        <div class="extension-modal-backdrop" id="extensionModal" hidden>
+            <section class="extension-dialog" role="dialog" aria-modal="true" aria-labelledby="extensionModalTitle">
+                <button class="auth-close" type="button" id="extensionClose" aria-label="Close extension setup guide">x</button>
+                <h2 id="extensionModalTitle">2026 Fantasy Draft Assistant - Chrome Extension</h2>
+                <p class="extension-dialog-intro">Bring your custom rankings, live target probabilities, and team grades directly into supported fantasy draft rooms.</p>
+                <a class="extension-store-btn" href="https://chromewebstore.google.com/detail/2026-fantasy-draft-assistant/heclkfkapnogjihdombnjfmaohipigma" target="_blank" rel="noopener noreferrer">Get it on the Chrome Web Store 🧩</a>
+                <ol class="extension-steps">
+                    <li><strong>Install:</strong> Click “Add to Chrome” on the Web Store page.</li>
+                    <li><strong>Sign In:</strong> Log into your account on this site so your custom rankings and tiers are synced.</li>
+                    <li><strong>Enter Draft Room:</strong> Open your active draft room on Sleeper or ESPN.</li>
+                    <li><strong>Launch Assistant:</strong> Click “SHOW ASSISTANT” from the extension popup or overlay to view live target recommendations, percentage probabilities, and team grades directly on your draft board.</li>
+                </ol>
+            </section>
         </div>
 
         <section class="draft-panel" aria-label="Draft sync">
@@ -2325,9 +2487,13 @@
                 authSignOut: document.getElementById("authSignOut"),
                 authUseLocal: document.getElementById("authUseLocal"),
                 authStatus: document.getElementById("authStatus"),
+                extensionOpen: document.getElementById("extensionOpen"),
+                extensionClose: document.getElementById("extensionClose"),
+                extensionModal: document.getElementById("extensionModal"),
             };
             let draftTimer = null;
             let marketTimer = null;
+            let extensionReturnFocus = null;
 
             const basePlayers = () => clonePlayers(window.defaultPlayers || defaultPlayers || []);
 
@@ -2826,6 +2992,22 @@
 
             const closeAuthModal = () => {
                 elements.authModal.hidden = true;
+            };
+
+            const openExtensionModal = () => {
+                extensionReturnFocus = document.activeElement;
+                elements.extensionModal.hidden = false;
+                document.body.style.overflow = "hidden";
+                requestAnimationFrame(() => elements.extensionClose.focus());
+            };
+
+            const closeExtensionModal = () => {
+                elements.extensionModal.hidden = true;
+                document.body.style.overflow = "";
+                if (extensionReturnFocus instanceof HTMLElement) {
+                    extensionReturnFocus.focus();
+                }
+                extensionReturnFocus = null;
             };
 
             const updateAuthUi = (message = "") => {
@@ -6316,6 +6498,13 @@
                 elements.authModeCreate.addEventListener("click", () => setAuthMode("signUp"));
                 elements.authSignOut.addEventListener("click", signOut);
                 elements.authUseLocal.addEventListener("click", importLocalRankings);
+                elements.extensionOpen.addEventListener("click", openExtensionModal);
+                elements.extensionClose.addEventListener("click", closeExtensionModal);
+                elements.extensionModal.addEventListener("click", (event) => {
+                    if (event.target === elements.extensionModal) {
+                        closeExtensionModal();
+                    }
+                });
 
                 elements.playerDrawerClose.addEventListener("click", closePlayerDetails);
                 elements.playerDrawerBackdrop.addEventListener("click", (event) => {
@@ -6324,6 +6513,10 @@
                     }
                 });
                 document.addEventListener("keydown", (event) => {
+                    if (event.key === "Escape" && !elements.extensionModal.hidden) {
+                        closeExtensionModal();
+                        return;
+                    }
                     if (event.key === "Escape" && !elements.authModal.hidden) {
                         closeAuthModal();
                         return;

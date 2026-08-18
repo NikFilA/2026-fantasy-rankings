@@ -61,11 +61,13 @@
         }
 
         .topbar {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
-            gap: 14px;
-            align-items: start;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
             margin-bottom: 14px;
+            padding: 16px 24px;
         }
 
         .eyebrow {
@@ -79,6 +81,7 @@
 
         .site-title {
             display: inline-flex;
+            flex: 0 0 auto;
             border: 0;
             background: transparent;
             color: var(--accent-strong);
@@ -90,6 +93,7 @@
 
         h1 {
             margin: 0;
+            flex-shrink: 0;
             font-size: clamp(27px, 3.6vw, 44px);
             font-weight: 950;
             line-height: 1;
@@ -98,11 +102,15 @@
             text-shadow: 0 0 22px rgba(56, 189, 248, 0.22);
         }
 
-        .account-panel {
-            justify-self: end;
+        .header-actions {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            min-width: 0;
+            margin-left: auto;
+        }
+
+        .account-panel {
             border: 1px solid var(--line);
             border-radius: 8px;
             background: rgba(23, 27, 31, 0.82);
@@ -125,6 +133,7 @@
 
         .account-copy {
             min-width: 0;
+            max-width: 180px;
         }
 
         .account-copy strong,
@@ -162,6 +171,26 @@
             letter-spacing: 0.06em;
             padding: 0 12px;
             text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 1024px) {
+            .topbar {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 16px 20px;
+            }
+
+            .header-actions {
+                width: 100%;
+                margin-left: 0;
+                flex-wrap: wrap;
+            }
+
+            .account-copy {
+                flex: 1 1 160px;
+                max-width: none;
+            }
         }
 
         .account-btn.primary,
@@ -2051,7 +2080,6 @@
                 padding-top: 20px;
             }
 
-            .topbar,
             .controls,
             .draft-panel,
             .data-lab,
@@ -2060,11 +2088,6 @@
             .drawer-head,
             .modal-stat-strip {
                 grid-template-columns: 1fr;
-            }
-
-            .account-panel {
-                justify-self: stretch;
-                flex-wrap: wrap;
             }
 
             .extension-cta {
@@ -2148,7 +2171,7 @@
             <button class="site-title" type="button" id="homeButton">
                 <h1>Fantasy Football Rankings</h1>
             </button>
-            <div class="account-panel" aria-label="Account">
+            <div class="account-panel header-actions" aria-label="Account and extension actions">
                 <span class="account-avatar" id="accountAvatar">--</span>
                 <span class="account-copy">
                     <strong id="accountName">Signed out</strong>

@@ -5427,13 +5427,16 @@
                 try {
                     const performance = performanceForPlayer(player, flockDetail);
                     const yearly = yearlyForPlayer(player, flockDetail);
-                    elements.playerDrawerContent.append(
+                    const detailSections = [
                         positionStatsGrid(player, yearly),
                         teamContextSection(player),
                         bettingPropsSection(player),
-                        targetSharesSection(player),
-                        performanceChart(performance)
-                    );
+                    ];
+                    if (String(player.pos || player.position || "").toUpperCase() !== "QB") {
+                        detailSections.push(targetSharesSection(player));
+                    }
+                    detailSections.push(performanceChart(performance));
+                    elements.playerDrawerContent.append(...detailSections);
                     refreshPlayerPerformance(player, flockDetail);
                     refreshYearlyStats(player, flockDetail);
                 } catch (error) {

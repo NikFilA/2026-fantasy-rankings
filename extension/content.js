@@ -32,6 +32,23 @@ if (!window.calculatedTeamGrades) {
   window.calculatedTeamGrades = {};
 }
 const expandedTeamSlots = new Set();
+let isUpdatingExtensionDOM = false;
+const assistantViewListenersBound = new WeakSet();
+
+const isExtensionOwnedNode = (node) => {
+  const element = node instanceof Element ? node : node?.parentElement;
+  return Boolean(element?.matches?.(
+    ".extension-ui-element, .draft-assistant-overlay, .custom-draft-grade-badge, .draft-alert-banner, .sleeper-extension-grade-badge, .sleeper-ext-value-badge",
+  ) || element?.closest?.(
+    ".extension-ui-element, .draft-assistant-overlay, .custom-draft-grade-badge, .draft-alert-banner, #sleeper-extension-overlay-bar, #draft-assistant-overlay",
+  ));
+};
+
+const isExtensionOnlyMutation = (mutation) => {
+  if (isExtensionOwnedNode(mutation.target)) return true;
+  const changedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
+  return changedNodes.length > 0 && changedNodes.every(isExtensionOwnedNode);
+};
 
 const assistantState = {
   players: [],
@@ -56,6 +73,7 @@ const assistantState = {
   draftPicksError: "",
   draftedCount: 0,
   lastLiveSleeperPicks: [],
+  detectedTeamCount: null,
   resolvedUserDraftSlot: null,
   selectedPlayerId: "",
   position: { x: null, y: null },
@@ -894,7 +912,8 @@ const loadSleeperDraftContext = async () => {
       ...response.draft.settings,
       teams: Number(response.draft?.settings?.teams)
         || Number(assistantState.leagueSettings.total_rosters)
-        || 12,
+        || Object.keys(response.draft?.draft_order || {}).length
+        || null,
     },
   };
   return {
@@ -904,19 +923,20 @@ const loadSleeperDraftContext = async () => {
 };
 
 const loadESPNDraftContext = () => {
+  const detectedTeams = detectDraftTeamCount() || null;
   if (!assistantState.leagueSettings) {
     assistantState.leagueSettings = {
-      total_rosters: 12,
+      total_rosters: detectedTeams,
       draft_rounds: 16,
       scoring_settings: { rec: 1, pass_td: 4 },
       roster_positions: ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "FLEX", "BN", "BN", "BN", "BN", "BN", "BN", "BN", "BN"],
-      draft_settings: { teams: 12, rounds: 16 },
+      draft_settings: { teams: detectedTeams, rounds: 16 },
     };
   }
   if (!assistantState.sleeperDraftDetails) {
     assistantState.sleeperDraftDetails = {
       type: "snake",
-      settings: { teams: 12, rounds: 16 },
+      settings: { teams: detectedTeams, rounds: 16 },
       metadata: { scoring_type: "ppr", source: "espn-dom" },
     };
   }
@@ -2046,6 +2066,9 @@ const formatGradeNumber = (value, digits = 1) => (
 
 const teamGradesHtml = () => {
   const teamGrades = window.calculatedTeamGrades || {};
+  const totalTeams = detectDraftTeamCount()
+    || Number(window.calculatedDraftTeamCount)
+    || Object.keys(teamGrades).length;
   return `
     <div id="team-grades-list" class="team-grades grades-scroll-container" data-role="team-grades">
       <div class="team-grades-heading">
@@ -2068,7 +2091,7 @@ const teamGradesHtml = () => {
           <span class="toggle-slider" aria-hidden="true"></span>
         </span>
       </label>
-      ${Array.from({ length: DRAFT_TEAM_COUNT }, (_, index) => {
+      ${Array.from({ length: totalTeams }, (_, index) => {
         const teamSlot = index + 1;
         const team = teamGrades[teamSlot] || { teamPicks: [], teamScore: null, teamLetterGrade: "N/A" };
         const picks = Array.isArray(team.teamPicks) ? team.teamPicks : [];
@@ -2469,14 +2492,17 @@ const bindAssistant = (shadowRoot) => {
   scrollContainer?.addEventListener("scroll", () => {
     assistantState.listScrollTop = scrollContainer.scrollTop;
   }, { passive: true });
-  shadowRoot.querySelectorAll("[data-view]").forEach((button) => {
-    button.addEventListener("click", () => {
+  if (!assistantViewListenersBound.has(shadowRoot)) {
+    assistantViewListenersBound.add(shadowRoot);
+    shadowRoot.addEventListener("click", (event) => {
+      const button = event.target.closest?.("[data-view]");
+      if (!button || !shadowRoot.contains(button)) return;
       assistantState.panelView = button.dataset.view === "grades" ? "grades" : "board";
       assistantState.selectedPlayerId = "";
       renderAssistant();
       requestAnimationFrame(updateTeamHeaderGradeBadges);
     });
-  });
+  }
   shadowRoot.querySelectorAll("[data-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       const filter = button.dataset.filter;
@@ -2665,12 +2691,101 @@ function injectPlayerListValueBadges() {
   });
 }
 
-const DRAFT_TEAM_COUNT = 12;
+const validDraftTeamCount = (value) => {
+  const count = Number(value);
+  return Number.isInteger(count) && count >= 2 && count <= 32 ? count : 0;
+};
+
+const contiguousRoundOneCount = () => {
+  const slots = new Set();
+  document.querySelectorAll("div, span, [data-pick], [data-pick-number]").forEach((element) => {
+    if (element.closest(".extension-ui-element")) return;
+    const text = String(element.textContent || "").trim();
+    const match = text.match(/^1\.(\d{1,2})$/);
+    const slot = Number(match?.[1]);
+    if (slot >= 1 && slot <= 32) slots.add(slot);
+  });
+  if (slots.size < 2) return 0;
+  const maximum = Math.max(...slots);
+  return Array.from({ length: maximum }, (_, index) => index + 1)
+    .every((slot) => slots.has(slot)) ? maximum : 0;
+};
+
+const visibleHeaderColumnCount = () => {
+  const selectors = [
+    ".draft-board-header .team-header",
+    ".draftboard-header .team-header",
+    '[class*="draft-board-header"] [class*="team-header"]',
+    '[class*="draftboard-header"] [class*="team-header"]',
+    '[class*="draftBoardHeader"] [class*="team"]',
+    '[class*="draftHeader"] [class*="team"]',
+    '[class*="draft"] [role="columnheader"]',
+  ];
+  const candidates = Array.from(document.querySelectorAll(selectors.join(",")))
+    .filter((element) => {
+      if (element.closest(".extension-ui-element")) return false;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width >= 20
+        && rect.height >= 15
+        && style.display !== "none"
+        && style.visibility !== "hidden";
+    })
+    .sort((left, right) => left.getBoundingClientRect().left - right.getBoundingClientRect().left);
+  const uniqueColumns = [];
+  candidates.forEach((element) => {
+    const left = element.getBoundingClientRect().left;
+    if (!uniqueColumns.some((existing) => (
+      Math.abs(existing.getBoundingClientRect().left - left) < 12
+    ))) uniqueColumns.push(element);
+  });
+  return validDraftTeamCount(uniqueColumns.length);
+};
+
+function detectDraftTeamCount() {
+  const domCount = contiguousRoundOneCount() || visibleHeaderColumnCount();
+  const draftOrderCount = Object.keys(assistantState.sleeperDraftDetails?.draft_order || {}).length;
+  // ESPN's compatibility context starts as a generic mock, so only trust live
+  // DOM detection there. Sleeper metadata and draft_order are authoritative.
+  const metadataCount = isESPNSite ? 0 : validDraftTeamCount(
+    assistantState.sleeperDraftDetails?.settings?.teams
+      || assistantState.leagueSettings?.total_rosters
+      || draftOrderCount,
+  );
+  const detected = validDraftTeamCount(domCount)
+    || metadataCount
+    || validDraftTeamCount(assistantState.detectedTeamCount);
+  if (detected) {
+    assistantState.detectedTeamCount = detected;
+    if (isESPNSite && assistantState.leagueSettings) {
+      assistantState.leagueSettings.total_rosters = detected;
+      assistantState.leagueSettings.draft_settings = {
+        ...(assistantState.leagueSettings.draft_settings || {}),
+        teams: detected,
+      };
+    }
+    if (isESPNSite && assistantState.sleeperDraftDetails) {
+      assistantState.sleeperDraftDetails.settings = {
+        ...(assistantState.sleeperDraftDetails.settings || {}),
+        teams: detected,
+      };
+    }
+  }
+  return detected;
+}
+
 const calculateAllDraftGrades = () => {
   const { byId, byName } = boardPlayerLookup();
   const trackedPicks = Array.isArray(assistantState.lastLiveSleeperPicks)
     ? assistantState.lastLiveSleeperPicks
     : [];
+  const totalTeams = detectDraftTeamCount();
+  if (!totalTeams) {
+    window.calculatedTeamGrades = {};
+    window.calculatedDraftTeamCount = 0;
+    updateTeamHeaderGradeBadges();
+    return [];
+  }
   const recognizedPicks = [];
   const playerGradeMap = Object.create(null);
   const playerGradeAliasMap = new Map();
@@ -2678,11 +2793,11 @@ const calculateAllDraftGrades = () => {
     const pick = rawPick || {};
     const sequence = index + 1;
     const pickNumber = Number(pick.pick_no) || sequence;
-    const round = Math.ceil(pickNumber / 12);
-    const remainder = pickNumber % 12;
-    const slotInRound = remainder === 0 ? 12 : remainder;
+    const round = Math.ceil(pickNumber / totalTeams);
+    const remainder = pickNumber % totalTeams;
+    const slotInRound = remainder === 0 ? totalTeams : remainder;
     const isOddRound = round % 2 === 1;
-    const teamSlot = isOddRound ? slotInRound : 13 - slotInRound;
+    const teamSlot = isOddRound ? slotInRound : (totalTeams + 1) - slotInRound;
     const playerId = String(pick.player_id || "");
     const trackedName = pickPlayerName(pick);
     const player = byId.get(playerId)
@@ -2703,7 +2818,7 @@ const calculateAllDraftGrades = () => {
       round,
       teamSlot,
     };
-    const grade = calculatePickGrade(recognizedPick);
+    const grade = calculatePickGrade(recognizedPick, totalTeams);
     recognizedPick.playerADP = grade.playerADP;
     recognizedPick.marketADP = grade.marketADP;
     recognizedPick.personalRank = grade.personalRank;
@@ -2743,7 +2858,7 @@ const calculateAllDraftGrades = () => {
     recognizedPicks.push(recognizedPick);
   });
   const calculatedTeamGrades = {};
-  for (let teamSlot = 1; teamSlot <= DRAFT_TEAM_COUNT; teamSlot += 1) {
+  for (let teamSlot = 1; teamSlot <= totalTeams; teamSlot += 1) {
     const teamPicks = recognizedPicks.filter((pick) => pick.teamSlot === teamSlot);
     const weighted = teamPicks.length ? calculateWeightedTeamGrade(teamPicks) : null;
     calculatedTeamGrades[teamSlot] = {
@@ -2763,6 +2878,7 @@ const calculateAllDraftGrades = () => {
     });
   }
   window.calculatedTeamGrades = calculatedTeamGrades;
+  window.calculatedDraftTeamCount = totalTeams;
   window.playerGradeMap = playerGradeMap;
   window.playerGradeAliasMap = playerGradeAliasMap;
   updateTeamHeaderGradeBadges();
@@ -2777,14 +2893,24 @@ function teamGradeBadgeColor(letterGrade) {
 }
 
 function updateTeamHeaderGradeBadges() {
-  if (!isSupportedDraft || !document.body) return;
-  document.getElementById("extension-header-overlay-container")?.remove();
-  document.querySelectorAll(".sleeper-extension-injected-badge").forEach((element) => element.remove());
-  if (!assistantState.visible || !assistantState.showGradeOverlays) {
-    document.getElementById("sleeper-extension-overlay-bar")?.remove();
-    return;
-  }
-  const visibleAvatars = Array.from(document.querySelectorAll(
+  if (!isSupportedDraft || !document.body || isUpdatingExtensionDOM) return;
+  isUpdatingExtensionDOM = true;
+  try {
+    document.getElementById("extension-header-overlay-container")?.remove();
+    document.querySelectorAll(".sleeper-extension-injected-badge, .sleeper-extension-grade-badge")
+      .forEach((element) => element.remove());
+    const existingOverlay = document.getElementById("sleeper-extension-overlay-bar");
+    existingOverlay?.replaceChildren();
+    if (!assistantState.visible || !assistantState.showGradeOverlays) {
+      existingOverlay?.remove();
+      return;
+    }
+    const totalTeams = detectDraftTeamCount() || validDraftTeamCount(window.calculatedDraftTeamCount);
+    if (!totalTeams) {
+      existingOverlay?.remove();
+      return;
+    }
+    const visibleAvatars = Array.from(document.querySelectorAll(
     '[class*="avatar"], img[src*="avatar"]',
   )).filter((element) => {
     if (element.closest(".extension-ui-element")) return false;
@@ -2805,33 +2931,33 @@ function updateTeamHeaderGradeBadges() {
       && style.visibility !== "hidden"
       && style.opacity !== "0";
   });
-  visibleAvatars.sort((left, right) => (
+    visibleAvatars.sort((left, right) => (
     left.getBoundingClientRect().left - right.getBoundingClientRect().left
   ));
 
-  const uniqueTeamAvatars = [];
-  visibleAvatars.forEach((avatar) => {
+    const uniqueTeamAvatars = [];
+    visibleAvatars.forEach((avatar) => {
     const x = avatar.getBoundingClientRect().left;
     if (!uniqueTeamAvatars.some((existing) => (
       Math.abs(existing.getBoundingClientRect().left - x) < 25
     ))) {
       uniqueTeamAvatars.push(avatar);
     }
-  });
+    });
 
-  let targetTop = 62;
-  if (uniqueTeamAvatars.length) {
-    targetTop = uniqueTeamAvatars[0].getBoundingClientRect().top;
-  }
+    let targetTop = 62;
+    if (uniqueTeamAvatars.length) {
+      targetTop = uniqueTeamAvatars[0].getBoundingClientRect().top;
+    }
 
-  let overlayContainer = document.getElementById("sleeper-extension-overlay-bar");
-  if (!overlayContainer) {
-    overlayContainer = document.createElement("div");
-    overlayContainer.id = "sleeper-extension-overlay-bar";
-    overlayContainer.className = "extension-ui-element";
-    document.body.appendChild(overlayContainer);
-  }
-  overlayContainer.style.cssText = [
+    let overlayContainer = document.getElementById("sleeper-extension-overlay-bar");
+    if (!overlayContainer) {
+      overlayContainer = document.createElement("div");
+      overlayContainer.id = "sleeper-extension-overlay-bar";
+      overlayContainer.className = "extension-ui-element draft-assistant-overlay";
+      document.body.appendChild(overlayContainer);
+    }
+    overlayContainer.style.cssText = [
     "position:fixed",
     `top:${targetTop}px`,
     "left:0",
@@ -2840,10 +2966,10 @@ function updateTeamHeaderGradeBadges() {
     "z-index:999999",
     "pointer-events:none",
     "box-sizing:border-box",
-  ].join(";");
-  overlayContainer.replaceChildren();
+    ].join(";");
+    overlayContainer.replaceChildren();
 
-  for (let teamNum = 1; teamNum <= DRAFT_TEAM_COUNT; teamNum += 1) {
+    for (let teamNum = 1; teamNum <= totalTeams; teamNum += 1) {
     const team = window.calculatedTeamGrades?.[teamNum];
     const hasPicks = Array.isArray(team?.teamPicks) && team.teamPicks.length > 0;
     if (hasPicks && team.teamLetterGrade && team.teamLetterGrade !== "N/A") {
@@ -2855,7 +2981,7 @@ function updateTeamHeaderGradeBadges() {
       const avatar = uniqueTeamAvatars[teamNum - 1];
       const left = avatar
         ? avatar.getBoundingClientRect().left + (avatar.getBoundingClientRect().width / 2)
-        : (teamNum - 0.5) * (window.innerWidth / DRAFT_TEAM_COUNT);
+        : (teamNum - 0.5) * (window.innerWidth / totalTeams);
       badge.style.cssText = [
         "position:absolute",
         `left:${left}px`,
@@ -2875,8 +3001,11 @@ function updateTeamHeaderGradeBadges() {
         "box-sizing:border-box",
         "pointer-events:none",
       ].join(";");
-      overlayContainer.appendChild(badge);
+        overlayContainer.appendChild(badge);
+      }
     }
+  } finally {
+    isUpdatingExtensionDOM = false;
   }
 }
 
@@ -2885,6 +3014,7 @@ let headerOverlayWatchdog = 0;
 let headerLayoutObserver = null;
 let headerWindowListenersBound = false;
 let headerScrollPending = false;
+let headerMutationDebounce = 0;
 function updateHeaderOverlayPositions() {
   cancelAnimationFrame(headerOverlayAnimationFrame);
   headerOverlayAnimationFrame = requestAnimationFrame(() => {
@@ -2925,19 +3055,13 @@ function bindHeaderWindowListeners() {
 function observeHeaderLayoutChanges() {
   if (headerLayoutObserver || !document.body) return;
   headerLayoutObserver = new MutationObserver((mutations) => {
-    const hasSleeperMutation = mutations.some((mutation) => {
-      const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
-      if (!target || target.closest(".extension-ui-element")) return false;
-      const changedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
-      if (!changedNodes.length) return false;
-      return changedNodes.some((node) => (
-        !(node instanceof Element) || !node.closest(".extension-ui-element")
-      ));
-    });
-    if (hasSleeperMutation) {
+    if (isUpdatingExtensionDOM || mutations.every(isExtensionOnlyMutation)) return;
+    window.clearTimeout(headerMutationDebounce);
+    headerMutationDebounce = window.setTimeout(() => {
+      headerMutationDebounce = 0;
       renderHeaderBadges();
       injectPlayerListValueBadges();
-    }
+    }, 100);
   });
   headerLayoutObserver.observe(document.body, { childList: true, subtree: true });
 }
@@ -2981,7 +3105,7 @@ const letterGradeFromPickScore = (score) => {
   return { grade: "F", color: "#ef4444" };
 };
 
-const calculatePickGrade = (pick) => {
+const calculatePickGrade = (pick, teamCount = detectDraftTeamCount()) => {
   const pickSpot = Number(pick.pick_no);
   const parsedMarketADP = overallAdpForPickGrade(pick);
   const parsedPersonalRank = Number(pick.custom_rank);
@@ -2993,7 +3117,8 @@ const calculatePickGrade = (pick) => {
     : marketADP;
   const compositeTarget = (0.6 * personalRank) + (0.4 * marketADP);
   const delta = pickSpot - compositeTarget;
-  const round = Math.ceil(pickSpot / DRAFT_TEAM_COUNT);
+  const safeTeamCount = validDraftTeamCount(teamCount) || 1;
+  const round = Math.ceil(pickSpot / safeTeamCount);
   let capitalMultiplier = 1;
   if (round === 1) capitalMultiplier = 4.5;
   else if (round === 2) capitalMultiplier = 3.8;
@@ -3135,6 +3260,7 @@ async function getESPNDraftedPlayerIds() {
 window.getESPNDraftedPlayerIds = getESPNDraftedPlayerIds;
 
 function getESPNDraftState() {
+  const totalTeams = detectDraftTeamCount();
   const lookupPlayers = customRankingPlayers()
     .filter((player) => player?.name)
     .map((player, index) => ({
@@ -3196,16 +3322,16 @@ function getESPNDraftState() {
       const overallMatch = nodeText.match(/(?:pick\s*#?\s*|#)(\d+)/i);
       const roundPickMatch = nodeText.match(/\b(\d{1,2})\.(\d{1,2})\b/);
       const explicitOverall = Number(overallMatch?.[1]);
-      const roundPickOverall = roundPickMatch
-        ? ((Number(roundPickMatch[1]) - 1) * DRAFT_TEAM_COUNT) + Number(roundPickMatch[2])
+      const roundPickOverall = roundPickMatch && totalTeams
+        ? ((Number(roundPickMatch[1]) - 1) * totalTeams) + Number(roundPickMatch[2])
         : 0;
       const pickNumber = explicitOverall || roundPickOverall || drafted.length + 1;
       drafted.push({
         player_id: String(player.player_id || player.id || player.normalizedName),
         player_name: player.name,
         pick_no: pickNumber,
-        round: Math.ceil(pickNumber / DRAFT_TEAM_COUNT),
-        draft_slot: ((pickNumber - 1) % DRAFT_TEAM_COUNT) + 1,
+        round: totalTeams ? Math.ceil(pickNumber / totalTeams) : null,
+        draft_slot: totalTeams ? ((pickNumber - 1) % totalTeams) + 1 : null,
         metadata: { player_name: player.name, position: player.position || player.pos || "", team: player.team || "" },
       });
     });
@@ -3235,6 +3361,7 @@ window.getESPNDraftState = getESPNDraftState;
 let lastESPNSyncSignature = "";
 const syncESPNDraftState = async ({ force = false } = {}) => {
   const state = getESPNDraftState();
+  const totalTeams = detectDraftTeamCount();
   const draftedESPNIds = await getESPNDraftedPlayerIds();
   const byEspnId = new Map();
   const byName = new Map();
@@ -3255,7 +3382,8 @@ const syncESPNDraftState = async ({ force = false } = {}) => {
       espn_player_id: espnId,
       player_name: player?.name || rawName,
       pick_no: pickNumber,
-      round: Number(rawPick.roundId || rawPick.round) || Math.ceil(pickNumber / DRAFT_TEAM_COUNT),
+      round: Number(rawPick.roundId || rawPick.round)
+        || (totalTeams ? Math.ceil(pickNumber / totalTeams) : null),
       draft_slot: Number(rawPick.roundPickNumber || rawPick.draftSlot || rawPick.draft_slot) || null,
       metadata: {
         player_name: player?.name || rawName,
@@ -3295,17 +3423,19 @@ const syncESPNDraftState = async ({ force = false } = {}) => {
 };
 
 let espnDraftObserver = null;
+let espnMutationDebounce = 0;
 const observeESPNDraftPage = () => {
   window.setInterval(() => {
     syncESPNDraftState().catch((error) => console.warn("[DraftAssistant] ESPN sync error:", error));
   }, 1500);
   if (!espnDraftObserver && document.body) {
     espnDraftObserver = new MutationObserver((mutations) => {
-      const externalMutation = mutations.some((mutation) => {
-        const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
-        return target && !target.closest(".extension-ui-element");
-      });
-      if (externalMutation) requestAnimationFrame(() => syncESPNDraftState().catch(() => {}));
+      if (isUpdatingExtensionDOM || mutations.every(isExtensionOnlyMutation)) return;
+      window.clearTimeout(espnMutationDebounce);
+      espnMutationDebounce = window.setTimeout(() => {
+        espnMutationDebounce = 0;
+        syncESPNDraftState().catch(() => {});
+      }, 100);
     });
     espnDraftObserver.observe(document.body, { childList: true, subtree: true });
   }

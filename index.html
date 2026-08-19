@@ -1372,6 +1372,106 @@
             opacity: 1;
         }
 
+        .drawer-rank-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 14px 0;
+            padding: 12px 14px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: rgba(17, 22, 27, 0.72);
+        }
+
+        .drawer-rank-actions-label {
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 850;
+            white-space: nowrap;
+        }
+
+        .drawer-rank-actions-controls {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 7px;
+        }
+
+        .rank-assign-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            height: 27px;
+            padding: 0 4px 0 6px;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: #11161b;
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 900;
+        }
+
+        .rank-assign-input {
+            width: 43px;
+            min-width: 0;
+            height: 21px;
+            border: 0;
+            border-radius: 4px;
+            outline: 0;
+            background: #20272e;
+            color: var(--text);
+            font: 800 11px/1 system-ui, sans-serif;
+            text-align: center;
+        }
+
+        .rank-assign-input:focus {
+            box-shadow: 0 0 0 1px var(--accent);
+        }
+
+        .rank-assign-submit,
+        .send-bottom-btn {
+            height: 27px;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: #151b20;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 900;
+            line-height: 1;
+            padding: 0 7px;
+            white-space: nowrap;
+        }
+
+        .rank-assign-submit {
+            width: 27px;
+            height: 21px;
+            padding: 0;
+            border-color: transparent;
+            background: transparent;
+            color: var(--accent);
+        }
+
+        .rank-assign-submit:hover,
+        .send-bottom-btn:hover {
+            border-color: rgba(56, 189, 248, 0.55);
+            background: rgba(56, 189, 248, 0.1);
+            color: var(--text);
+        }
+
+        @media (max-width: 760px) {
+            .drawer-rank-actions {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .drawer-rank-actions-controls {
+                justify-content: flex-start;
+                width: 100%;
+            }
+        }
+
         .player-card {
             display: flex;
             gap: 8px;
@@ -3750,6 +3850,43 @@
                 });
             };
 
+            const movePlayerItemToRank = (playerId, targetRank) => {
+                const playerItemsBeforeMove = playerItems();
+                const totalPlayers = playerItemsBeforeMove.length;
+                const numericRank = Number(targetRank);
+                if (!Number.isInteger(numericRank) || numericRank < 1 || numericRank > totalPlayers) {
+                    return false;
+                }
+
+                const sourceIndex = state.items.findIndex((item) => (
+                    item.type === "player" && String(item.playerId) === String(playerId)
+                ));
+                if (sourceIndex < 0) {
+                    return false;
+                }
+
+                const [movedItem] = state.items.splice(sourceIndex, 1);
+                const remainingPlayers = state.items.filter((item) => item.type === "player");
+                const targetPlayer = remainingPlayers[numericRank - 1];
+                const insertionIndex = targetPlayer
+                    ? state.items.indexOf(targetPlayer)
+                    : state.items.length;
+                state.items.splice(insertionIndex, 0, movedItem);
+                state.useSleeperDefaultOrder = false;
+                renumberTiers();
+                savePlayers();
+                render();
+                return true;
+            };
+
+            const sendToBottom = (playerId) => (
+                movePlayerItemToRank(playerId, playerItems().length)
+            );
+
+            const assignRank = (playerId, targetRank) => (
+                movePlayerItemToRank(playerId, targetRank)
+            );
+
             const createTierRow = (item) => {
                 const row = document.createElement("tr");
                 row.className = "tier-row";
@@ -3864,6 +4001,7 @@
                     event.stopPropagation();
                     insertTierAfter(item.id);
                 });
+
                 playerCell.append(playerMedia, playerText, insertTier, compareButton);
 
                 const marketCells = state.visibleMarkets.flatMap((marketId) => {
@@ -5193,6 +5331,59 @@
                 const flockVariance = formatVariance(Number.isFinite(flockRank) ? flockRank : 999, myRank);
                 const isDrafted = state.draft.draftedKeys.has(playerKey);
 
+                const rankActions = document.createElement("div");
+                rankActions.className = "drawer-rank-actions";
+                const rankActionsLabel = document.createElement("span");
+                rankActionsLabel.className = "drawer-rank-actions-label";
+                rankActionsLabel.textContent = "Quick rank assignment";
+                const rankActionsControls = document.createElement("div");
+                rankActionsControls.className = "drawer-rank-actions-controls";
+
+                const sendBottom = document.createElement("button");
+                sendBottom.type = "button";
+                sendBottom.className = "send-bottom-btn";
+                sendBottom.textContent = "↓ Send to Bottom";
+                sendBottom.title = `Send ${player.name} to bottom of rankings`;
+                sendBottom.addEventListener("click", () => {
+                    if (sendToBottom(player.id)) {
+                        openPlayerDetails(player.id, { preserveYear: true });
+                    }
+                });
+
+                const rankForm = document.createElement("form");
+                rankForm.className = "rank-assign-control";
+                rankForm.title = `Assign a specific rank to ${player.name}`;
+                const rankPrefix = document.createElement("span");
+                rankPrefix.textContent = "Rank #";
+                const rankInput = document.createElement("input");
+                rankInput.className = "rank-assign-input";
+                rankInput.type = "number";
+                rankInput.inputMode = "numeric";
+                rankInput.min = "1";
+                rankInput.max = String(playerItems().length);
+                rankInput.value = String(myRank);
+                rankInput.setAttribute("aria-label", `New rank for ${player.name}`);
+                const rankSubmit = document.createElement("button");
+                rankSubmit.type = "submit";
+                rankSubmit.className = "rank-assign-submit";
+                rankSubmit.textContent = "Go";
+                rankSubmit.title = "Assign rank";
+                rankForm.addEventListener("submit", (event) => {
+                    event.preventDefault();
+                    const targetRank = Number(rankInput.value);
+                    if (!assignRank(player.id, targetRank)) {
+                        rankInput.setCustomValidity(`Enter a rank from 1 to ${playerItems().length}.`);
+                        rankInput.reportValidity();
+                        return;
+                    }
+                    rankInput.setCustomValidity("");
+                    openPlayerDetails(player.id, { preserveYear: true });
+                });
+                rankInput.addEventListener("input", () => rankInput.setCustomValidity(""));
+                rankForm.append(rankPrefix, rankInput, rankSubmit);
+                rankActionsControls.append(rankForm, sendBottom);
+                rankActions.append(rankActionsLabel, rankActionsControls);
+
                 const head = document.createElement("div");
                 head.className = "drawer-head";
                 const titleWrap = document.createElement("div");
@@ -5226,6 +5417,7 @@
                     profileNavButton("<", player.id, -1),
                     profileNavButton(">", player.id, 1),
                     head,
+                    rankActions,
                     myGrid
                 );
                 elements.playerDrawerBackdrop.hidden = false;
